@@ -1,0 +1,9 @@
+monde_add_module(foundation
+  SOURCES
+    buf.c
+    diag.c
+    utf8.c
+    eol.c
+    source.c
+    file_io.c
+)
