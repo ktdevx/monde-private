@@ -11,7 +11,7 @@
   - 完了時: 標準の 3 行の手順が成功し、CTest に `po_tests.<suite>.<test>` 形式のテストが 9 スイート分表示され、`ctest -L po` で実行できる。`BUILD_TESTING=OFF` でも `monde_po` がビルドできる
   - _Requirements: 10.1, 10.2_
 
-- [ ] 1.2 Unicode の表を生成するスクリプトを作り、表と検索の機能を実装する
+- [x] 1.2 Unicode の表を生成するスクリプトを作り、表と検索の機能を実装する
   - UCD 15.0.0 のデータファイル（`LineBreak.txt`、`EastAsianWidth.txt`、`extracted/DerivedGeneralCategory.txt`）を unicode.org の `Public/15.0.0/ucd/` から一度手で取得し、リポジトリの外の一時ディレクトリに置く。データファイル自体はリポジトリに含めない
   - UCD 15.0.0 の行分割クラス、East Asian Width、一般カテゴリのデータファイルのパスを引数で受け取り、コードポイントの範囲の表を C のソースとして生成するスクリプトを `tools/` に置く。Python 3 の標準ライブラリだけを使い、ネットワークから取得しない
   - 生成したファイルの先頭に、Unicode のバージョン、生成元、Unicode License v3 の表記、手で編集しない旨を書く。生成物をリポジトリに含める
@@ -141,3 +141,4 @@
 
 ## Implementation Notes
 - 1.1: Ucd の表の形式（`mnd_po_ucd_range_t` と `mnd_po_ucd_lb_ranges` / `mnd_po_ucd_width_ranges` とその件数）は `po_internal.h` で定義した内部の形式で、1.2 で変えてよい。SA → CM の解決に必要な一般カテゴリ Mn・Mc の判定は、設計の宣言にないため 1.2 で内部の関数として追加する。
+- 1.2: UCD 15.0.0 で U+FFFC が CB のため、`MND_PO_LB_CB` を XX の後ろに追加した。2.4 で CB を解決・処理する（UAX #14 LB20、libunistring 1.1 の扱いに合わせる）。Mn・Mc の判定は `mnd_po_ucd_is_mark`。生成コマンド: `python3 -I tools/gen_po_ucd.py <ucd>/LineBreak.txt <ucd>/EastAsianWidth.txt <ucd>/extracted/DerivedGeneralCategory.txt -o src/po/po_ucd_tables.c`。文字幅は libunistring 1.1 の `uc_width` と 386 個のコードポイント（Unicode 15.0 の新しい絵文字、CJK のブロック内の未割り当て、U+D7B0〜U+D7FB、U+00AD など）で異なる。正解ファイルと合わない場合は 6.1 で扱う。

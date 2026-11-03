@@ -54,11 +54,16 @@ typedef enum mnd_po_lb
     MND_PO_LB_H3, MND_PO_LB_JL, MND_PO_LB_JV, MND_PO_LB_JT, MND_PO_LB_RI, MND_PO_LB_EB,
     MND_PO_LB_EM, MND_PO_LB_ZWJ,
     MND_PO_LB_SP, MND_PO_LB_BK, MND_PO_LB_CR, MND_PO_LB_LF, MND_PO_LB_NL,
-    MND_PO_LB_AI, MND_PO_LB_SA, MND_PO_LB_CJ, MND_PO_LB_SG, MND_PO_LB_XX
+    MND_PO_LB_AI, MND_PO_LB_SA, MND_PO_LB_CJ, MND_PO_LB_SG, MND_PO_LB_XX,
+    MND_PO_LB_CB
 } mnd_po_lb_t;
 
-mnd_po_lb_t mnd_po_ucd_lb(uint32_t cp);  /* 解決前のクラス */
-int mnd_po_ucd_width(uint32_t cp);       /* 0、1、2 */
+/* 解決前のクラス。LineBreak.txt にないコードポイントは、その既定値（ID、PR、XX） */
+mnd_po_lb_t mnd_po_ucd_lb(uint32_t cp);
+/* 0、1、2。cp > 0x10FFFF は 1 */
+int mnd_po_ucd_width(uint32_t cp);
+/* 一般カテゴリが Mn または Mc なら true（SA → CM の解決に使う） */
+bool mnd_po_ucd_is_mark(uint32_t cp);
 
 /*
  * s[0..len)（正しい UTF-8）について、breaks[i] に「バイト位置 i の直前で区切れるなら 1」を入れる。
@@ -67,9 +72,9 @@ int mnd_po_ucd_width(uint32_t cp);       /* 0、1、2 */
 void mnd_po_linebreaks(const char *s, size_t len, unsigned char *breaks);
 
 /*
- * Ucd の表（po_ucd_tables.c。tools/gen_po_ucd.py が生成する）。
+ * Ucd の表（po_ucd_tables.c。tools/gen_po_ucd.py が UCD 15.0.0 から生成する）。
  * 各表はコードポイントの範囲 [first, last] を first の昇順に、重ならずに並べる。
- * 要素数は *_count で表す（配列の要素数ではない）
+ * 隣り合う範囲が同じ値を持つ場合は 1 つにまとめる。要素数は *_count で表す
  */
 typedef struct mnd_po_ucd_range
 {
@@ -78,11 +83,14 @@ typedef struct mnd_po_ucd_range
     unsigned char value;
 } mnd_po_ucd_range_t;
 
-/* value は mnd_po_lb_t。表にないコードポイントのクラスは po_ucd.c が決める */
+/* value は mnd_po_lb_t（XX 以外）。LineBreak.txt の既定値を反映済みで、表にないものは XX */
 extern const mnd_po_ucd_range_t mnd_po_ucd_lb_ranges[];
 extern const size_t mnd_po_ucd_lb_count;
-/* value は文字幅（0 または 2）。表にないコードポイントの幅は po_ucd.c が決める */
+/* value は文字幅（0 または 2）。表にないものは 1 */
 extern const mnd_po_ucd_range_t mnd_po_ucd_width_ranges[];
 extern const size_t mnd_po_ucd_width_count;
+/* 一般カテゴリが Mn または Mc の範囲。value は常に 1 */
+extern const mnd_po_ucd_range_t mnd_po_ucd_mark_ranges[];
+extern const size_t mnd_po_ucd_mark_count;
 
 #endif
