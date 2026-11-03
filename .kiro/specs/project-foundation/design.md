@@ -29,7 +29,7 @@
 - Naos の取得とバージョン固定（v0.4.0）
 - GitHub Actions のビルド・テスト用ワークフロー（`.github/workflows/ci.yml`）
 - 命名とレイアウトの規約: モジュールのディレクトリ、ターゲット名、シンボル接頭辞 `mnd_`、include の基点 `src/`
-- `monde::foundation` の公開 API と型: `mnd_buf_t`、`mnd_diag_t` / `mnd_diag_list_t`、`mnd_utf8_validate`、`mnd_eol_info`、`mnd_span` / `mnd_slice` と行番号算出、`mnd_file_read` / `mnd_file_write`
+- `monde::foundation` の公開 API と型: `mnd_buf_t`、`mnd_diag_t` / `mnd_diag_list_t`、`mnd_utf8_validate`、`mnd_eol_info_t`、`mnd_span` / `mnd_slice` と行番号算出、`mnd_file_read` / `mnd_file_write`
 - 「LF と CRLF をそれぞれ 1 つの改行と数え、単独の CR は改行としない」という改行の数え方の規則
 
 ### Out of Boundary
@@ -325,8 +325,8 @@ sequenceDiagram
 | 5.5 | 書けないときパスと理由付きエラー | FileIo、Diag | `mnd_diag_add` | — |
 | 5.6 | 読み書きのラウンドトリップ一致 | FileIo | `mnd_file_read` → `mnd_file_write` | — |
 | 6.1 | LF / CRLF を数え多い方を返す | Eol | `mnd_eol_detect` | — |
-| 6.2 | 同数なら先に現れた方 | Eol | `mnd_eol_info.dominant` | — |
-| 6.3 | 混在を伝える | Eol | `mnd_eol_info.mixed` | — |
+| 6.2 | 同数なら先に現れた方 | Eol | `mnd_eol_info_t.dominant` | — |
+| 6.3 | 混在を伝える | Eol | `mnd_eol_info_t.mixed` | — |
 | 6.4 | 改行なしを伝える | Eol | `MND_EOL_NONE` | — |
 | 6.5 | 単独 CR を数えない | Eol | 改行の数え方の規則 | — |
 | 7.1 | 追加時に容量を拡張し連結 | Buf | `mnd_buf_t_append` ほか | — |
@@ -489,20 +489,22 @@ bool mnd_utf8_validate(const char *data, size_t len, size_t *invalid_offset);
 
 ##### Service Interface
 ```c
-typedef enum mnd_eol {
+typedef enum mnd_eol
+{
     MND_EOL_NONE,  /* 改行が 1 つもない */
     MND_EOL_LF,
     MND_EOL_CRLF
-} mnd_eol;
+} mnd_eol_t;
 
-typedef struct mnd_eol_info {
-    mnd_eol dominant;   /* 多い方。同数なら先に現れた方。改行なしなら MND_EOL_NONE */
+typedef struct mnd_eol_info
+{
+    mnd_eol_t dominant;   /* 多い方。同数なら先に現れた方。改行なしなら MND_EOL_NONE */
     bool mixed;         /* LF のみの改行と CRLF の両方がある */
     size_t lf_count;    /* 直前が CR でない LF の数 */
     size_t crlf_count;  /* CR LF の組の数 */
-} mnd_eol_info;
+} mnd_eol_info_t;
 
-mnd_eol_info mnd_eol_detect(const char *data, size_t len);
+mnd_eol_info_t mnd_eol_detect(const char *data, size_t len);
 ```
 - 改行の数え方の規則（Source と共有）: `CR LF` は 1 つの CRLF、直前が CR でない `LF` は 1 つの LF、直後が LF でない `CR` は改行ではない（6.5）。`CR CR LF` は「単独 CR + CRLF」と数える。
 

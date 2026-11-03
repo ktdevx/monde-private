@@ -5,7 +5,7 @@
  * CR LF は 1 つの CRLF（LF の位置で完結）、直前が CR でない LF は 1 つの LF、
  * 直後が LF でない単独の CR は改行ではない
  */
-static mnd_eol line_break_ending_at(const char *data, size_t i)
+static mnd_eol_t line_break_ending_at(const char *data, size_t i)
 {
     if (data[i] != '\n')
     {
@@ -20,10 +20,10 @@ static mnd_eol line_break_ending_at(const char *data, size_t i)
     return MND_EOL_LF;
 }
 
-mnd_eol_info mnd_eol_detect(const char *data, size_t len)
+mnd_eol_info_t mnd_eol_detect(const char *data, size_t len)
 {
-    mnd_eol_info info;
-    mnd_eol first = MND_EOL_NONE;
+    mnd_eol_info_t info;
+    mnd_eol_t first = MND_EOL_NONE;
     size_t i;
 
     info.lf_count = 0;
@@ -31,7 +31,7 @@ mnd_eol_info mnd_eol_detect(const char *data, size_t len)
 
     for (i = 0; i < len; ++i)
     {
-        mnd_eol kind;
+        mnd_eol_t kind;
         
         kind = line_break_ending_at(data, i);
         if (kind == MND_EOL_LF)
