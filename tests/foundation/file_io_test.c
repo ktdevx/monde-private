@@ -45,7 +45,7 @@ static bool write_bytes(const char *path, const char *bytes, size_t len)
 }
 
 /* ファイルの生のバイト列をバイナリモードで読む（テストコードのみ fopen を直接使う） */
-static bool read_raw(const char *path, mnd_buf *out)
+static bool read_raw(const char *path, mnd_buf_t *out)
 {
     char chunk[512];
     FILE *fp = fopen(path, "rb");
@@ -82,7 +82,7 @@ NAOS_TEST(read_keeps_crlf_mixed_lf_and_nul_bytes)
 {
     static const char path[] = WORK_PATH("read_bytes.txt");
     static const char bytes[] = "a\r\nb\nc\0d\r\n\re";
-    mnd_buf content = MND_BUF_INIT;
+    mnd_buf_t content = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
     bool had_bom = true;
 
@@ -102,7 +102,7 @@ NAOS_TEST(read_strips_bom_and_reports_it)
 {
     static const char path[] = WORK_PATH("read_bom.txt");
     static const char bytes[] = "\xEF\xBB\xBF" "abc\r\n";
-    mnd_buf content = MND_BUF_INIT;
+    mnd_buf_t content = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
     bool had_bom = false;
 
@@ -120,7 +120,7 @@ NAOS_TEST(read_strips_bom_and_reports_it)
 NAOS_TEST(read_bom_only_file_is_empty_with_bom)
 {
     static const char path[] = WORK_PATH("read_bom_only.txt");
-    mnd_buf content = MND_BUF_INIT;
+    mnd_buf_t content = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
     bool had_bom = false;
 
@@ -139,7 +139,7 @@ NAOS_TEST(read_without_bom_keeps_content)
     static const char path[] = WORK_PATH("read_no_bom.txt");
     /* 先頭以外にある EF BB BF（U+FEFF）は BOM ではないので残す */
     static const char bytes[] = "a\xEF\xBB\xBF" "b";
-    mnd_buf content = MND_BUF_INIT;
+    mnd_buf_t content = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
     bool had_bom = true;
 
@@ -162,7 +162,7 @@ NAOS_TEST(read_without_bom_keeps_content)
 NAOS_TEST(read_empty_file_succeeds_with_length_zero)
 {
     static const char path[] = WORK_PATH("read_empty.txt");
-    mnd_buf content = MND_BUF_INIT;
+    mnd_buf_t content = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
     bool had_bom = true;
 
@@ -180,7 +180,7 @@ NAOS_TEST(read_empty_file_succeeds_with_length_zero)
 NAOS_TEST(read_replaces_existing_content)
 {
     static const char path[] = WORK_PATH("read_replace.txt");
-    mnd_buf content = MND_BUF_INIT;
+    mnd_buf_t content = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
     bool had_bom = false;
 
@@ -199,7 +199,7 @@ NAOS_TEST(read_file_larger_than_chunk)
     static const char path[] = WORK_PATH("read_large.txt");
     /* 読み込みのチャンク（数 KiB）を複数回またぐ大きさ */
     static char bytes[70000];
-    mnd_buf content = MND_BUF_INIT;
+    mnd_buf_t content = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
     bool had_bom = true;
     size_t i;
@@ -224,7 +224,7 @@ NAOS_TEST(read_invalid_utf8_reports_path_offset_and_line)
     static const char path[] = WORK_PATH("read_invalid.txt");
     /* 2 行目の "cd" の後（オフセット 6）に不正なバイト FF を置く */
     static const char bytes[] = "ab\r\ncd\xFF" "ef\n";
-    mnd_buf content = MND_BUF_INIT;
+    mnd_buf_t content = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
     const mnd_diag *d;
     bool had_bom = true;
@@ -253,7 +253,7 @@ NAOS_TEST(read_invalid_utf8_offset_is_after_bom)
     static const char path[] = WORK_PATH("read_invalid_bom.txt");
     /* BOM 除去後の内容で "x\n" の後（オフセット 2、2 行目）に単独の 80 を置く */
     static const char bytes[] = "\xEF\xBB\xBF" "x\n\x80";
-    mnd_buf content = MND_BUF_INIT;
+    mnd_buf_t content = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
     const mnd_diag *d;
     bool had_bom = true;
@@ -275,7 +275,7 @@ NAOS_TEST(read_invalid_utf8_offset_is_after_bom)
 NAOS_TEST(read_missing_file_reports_target_path)
 {
     static const char path[] = WORK_PATH("read_does_not_exist.txt");
-    mnd_buf content = MND_BUF_INIT;
+    mnd_buf_t content = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
     const mnd_diag *d;
     bool had_bom = true;
@@ -305,7 +305,7 @@ NAOS_TEST(read_directory_fails_with_one_diagnostic)
 {
     /* 環境により open（Windows）または read（POSIX）で失敗する */
     static const char path[] = MONDE_TEST_WORK_DIR;
-    mnd_buf content = MND_BUF_INIT;
+    mnd_buf_t content = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
     const mnd_diag *d;
     bool had_bom = true;
@@ -330,7 +330,7 @@ NAOS_TEST(write_with_bom_prefixes_ef_bb_bf)
 {
     static const char path[] = WORK_PATH("write_bom.txt");
     static const char expected[] = "\xEF\xBB\xBF" "a\r\nb";
-    mnd_buf raw = MND_BUF_INIT;
+    mnd_buf_t raw = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
 
     NAOS_CHECK_TRUE(mnd_file_write(path, "a\r\nb", 4, true, &diags));
@@ -347,7 +347,7 @@ NAOS_TEST(write_with_bom_prefixes_ef_bb_bf)
 NAOS_TEST(write_without_bom_writes_content_only)
 {
     static const char path[] = WORK_PATH("write_no_bom.txt");
-    mnd_buf raw = MND_BUF_INIT;
+    mnd_buf_t raw = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
 
     NAOS_CHECK_TRUE(mnd_file_write(path, "abc\n", 4, false, &diags));
@@ -364,8 +364,8 @@ NAOS_TEST(write_keeps_crlf_mixed_lf_and_nul_bytes)
 {
     static const char path[] = WORK_PATH("write_bytes.txt");
     static const char bytes[] = "a\r\nb\nc\0d\r\n\re";
-    mnd_buf raw = MND_BUF_INIT;
-    mnd_buf content = MND_BUF_INIT;
+    mnd_buf_t raw = MND_BUF_INIT;
+    mnd_buf_t content = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
     bool had_bom = true;
 
@@ -390,9 +390,9 @@ NAOS_TEST(write_round_trip_without_bom_is_byte_identical)
     static const char copy_path[] = WORK_PATH("round_trip_copy.txt");
     /* LF・CRLF・単独 CR の混在、NUL、多バイト文字（U+3042）を含む */
     static const char bytes[] = "line1\r\nline2\n\xE3\x81\x82" "\r\0end\r";
-    mnd_buf content = MND_BUF_INIT;
-    mnd_buf original = MND_BUF_INIT;
-    mnd_buf copy = MND_BUF_INIT;
+    mnd_buf_t content = MND_BUF_INIT;
+    mnd_buf_t original = MND_BUF_INIT;
+    mnd_buf_t copy = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
     bool had_bom = true;
 
@@ -418,9 +418,9 @@ NAOS_TEST(write_round_trip_with_bom_restores_original)
     static const char original_path[] = WORK_PATH("round_trip_bom_original.txt");
     static const char copy_path[] = WORK_PATH("round_trip_bom_copy.txt");
     static const char bytes[] = "\xEF\xBB\xBF" "x\r\ny\n";
-    mnd_buf content = MND_BUF_INIT;
-    mnd_buf original = MND_BUF_INIT;
-    mnd_buf copy = MND_BUF_INIT;
+    mnd_buf_t content = MND_BUF_INIT;
+    mnd_buf_t original = MND_BUF_INIT;
+    mnd_buf_t copy = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
     bool had_bom = false;
 
@@ -443,7 +443,7 @@ NAOS_TEST(write_round_trip_with_bom_restores_original)
 NAOS_TEST(write_truncates_existing_longer_file)
 {
     static const char path[] = WORK_PATH("write_truncate.txt");
-    mnd_buf raw = MND_BUF_INIT;
+    mnd_buf_t raw = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
 
     NAOS_REQUIRE_TRUE(WRITE_LITERAL(path, "a much longer previous content\n"));
@@ -461,7 +461,7 @@ NAOS_TEST(write_empty_content_creates_empty_or_bom_only_file)
 {
     static const char path[] = WORK_PATH("write_empty.txt");
     static const char bom_path[] = WORK_PATH("write_empty_bom.txt");
-    mnd_buf raw = MND_BUF_INIT;
+    mnd_buf_t raw = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
 
     NAOS_REQUIRE_TRUE(WRITE_LITERAL(path, "stale"));
@@ -505,7 +505,7 @@ NAOS_TEST(non_ascii_directory_and_file_name_round_trip)
     static const char path[] = WORK_PATH(NON_ASCII_DIR_NAME "/" NON_ASCII_FILE_NAME);
     /* 内容にも多バイト文字（U+3042）と CRLF を含める */
     static const char bytes[] = "# \xE3\x81\x82\r\nbody\n";
-    mnd_buf content = MND_BUF_INIT;
+    mnd_buf_t content = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
     bool had_bom = true;
 
@@ -525,7 +525,7 @@ NAOS_TEST(invalid_utf8_path_fails_with_one_diagnostic)
 {
     /* FF は UTF-8 に現れないバイト。直後の 'b' が 16 進数として続かないようにリテラルを分ける */
     static const char path[] = WORK_PATH("\xFF" "bad.txt");
-    mnd_buf content = MND_BUF_INIT;
+    mnd_buf_t content = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
     const mnd_diag *d;
     bool had_bom = true;

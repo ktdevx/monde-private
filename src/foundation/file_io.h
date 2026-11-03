@@ -13,7 +13,7 @@
  * 成功: true、*had_bom に BOM の有無。
  * 失敗: diags にエラーを 1 つ追加して false。content は空、*had_bom は false。
  */
-bool mnd_file_read(const char *path, mnd_buf *content, bool *had_bom,
+bool mnd_file_read(const char *path, mnd_buf_t *content, bool *had_bom,
                    mnd_diag_list *diags);
 
 /*

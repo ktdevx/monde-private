@@ -7,14 +7,14 @@
 /* 容量を倍増で拡張するときの最初の容量 */
 #define MND_BUF_MIN_CAP 16
 
-void mnd_buf_init(mnd_buf *buf)
+void mnd_buf_init(mnd_buf_t *buf)
 {
     buf->data = NULL;
     buf->len = 0;
     buf->cap = 0;
 }
 
-bool mnd_buf_reserve(mnd_buf *buf, size_t additional)
+bool mnd_buf_reserve(mnd_buf_t *buf, size_t additional)
 {
     size_t need;
     size_t new_cap;
@@ -61,7 +61,7 @@ bool mnd_buf_reserve(mnd_buf *buf, size_t additional)
     return true;
 }
 
-bool mnd_buf_append(mnd_buf *buf, const void *bytes, size_t len)
+bool mnd_buf_append(mnd_buf_t *buf, const void *bytes, size_t len)
 {
     if (len == 0)
     {
@@ -80,22 +80,22 @@ bool mnd_buf_append(mnd_buf *buf, const void *bytes, size_t len)
     return true;
 }
 
-bool mnd_buf_append_str(mnd_buf *buf, const char *str)
+bool mnd_buf_append_str(mnd_buf_t *buf, const char *str)
 {
     return mnd_buf_append(buf, str, strlen(str));
 }
 
-bool mnd_buf_append_byte(mnd_buf *buf, unsigned char byte)
+bool mnd_buf_append_byte(mnd_buf_t *buf, unsigned char byte)
 {
     return mnd_buf_append(buf, &byte, 1);
 }
 
-const char *mnd_buf_cstr(const mnd_buf *buf)
+const char *mnd_buf_cstr(const mnd_buf_t *buf)
 {
-    return buf->data != NULL ? buf->data : "";
+    return (buf->data != NULL) ? buf->data : "";
 }
 
-void mnd_buf_clear(mnd_buf *buf)
+void mnd_buf_clear(mnd_buf_t *buf)
 {
     if (buf->data != NULL)
     {
@@ -104,7 +104,7 @@ void mnd_buf_clear(mnd_buf *buf)
     }
 }
 
-void mnd_buf_free(mnd_buf *buf)
+void mnd_buf_free(mnd_buf_t *buf)
 {
     free(buf->data);
     mnd_buf_init(buf);

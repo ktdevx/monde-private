@@ -105,14 +105,14 @@ static const char *mnd_file_io_reason(int err)
 }
 
 /* 失敗時の出力（内容を空、BOM なし）にそろえる */
-static bool mnd_file_read_fail(mnd_buf *content, bool *had_bom)
+static bool mnd_file_read_fail(mnd_buf_t *content, bool *had_bom)
 {
     mnd_buf_clear(content);
     *had_bom = false;
     return false;
 }
 
-bool mnd_file_read(const char *path, mnd_buf *content, bool *had_bom,
+bool mnd_file_read(const char *path, mnd_buf_t *content, bool *had_bom,
                    mnd_diag_list *diags)
 {
     char chunk[MND_FILE_IO_CHUNK_SIZE];

@@ -29,7 +29,7 @@
 - Naos の取得とバージョン固定（v0.4.0）
 - GitHub Actions のビルド・テスト用ワークフロー（`.github/workflows/ci.yml`）
 - 命名とレイアウトの規約: モジュールのディレクトリ、ターゲット名、シンボル接頭辞 `mnd_`、include の基点 `src/`
-- `monde::foundation` の公開 API と型: `mnd_buf`、`mnd_diag` / `mnd_diag_list`、`mnd_utf8_validate`、`mnd_eol_info`、`mnd_span` / `mnd_slice` と行番号算出、`mnd_file_read` / `mnd_file_write`
+- `monde::foundation` の公開 API と型: `mnd_buf_t`、`mnd_diag` / `mnd_diag_list`、`mnd_utf8_validate`、`mnd_eol_info`、`mnd_span` / `mnd_slice` と行番号算出、`mnd_file_read` / `mnd_file_write`
 - 「LF と CRLF をそれぞれ 1 つの改行と数え、単独の CR は改行としない」という改行の数え方の規則
 
 ### Out of Boundary
@@ -123,7 +123,7 @@ src/
 ├── CMakeLists.txt                 # add_subdirectory(foundation)。後続モジュールはここに 1 行追加
 └── foundation/
     ├── CMakeLists.txt             # monde_add_module(foundation SOURCES ...)
-    ├── buf.h / buf.c              # 可変長バイトバッファ mnd_buf
+    ├── buf.h / buf.c              # 可変長バイトバッファ mnd_buf_t
     ├── diag.h / diag.c            # 診断 mnd_diag と蓄積リスト mnd_diag_list
     ├── utf8.h / utf8.c            # UTF-8 の妥当性検査
     ├── eol.h / eol.c              # 改行コードの検出
@@ -287,7 +287,7 @@ sequenceDiagram
 ```
 
 - Windows では open の前に UTF-8 のパスを UTF-16 に変換する。変換できない（パスが不正な UTF-8）場合も open 失敗と同じ経路でエラーにする。
-- 読み込みはサイズを事前に取得せず、固定長のチャンクで `fread` を繰り返して `mnd_buf` に追加する（`ftell` の 32 ビット制限やシークできないファイルの問題を避ける）。
+- 読み込みはサイズを事前に取得せず、固定長のチャンクで `fread` を繰り返して `mnd_buf_t` に追加する（`ftell` の 32 ビット制限やシークできないファイルの問題を避ける）。
 - 失敗時は `content` を空、`had_bom` を `false` にして返す。
 
 ## Requirements Traceability
@@ -329,11 +329,11 @@ sequenceDiagram
 | 6.3 | 混在を伝える | Eol | `mnd_eol_info.mixed` | — |
 | 6.4 | 改行なしを伝える | Eol | `MND_EOL_NONE` | — |
 | 6.5 | 単独 CR を数えない | Eol | 改行の数え方の規則 | — |
-| 7.1 | 追加時に容量を拡張し連結 | Buf | `mnd_buf_append` ほか | — |
+| 7.1 | 追加時に容量を拡張し連結 | Buf | `mnd_buf_t_append` ほか | — |
 | 7.2 | NUL を含むバイト列を保持 | Buf | `len` による長さ管理 | — |
-| 7.3 | 内容と長さを返し NUL 終端 | Buf | `data`、`len`、`mnd_buf_cstr` | — |
+| 7.3 | 内容と長さを返し NUL 終端 | Buf | `data`、`len`、`mnd_buf_t_cstr` | — |
 | 7.4 | 確保失敗で内容を壊さず失敗を返す | Buf | `bool` 戻り値 | — |
-| 7.5 | 空にする・解放する | Buf | `mnd_buf_clear`、`mnd_buf_free` | — |
+| 7.5 | 空にする・解放する | Buf | `mnd_buf_t_clear`、`mnd_buf_t_free` | — |
 | 8.1 | BOM 除去後基準の半開区間 | Source | `mnd_span` | — |
 | 8.2 | 行番号は 1 起点 | Source | `mnd_source_line_of` | — |
 | 8.3 | LF・CRLF を 1 改行、単独 CR は数えない | Source | `mnd_source_line_of` | — |
@@ -381,26 +381,26 @@ sequenceDiagram
 
 ##### Service Interface
 ```c
-typedef struct mnd_buf {
+typedef struct mnd_buf_t {
     char *data;  /* NULL または len + 1 バイト以上の領域。data[len] == '\0' */
     size_t len;  /* 内容のバイト数（終端の NUL を含まない） */
     size_t cap;  /* 確保済みのバイト数 */
-} mnd_buf;
+} mnd_buf_t;
 
-#define MND_BUF_INIT { NULL, 0, 0 }
+#define MND_BUF_t_INIT { NULL, 0, 0 }
 
-void mnd_buf_init(mnd_buf *buf);
+void mnd_buf_t_init(mnd_buf_t *buf);
 /* 追加で additional バイトを再確保なしに追加できる容量を確保する */
-bool mnd_buf_reserve(mnd_buf *buf, size_t additional);
-bool mnd_buf_append(mnd_buf *buf, const void *bytes, size_t len); /* len == 0 なら bytes は NULL 可 */
-bool mnd_buf_append_str(mnd_buf *buf, const char *str);
-bool mnd_buf_append_byte(mnd_buf *buf, unsigned char byte);
+bool mnd_buf_t_reserve(mnd_buf_t *buf, size_t additional);
+bool mnd_buf_t_append(mnd_buf_t *buf, const void *bytes, size_t len); /* len == 0 なら bytes は NULL 可 */
+bool mnd_buf_t_append_str(mnd_buf_t *buf, const char *str);
+bool mnd_buf_t_append_byte(mnd_buf_t *buf, unsigned char byte);
 /* 内容を C 文字列として返す。data == NULL なら "" を返す */
-const char *mnd_buf_cstr(const mnd_buf *buf);
+const char *mnd_buf_t_cstr(const mnd_buf_t *buf);
 /* 内容を破棄し、確保済みの領域は再利用のため残す（len = 0） */
-void mnd_buf_clear(mnd_buf *buf);
+void mnd_buf_t_clear(mnd_buf_t *buf);
 /* 領域を解放し、初期状態に戻す。初期状態・解放済みのバッファに対しても安全 */
-void mnd_buf_free(mnd_buf *buf);
+void mnd_buf_t_free(mnd_buf_t *buf);
 ```
 - 事後条件（追加が成功した場合）: 以前の内容の直後に追加したバイト列がそのまま続く（7.1、7.2）。
 
@@ -572,7 +572,7 @@ bool mnd_span_text(const char *data, size_t len, mnd_span span, mnd_slice *out);
  * content は初期化済みのバッファで、既存の内容は置き換えられる。
  * 成功: true、*had_bom に BOM の有無。
  * 失敗: diags にエラーを 1 つ追加して false。content は空、*had_bom は false。 */
-bool mnd_file_read(const char *path, mnd_buf *content, bool *had_bom,
+bool mnd_file_read(const char *path, mnd_buf_t *content, bool *had_bom,
                    mnd_diag_list *diags);
 
 /* data の len バイトを path に書く（既存のファイルは切り詰めて上書き）。
@@ -606,7 +606,7 @@ bool mnd_file_write(const char *path, const char *data, size_t len, bool add_bom
 すべて Naos で書き、`foundation_tests` に 1 ファイル 1 スイートでまとめる（2.5）。入力のバイト列はソース内のリテラルで持ち、Git の改行変換の影響を受けない。
 
 ### Unit Tests
-- **buf**: 空バッファへの追加、容量を超える連続追加で内容が連結されること（7.1）。`"a\0b"` の追加で `len == 3` かつ `MEM_EQ` で一致し、`data[len] == '\0'`（7.2、7.3）。`mnd_buf_reserve(&b, SIZE_MAX)` と長さがオーバーフローする追加が `false` を返し、既存の内容・長さが変わらないこと（7.4）。`clear` 後に `len == 0` で容量が残り再利用できること、`free` を 2 回呼んでも安全なこと（7.5）。
+- **buf**: 空バッファへの追加、容量を超える連続追加で内容が連結されること（7.1）。`"a\0b"` の追加で `len == 3` かつ `MEM_EQ` で一致し、`data[len] == '\0'`（7.2、7.3）。`mnd_buf_t_reserve(&b, SIZE_MAX)` と長さがオーバーフローする追加が `false` を返し、既存の内容・長さが変わらないこと（7.4）。`clear` 後に `len == 0` で容量が残り再利用できること、`free` を 2 回呼んでも安全なこと（7.5）。
 - **diag**: 重大度・メッセージ・パス・行番号が保存されること、`path` に `NULL`・`line` に 0 を渡せること（9.1）。3 件追加して追加順に取り出せること（9.2）。警告のみなら `has_error` が偽、エラーを 1 件含めば真（9.3）。9.4 はコードレビューと、テストの出力に診断が現れないことで確認する。
 - **utf8**: ASCII、2〜4 バイト文字、U+0000、U+10FFFF が妥当。`C0 80`、`ED A0 80`（サロゲート）、`F4 90 80 80`（U+10FFFF 超）、末尾で切れたシーケンス、単独の `80`、`FF` が不正で、オフセットが最初の不正シーケンスの先頭を指すこと（4.4）。
 - **eol**: LF のみ・CRLF のみ・改行なし（6.1、6.4）、LF 2 + CRLF 1 で LF かつ `mixed`（6.1、6.3）、同数で先に現れた方（6.2）、`"a\rb"` が改行なし、`"\r\r\n"` が CRLF 1（6.5）。
