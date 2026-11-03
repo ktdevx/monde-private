@@ -30,7 +30,7 @@
   - _Boundary: Model_
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8_
 
-- [ ] 2.2 ヘッダの項目の操作、テンプレート用ヘッダ、日時の書式を実装し、単体テストを書く
+- [x] 2.2 ヘッダの項目の操作、テンプレート用ヘッダ、日時の書式を実装し、単体テストを書く
   - msgstr の各行を `名前: 値` として解釈し、名前を大文字と小文字を区別せずに照合して値を返す（ヘッダの内部を指す）
   - 既存の項目は名前の綴りを残して値だけを置き換え、ない項目は末尾に加える（msgstr が改行で終わっていなければ先に改行を加える）
   - 設計の順序と初期値で、fuzzy フラグ付きのテンプレート用ヘッダを作る。Project-Id-Version と POT-Creation-Date には引数を使い、現在時刻を読まない
@@ -143,3 +143,4 @@
 - 1.1: Ucd の表の形式（`mnd_po_ucd_range_t` と `mnd_po_ucd_lb_ranges` / `mnd_po_ucd_width_ranges` とその件数）は `po_internal.h` で定義した内部の形式で、1.2 で変えてよい。SA → CM の解決に必要な一般カテゴリ Mn・Mc の判定は、設計の宣言にないため 1.2 で内部の関数として追加する。
 - 1.2: UCD 15.0.0 で U+FFFC が CB のため、`MND_PO_LB_CB` を XX の後ろに追加した。2.4 で CB を解決・処理する（UAX #14 LB20、libunistring 1.1 の扱いに合わせる）。Mn・Mc の判定は `mnd_po_ucd_is_mark`。生成コマンド: `python3 -I tools/gen_po_ucd.py <ucd>/LineBreak.txt <ucd>/EastAsianWidth.txt <ucd>/extracted/DerivedGeneralCategory.txt -o src/po/po_ucd_tables.c`。文字幅は libunistring 1.1 の `uc_width` と 386 個のコードポイント（Unicode 15.0 の新しい絵文字、CJK のブロック内の未割り当て、U+D7B0〜U+D7FB、U+00AD など）で異なる。正解ファイルと合わない場合は 6.1 で扱う。
 - 2.1: `mnd_po_find_duplicate(catalog, from, &first, &second)` は、`from` 以上で先に同じキーの有効なエントリがある最小の `second` と、その最初の定義 `first` を返す。すべての組は `from = second + 1` で繰り返して列挙する。`mnd_po_flag_remove` は一致するフラグをすべて削除する。
+- 2.2: `mnd_po_header_set` は `:` から値までを `": "` に正規化する。`mnd_po_date_format` は書式の桁に収まらない値（年が 0〜9999 の外、オフセットが 99:59 超など）で false を返す。
