@@ -377,7 +377,7 @@ NAOS_TEST(short_name_non_ascii_byte_is_error)
     decl_fixture_t f;
 
     fixture_init(&f);
-    f.run_options[1].short_name = (char)0xE6;
+    f.run_options[1].short_name = '\xE6';
     check_single_error(&f.program,
                        "invalid argument declaration: invalid short option for '--force' in command 'run'");
 }
