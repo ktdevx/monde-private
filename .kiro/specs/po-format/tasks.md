@@ -47,7 +47,7 @@
   - _Boundary: Escape_
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 2.4 (P) UAX #14 による分割の機会の計算を実装し、単体テストを書く
+- [x] 2.4 (P) UAX #14 による分割の機会の計算を実装し、単体テストを書く
   - 設計の「分割の機会」のとおり、クラスを解決し（AI・SG・XX・SA → AL、Mn・Mc の SA → CM、CJ → NS）、ペアテーブルで隣り合うクラスの組を判定する。表の各行に、どの規則によるかを注記する
   - 空白の連続、結合文字、ZWJ、地域指示子の対、絵文字の修飾子を文脈で処理し、先頭と文字の途中では区切らない
   - 完了時: linebreak スイートで、空白の後・ハイフンの後・ひらがなと漢字と韓国語の音節の間で区切れること、`。`・`」`・`っ` の前と `（` の後・数字と `%` の間・絵文字の修飾子と地域指示子の対の内部で区切れないこと、のテストが合格する
@@ -145,3 +145,4 @@
 - 2.1: `mnd_po_find_duplicate(catalog, from, &first, &second)` は、`from` 以上で先に同じキーの有効なエントリがある最小の `second` と、その最初の定義 `first` を返す。すべての組は `from = second + 1` で繰り返して列挙する。`mnd_po_flag_remove` は一致するフラグをすべて削除する。
 - 2.2: `mnd_po_header_set` は `:` から値までを `": "` に正規化する。`mnd_po_date_format` は書式の桁に収まらない値（年が 0〜9999 の外、オフセットが 99:59 超など）で false を返す。
 - 2.3: 8 進数の値が 255 を超える `\400`〜`\777` も BAD_ESCAPE とする（gettext 0.21 は黙って切り詰める）。`bad_offset` はリテラルの内側の先頭から数えた `\` の位置で、Reader は `bad_offset + 1 < len` を確かめてから次の文字を読む。失敗時は `out` の長さを呼び出し前に戻す。
+- 2.4: 分割の機会は libunistring 1.1 の `u8_possible_linebreaks_v2` と一致させた（CB → ID、LB29 を適用しないなど、UAX #14 との違いはコードに注記）。唯一の違いは設計どおり SA の Mn・Mc を CM とする点（libunistring は AL）。LB30b の表（Extended_Pictographic かつ未割り当て、35 範囲）は UCD 15.0.0 の emoji-data.txt から導いて `po_linebreak.c` に手で置いた。Unicode を上げるときは作り直す。改行（BK・CR・LF・NL）の前後は 0 で、強制改行は Wrap（4.1）が扱う。
