@@ -100,7 +100,7 @@ static bool mnd_diag_list_grow(mnd_diag_list *list)
     return true;
 }
 
-void mnd_diag_add(mnd_diag_list *list, mnd_severity severity,
+void mnd_diag_add(mnd_diag_list *list, mnd_severity_t severity,
                   const char *path, size_t line, const char *format, ...)
 {
     va_list args;

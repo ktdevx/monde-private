@@ -381,7 +381,8 @@ sequenceDiagram
 
 ##### Service Interface
 ```c
-typedef struct mnd_buf_t {
+typedef struct mnd_buf
+{
     char *data;  /* NULL または len + 1 バイト以上の領域。data[len] == '\0' */
     size_t len;  /* 内容のバイト数（終端の NUL を含まない） */
     size_t cap;  /* 確保済みのバイト数 */
@@ -420,13 +421,14 @@ void mnd_buf_t_free(mnd_buf_t *buf);
 
 ##### Service Interface
 ```c
-typedef enum mnd_severity {
+typedef enum mnd_severity
+{
     MND_SEVERITY_ERROR,
     MND_SEVERITY_WARNING
-} mnd_severity;
+} mnd_severity_t;
 
 typedef struct mnd_diag {
-    mnd_severity severity;
+    mnd_severity_t severity;
     char *message;  /* 英語のメッセージ（UTF-8、NUL 終端） */
     char *path;     /* ファイルパス（UTF-8）。不明なら NULL */
     size_t line;    /* 1 起点の行番号。不明なら 0 */
@@ -445,7 +447,7 @@ void mnd_diag_list_init(mnd_diag_list *list);
 void mnd_diag_list_free(mnd_diag_list *list);  /* 初期状態・解放済みに対しても安全 */
 
 /* printf 形式でメッセージを組み立てて末尾に追加する。path は NULL 可、line は 0 可 */
-void mnd_diag_add(mnd_diag_list *list, mnd_severity severity,
+void mnd_diag_add(mnd_diag_list *list, mnd_severity_t severity,
                   const char *path, size_t line, const char *format, ...)
     MND_PRINTF_LIKE(5, 6);
 

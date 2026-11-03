@@ -5,7 +5,7 @@
 #include <stddef.h>
 
 /* NUL を含む任意のバイト列を連結して保持する可変長バッファ */
-typedef struct mnd_buf_t
+typedef struct mnd_buf
 {
     char *data;  /* NULL または len + 1 バイト以上の領域。data[len] == '\0' */
     size_t len;  /* 内容のバイト数（終端の NUL を含まない） */
