@@ -1,0 +1,14 @@
+monde_add_module_tests(cli_args
+  SOURCES
+    main.c
+    test_decl.c
+    decl_test.c
+    dispatch_test.c
+    long_test.c
+    short_test.c
+    values_test.c
+    positional_test.c
+    errors_test.c
+    help_test.c
+    argv_test.c
+)
