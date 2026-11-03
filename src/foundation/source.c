@@ -1,6 +1,6 @@
 #include "foundation/source.h"
 
-bool mnd_span_is_valid(mnd_span span, size_t content_len)
+bool mnd_span_is_valid(mnd_span_t span, size_t content_len)
 {
     return (span.start <= span.end) && (span.end <= content_len);
 }
@@ -30,7 +30,7 @@ bool mnd_source_line_of(const char *data, size_t len, size_t offset, size_t *lin
     return true;
 }
 
-bool mnd_span_text(const char *data, size_t len, mnd_span span, mnd_slice *out)
+bool mnd_span_text(const char *data, size_t len, mnd_span_t span, mnd_slice_t *out)
 {
     if (!mnd_span_is_valid(span, len))
     {

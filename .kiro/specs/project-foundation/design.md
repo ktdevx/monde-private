@@ -29,7 +29,7 @@
 - Naos の取得とバージョン固定（v0.4.0）
 - GitHub Actions のビルド・テスト用ワークフロー（`.github/workflows/ci.yml`）
 - 命名とレイアウトの規約: モジュールのディレクトリ、ターゲット名、シンボル接頭辞 `mnd_`、include の基点 `src/`
-- `monde::foundation` の公開 API と型: `mnd_buf_t`、`mnd_diag_t` / `mnd_diag_list_t`、`mnd_utf8_validate`、`mnd_eol_info_t`、`mnd_span` / `mnd_slice` と行番号算出、`mnd_file_read` / `mnd_file_write`
+- `monde::foundation` の公開 API と型: `mnd_buf_t`、`mnd_diag_t` / `mnd_diag_list_t`、`mnd_utf8_validate`、`mnd_eol_info_t`、`mnd_span_t` / `mnd_slice_t` と行番号算出、`mnd_file_read` / `mnd_file_write`
 - 「LF と CRLF をそれぞれ 1 つの改行と数え、単独の CR は改行としない」という改行の数え方の規則
 
 ### Out of Boundary
@@ -47,7 +47,7 @@
 - `foundation` 内の依存: `file_io` だけが `buf`、`diag`、`utf8`、`source` に依存する。`buf`、`diag`、`utf8`、`eol`、`source` は互いに依存しない（下図参照）。この方向を逆にする include は禁止する。
 
 ### Revalidation Triggers
-- `mnd_span` の意味（オフセットの基準、終了を含まないこと、行番号の起点）の変更 → markdown-parser、yaml-front-matter、translation-units
+- `mnd_span_t` の意味（オフセットの基準、終了を含まないこと、行番号の起点）の変更 → markdown-parser、yaml-front-matter、translation-units
 - 改行の数え方の規則の変更 → 行番号を出力する全部品、monde-cli の `#:` 出力
 - `mnd_diag_t` のフィールド変更、`mnd_diag_list_t` の所有権規則の変更 → 全部品と monde-cli
 - `mnd_file_read` の BOM 除去・UTF-8 検証の挙動変更 → monde-cli、translation-units
@@ -127,7 +127,7 @@ src/
     ├── diag.h / diag.c            # 診断 mnd_diag_t と蓄積リスト mnd_diag_list_t
     ├── utf8.h / utf8.c            # UTF-8 の妥当性検査
     ├── eol.h / eol.c              # 改行コードの検出
-    ├── source.h / source.c        # mnd_span、mnd_slice、範囲検証、行番号、範囲の内容
+    ├── source.h / source.c        # mnd_span_t、mnd_slice、範囲検証、行番号、範囲の内容
     └── file_io.h / file_io.c      # ファイルの読み書き（BOM、UTF-8 検証、Windows のパス変換）
 tests/
 ├── CMakeLists.txt                 # add_subdirectory(toolchain)、add_subdirectory(foundation)
@@ -334,11 +334,11 @@ sequenceDiagram
 | 7.3 | 内容と長さを返し NUL 終端 | Buf | `data`、`len`、`mnd_buf_t_cstr` | — |
 | 7.4 | 確保失敗で内容を壊さず失敗を返す | Buf | `bool` 戻り値 | — |
 | 7.5 | 空にする・解放する | Buf | `mnd_buf_t_clear`、`mnd_buf_t_free` | — |
-| 8.1 | BOM 除去後基準の半開区間 | Source | `mnd_span` | — |
+| 8.1 | BOM 除去後基準の半開区間 | Source | `mnd_span_t` | — |
 | 8.2 | 行番号は 1 起点 | Source | `mnd_source_line_of` | — |
 | 8.3 | LF・CRLF を 1 改行、単独 CR は数えない | Source | `mnd_source_line_of` | — |
-| 8.4 | 不正な範囲を返す | Source | `mnd_span_is_valid`、`false` 戻り値 | — |
-| 8.5 | 範囲の内容を変更せずに返す | Source | `mnd_span_text` | — |
+| 8.4 | 不正な範囲を返す | Source | `mnd_span_t_is_valid`、`false` 戻り値 | — |
+| 8.5 | 範囲の内容を変更せずに返す | Source | `mnd_span_t_text` | — |
 | 9.1 | 重大度・英語メッセージ・パス・行番号 | Diag | `mnd_diag_t` | — |
 | 9.2 | 発生順に蓄積し全取り出し | Diag | `mnd_diag_list_t`、`mnd_diag_list_t_at` | — |
 | 9.3 | エラーの有無を返す | Diag | `mnd_diag_list_t_has_error` | — |
@@ -517,30 +517,32 @@ mnd_eol_info_t mnd_eol_detect(const char *data, size_t len);
 
 **Responsibilities & Constraints**
 - オフセットの基準は、`mnd_file_read` が返す BOM 除去後の内容の先頭（8.1）。
-- `mnd_span` は値型で、内容への参照を持たない。内容は呼び出し側が別途渡す。
+- `mnd_span_t` は値型で、内容への参照を持たない。内容は呼び出し側が別途渡す。
 
 **Contracts**: Service [x]
 
 ##### Service Interface
 ```c
-typedef struct mnd_span {
+typedef struct mnd_span
+{
     size_t start;  /* 含む */
     size_t end;    /* 含まない。start <= end */
-} mnd_span;
+} mnd_span_t;
 
-typedef struct mnd_slice {
+typedef struct mnd_slice
+{
     const char *data;  /* 元の内容の内部を指す（コピーしない） */
     size_t len;
-} mnd_slice;
+} mnd_slice_t;
 
 /* start <= end かつ end <= content_len なら true */
-bool mnd_span_is_valid(mnd_span span, size_t content_len);
+bool mnd_span_is_valid(mnd_span_t span, size_t content_len);
 
 /* offset（0 <= offset <= len）の位置の 1 起点の行番号を *line に入れる。offset > len なら false */
 bool mnd_source_line_of(const char *data, size_t len, size_t offset, size_t *line);
 
 /* 範囲が指す元の内容を *out に入れる。不正な範囲なら false（*out は変更しない） */
-bool mnd_span_text(const char *data, size_t len, mnd_span span, mnd_slice *out);
+bool mnd_span_text(const char *data, size_t len, mnd_span_t span, mnd_slice_t *out);
 ```
 - 行番号 = 1 + 「`offset` より前で完結した改行の数」。改行は Eol と同じ規則で数え、CRLF は LF の位置で完結する。したがって CRLF の CR と LF の間を指すオフセットは CR と同じ行になる（8.3）。
 - `offset == len`（内容の末尾）は有効で、範囲の終端に使える。
@@ -616,7 +618,7 @@ bool mnd_file_write(const char *path, const char *data, size_t len, bool add_bom
 - **diag**: 重大度・メッセージ・パス・行番号が保存されること、`path` に `NULL`・`line` に 0 を渡せること（9.1）。3 件追加して追加順に取り出せること（9.2）。警告のみなら `has_error` が偽、エラーを 1 件含めば真（9.3）。9.4 はコードレビューと、テストの出力に診断が現れないことで確認する。
 - **utf8**: ASCII、2〜4 バイト文字、U+0000、U+10FFFF が妥当。`C0 80`、`ED A0 80`（サロゲート）、`F4 90 80 80`（U+10FFFF 超）、末尾で切れたシーケンス、単独の `80`、`FF` が不正で、オフセットが最初の不正シーケンスの先頭を指すこと（4.4）。
 - **eol**: LF のみ・CRLF のみ・改行なし（6.1、6.4）、LF 2 + CRLF 1 で LF かつ `mixed`（6.1、6.3）、同数で先に現れた方（6.2）、`"a\rb"` が改行なし、`"\r\r\n"` が CRLF 1（6.5）。
-- **source**: 1 行目の先頭が 1（8.2）、LF・CRLF の直後の行番号、単独 CR では行が増えないこと、CRLF の CR と LF の間が同じ行（8.3）。`offset == len` が有効で `len + 1` が `false`、`start > end` と `end > len` の範囲が不正（8.4）。`mnd_span_text` が元の内容の該当バイト列を指すこと（8.5）。
+- **source**: 1 行目の先頭が 1（8.2）、LF・CRLF の直後の行番号、単独 CR では行が増えないこと、CRLF の CR と LF の間が同じ行（8.3）。`offset == len` が有効で `len + 1` が `false`、`start > end` と `end > len` の範囲が不正（8.4）。`mnd_span_t_text` が元の内容の該当バイト列を指すこと（8.5）。
 
 ### Integration Tests（file_io スイート。ビルドディレクトリ配下の作業ディレクトリを使用）
 - CRLF・LF 混在・NUL を含むバイト列を書いて読み、バイト単位で一致すること（4.1、5.1、5.6）。

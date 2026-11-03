@@ -96,10 +96,10 @@ NAOS_TEST(offset_past_len_fails_without_touching_line)
 
 NAOS_TEST(valid_spans)
 {
-    mnd_span whole = { 0, 5 };
-    mnd_span empty_at_end = { 5, 5 };
-    mnd_span empty_at_start = { 0, 0 };
-    mnd_span inner = { 1, 3 };
+    mnd_span_t whole = { 0, 5 };
+    mnd_span_t empty_at_end = { 5, 5 };
+    mnd_span_t empty_at_start = { 0, 0 };
+    mnd_span_t inner = { 1, 3 };
 
     NAOS_CHECK_TRUE(mnd_span_is_valid(whole, 5));
     NAOS_CHECK_TRUE(mnd_span_is_valid(empty_at_end, 5));
@@ -109,15 +109,15 @@ NAOS_TEST(valid_spans)
 
 NAOS_TEST(start_after_end_is_invalid)
 {
-    mnd_span span = { 3, 2 };
+    mnd_span_t span = { 3, 2 };
 
     NAOS_CHECK_FALSE(mnd_span_is_valid(span, 5));
 }
 
 NAOS_TEST(end_past_len_is_invalid)
 {
-    mnd_span span = { 2, 6 };
-    mnd_span both_past = { 6, 6 };
+    mnd_span_t span = { 2, 6 };
+    mnd_span_t both_past = { 6, 6 };
 
     NAOS_CHECK_FALSE(mnd_span_is_valid(span, 5));
     NAOS_CHECK_FALSE(mnd_span_is_valid(both_past, 5));
@@ -126,8 +126,8 @@ NAOS_TEST(end_past_len_is_invalid)
 NAOS_TEST(span_text_points_into_original)
 {
     static const char text[] = "hello\r\nworld";
-    mnd_span span = { 3, 9 };
-    mnd_slice out = { NULL, 0 };
+    mnd_span_t span = { 3, 9 };
+    mnd_slice_t out = { NULL, 0 };
 
     NAOS_REQUIRE_TRUE(mnd_span_text(text, sizeof(text) - 1, span, &out));
     NAOS_CHECK_PTR_EQ(text + 3, out.data);
@@ -138,8 +138,8 @@ NAOS_TEST(span_text_points_into_original)
 NAOS_TEST(empty_span_text_at_end)
 {
     static const char text[] = "abc";
-    mnd_span span = { 3, 3 };
-    mnd_slice out = { NULL, 99 };
+    mnd_span_t span = { 3, 3 };
+    mnd_slice_t out = { NULL, 99 };
 
     NAOS_REQUIRE_TRUE(mnd_span_text(text, sizeof(text) - 1, span, &out));
     NAOS_CHECK_PTR_EQ(text + 3, out.data);
@@ -149,9 +149,9 @@ NAOS_TEST(empty_span_text_at_end)
 NAOS_TEST(invalid_span_text_fails_without_touching_out)
 {
     static const char text[] = "abc";
-    mnd_span reversed = { 2, 1 };
-    mnd_span past_end = { 1, 4 };
-    mnd_slice out = { "sentinel", 8 };
+    mnd_span_t reversed = { 2, 1 };
+    mnd_span_t past_end = { 1, 4 };
+    mnd_slice_t out = { "sentinel", 8 };
     const char *before = out.data;
 
     NAOS_CHECK_FALSE(mnd_span_text(text, sizeof(text) - 1, reversed, &out));
