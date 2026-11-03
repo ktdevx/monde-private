@@ -39,7 +39,7 @@
   - _Depends: 2.1_
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
 
-- [ ] 2.3 (P) 文字列リテラルのエスケープとアンエスケープを実装し、単体テストを書く
+- [x] 2.3 (P) 文字列リテラルのエスケープとアンエスケープを実装し、単体テストを書く
   - アンエスケープで、設計の 9 種のエスケープ、1〜3 桁の 8 進数、`\x` と 1 桁以上の 16 進数（255 を超えれば誤り）を変換する。未知のエスケープは位置とともに誤りとして返す
   - アンエスケープした結果に NUL が含まれる場合と、UTF-8 として不正な場合を、それぞれ別の誤りとして返す
   - エスケープで、`\`、`"`、改行、タブ、CR、BEL、BS、FF、VT だけを変換し、そのほかの文字（制御文字と非 ASCII を含む）はそのまま書く
@@ -144,3 +144,4 @@
 - 1.2: UCD 15.0.0 で U+FFFC が CB のため、`MND_PO_LB_CB` を XX の後ろに追加した。2.4 で CB を解決・処理する（UAX #14 LB20、libunistring 1.1 の扱いに合わせる）。Mn・Mc の判定は `mnd_po_ucd_is_mark`。生成コマンド: `python3 -I tools/gen_po_ucd.py <ucd>/LineBreak.txt <ucd>/EastAsianWidth.txt <ucd>/extracted/DerivedGeneralCategory.txt -o src/po/po_ucd_tables.c`。文字幅は libunistring 1.1 の `uc_width` と 386 個のコードポイント（Unicode 15.0 の新しい絵文字、CJK のブロック内の未割り当て、U+D7B0〜U+D7FB、U+00AD など）で異なる。正解ファイルと合わない場合は 6.1 で扱う。
 - 2.1: `mnd_po_find_duplicate(catalog, from, &first, &second)` は、`from` 以上で先に同じキーの有効なエントリがある最小の `second` と、その最初の定義 `first` を返す。すべての組は `from = second + 1` で繰り返して列挙する。`mnd_po_flag_remove` は一致するフラグをすべて削除する。
 - 2.2: `mnd_po_header_set` は `:` から値までを `": "` に正規化する。`mnd_po_date_format` は書式の桁に収まらない値（年が 0〜9999 の外、オフセットが 99:59 超など）で false を返す。
+- 2.3: 8 進数の値が 255 を超える `\400`〜`\777` も BAD_ESCAPE とする（gettext 0.21 は黙って切り詰める）。`bad_offset` はリテラルの内側の先頭から数えた `\` の位置で、Reader は `bad_offset + 1 < len` を確かめてから次の文字を読む。失敗時は `out` の長さを呼び出し前に戻す。
