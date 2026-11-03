@@ -9,7 +9,7 @@
 /* 配列を倍増で拡張するときの最初の要素数 */
 #define MND_DIAG_MIN_CAP 4
 
-void mnd_diag_list_init(mnd_diag_list *list)
+void mnd_diag_list_init(mnd_diag_list_t *list)
 {
     list->items = NULL;
     list->count = 0;
@@ -64,7 +64,7 @@ static char *mnd_diag_vformat(const char *format, va_list args)
     return message;
 }
 
-static bool mnd_diag_list_grow(mnd_diag_list *list)
+static bool mnd_diag_list_grow(mnd_diag_list_t *list)
 {
     size_t new_cap;
     mnd_diag_t *new_items;
@@ -100,7 +100,7 @@ static bool mnd_diag_list_grow(mnd_diag_list *list)
     return true;
 }
 
-void mnd_diag_add(mnd_diag_list *list, mnd_severity_t severity,
+void mnd_diag_add(mnd_diag_list_t *list, mnd_severity_t severity,
                   const char *path, size_t line, const char *format, ...)
 {
     va_list args;
@@ -144,7 +144,7 @@ void mnd_diag_add(mnd_diag_list *list, mnd_severity_t severity,
     list->count++;
 }
 
-void mnd_diag_list_free(mnd_diag_list *list)
+void mnd_diag_list_free(mnd_diag_list_t *list)
 {
     size_t i;
 
@@ -158,12 +158,12 @@ void mnd_diag_list_free(mnd_diag_list *list)
     mnd_diag_list_init(list);
 }
 
-size_t mnd_diag_list_count(const mnd_diag_list *list)
+size_t mnd_diag_list_count(const mnd_diag_list_t *list)
 {
     return list->count;
 }
 
-const mnd_diag_t *mnd_diag_list_at(const mnd_diag_list *list, size_t index)
+const mnd_diag_t *mnd_diag_list_at(const mnd_diag_list_t *list, size_t index)
 {
     if (index >= list->count)
     {
@@ -173,7 +173,7 @@ const mnd_diag_t *mnd_diag_list_at(const mnd_diag_list *list, size_t index)
     return &list->items[index];
 }
 
-bool mnd_diag_list_has_error(const mnd_diag_list *list)
+bool mnd_diag_list_has_error(const mnd_diag_list_t *list)
 {
     size_t i;
 

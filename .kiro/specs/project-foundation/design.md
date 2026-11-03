@@ -29,7 +29,7 @@
 - Naos の取得とバージョン固定（v0.4.0）
 - GitHub Actions のビルド・テスト用ワークフロー（`.github/workflows/ci.yml`）
 - 命名とレイアウトの規約: モジュールのディレクトリ、ターゲット名、シンボル接頭辞 `mnd_`、include の基点 `src/`
-- `monde::foundation` の公開 API と型: `mnd_buf_t`、`mnd_diag_t` / `mnd_diag_list`、`mnd_utf8_validate`、`mnd_eol_info`、`mnd_span` / `mnd_slice` と行番号算出、`mnd_file_read` / `mnd_file_write`
+- `monde::foundation` の公開 API と型: `mnd_buf_t`、`mnd_diag_t` / `mnd_diag_list_t`、`mnd_utf8_validate`、`mnd_eol_info`、`mnd_span` / `mnd_slice` と行番号算出、`mnd_file_read` / `mnd_file_write`
 - 「LF と CRLF をそれぞれ 1 つの改行と数え、単独の CR は改行としない」という改行の数え方の規則
 
 ### Out of Boundary
@@ -49,7 +49,7 @@
 ### Revalidation Triggers
 - `mnd_span` の意味（オフセットの基準、終了を含まないこと、行番号の起点）の変更 → markdown-parser、yaml-front-matter、translation-units
 - 改行の数え方の規則の変更 → 行番号を出力する全部品、monde-cli の `#:` 出力
-- `mnd_diag_t` のフィールド変更、`mnd_diag_list` の所有権規則の変更 → 全部品と monde-cli
+- `mnd_diag_t` のフィールド変更、`mnd_diag_list_t` の所有権規則の変更 → 全部品と monde-cli
 - `mnd_file_read` の BOM 除去・UTF-8 検証の挙動変更 → monde-cli、translation-units
 - コンパイラフラグや `monde_add_*` 関数の引数の変更 → 全モジュール
 - Naos のバージョン更新 → 全モジュールのテスト
@@ -124,7 +124,7 @@ src/
 └── foundation/
     ├── CMakeLists.txt             # monde_add_module(foundation SOURCES ...)
     ├── buf.h / buf.c              # 可変長バイトバッファ mnd_buf_t
-    ├── diag.h / diag.c            # 診断 mnd_diag_t と蓄積リスト mnd_diag_list
+    ├── diag.h / diag.c            # 診断 mnd_diag_t と蓄積リスト mnd_diag_list_t
     ├── utf8.h / utf8.c            # UTF-8 の妥当性検査
     ├── eol.h / eol.c              # 改行コードの検出
     ├── source.h / source.c        # mnd_span、mnd_slice、範囲検証、行番号、範囲の内容
@@ -340,8 +340,8 @@ sequenceDiagram
 | 8.4 | 不正な範囲を返す | Source | `mnd_span_is_valid`、`false` 戻り値 | — |
 | 8.5 | 範囲の内容を変更せずに返す | Source | `mnd_span_text` | — |
 | 9.1 | 重大度・英語メッセージ・パス・行番号 | Diag | `mnd_diag_t` | — |
-| 9.2 | 発生順に蓄積し全取り出し | Diag | `mnd_diag_list`、`mnd_diag_list_at` | — |
-| 9.3 | エラーの有無を返す | Diag | `mnd_diag_list_has_error` | — |
+| 9.2 | 発生順に蓄積し全取り出し | Diag | `mnd_diag_list_t`、`mnd_diag_list_t_at` | — |
+| 9.3 | エラーの有無を返す | Diag | `mnd_diag_list_t_has_error` | — |
 | 9.4 | 記録時に stderr 出力・終了しない | Diag | `mnd_diag_add` の事後条件 | — |
 
 ## Components and Interfaces
@@ -414,7 +414,7 @@ void mnd_buf_t_free(mnd_buf_t *buf);
 
 **Responsibilities & Constraints**
 - 診断はメッセージとパスのコピーを所有する。リストは呼び出し側が初期化・解放する。
-- 記録時に `stderr` への出力、`exit`、`abort` を行わない（9.4）。表示は CLI 層が `mnd_diag_list_at` で取り出して行う。
+- 記録時に `stderr` への出力、`exit`、`abort` を行わない（9.4）。表示は CLI 層が `mnd_diag_list_t_at` で取り出して行う。
 - メモリ不足で診断を記録できなかった場合、`dropped` を `true` にする。`dropped` のリストはエラーを含むとみなす（エラーの見落としを防ぐ）。
 
 **Contracts**: Service [x] / State [x]
@@ -435,27 +435,28 @@ typedef struct mnd_diag
     size_t line;    /* 1 起点の行番号。不明なら 0 */
 } mnd_diag_t;
 
-typedef struct mnd_diag_list {
+typedef struct mnd_diag_list
+{
     mnd_diag_t *items;
     size_t count;
     size_t cap;
     bool dropped;   /* メモリ不足で記録できなかった診断がある */
-} mnd_diag_list;
+} mnd_diag_list_t;
 
-#define MND_DIAG_LIST_INIT { NULL, 0, 0, false }
+#define MND_DIAG_LIST_t_INIT { NULL, 0, 0, false }
 
-void mnd_diag_list_init(mnd_diag_list *list);
-void mnd_diag_list_free(mnd_diag_list *list);  /* 初期状態・解放済みに対しても安全 */
+void mnd_diag_list_t_init(mnd_diag_list_t *list);
+void mnd_diag_list_t_free(mnd_diag_list_t *list);  /* 初期状態・解放済みに対しても安全 */
 
 /* printf 形式でメッセージを組み立てて末尾に追加する。path は NULL 可、line は 0 可 */
-void mnd_diag_add(mnd_diag_list *list, mnd_severity_t severity,
+void mnd_diag_add(mnd_diag_list_t *list, mnd_severity_t severity,
                   const char *path, size_t line, const char *format, ...)
     MND_PRINTF_LIKE(5, 6);
 
-size_t mnd_diag_list_count(const mnd_diag_list *list);
-const mnd_diag_t *mnd_diag_list_at(const mnd_diag_list *list, size_t index); /* index < count */
+size_t mnd_diag_list_t_count(const mnd_diag_list_t *list);
+const mnd_diag_t *mnd_diag_list_t_at(const mnd_diag_list_t *list, size_t index); /* index < count */
 /* エラーの診断が 1 つ以上ある、または dropped なら true */
-bool mnd_diag_list_has_error(const mnd_diag_list *list);
+bool mnd_diag_list_t_has_error(const mnd_diag_list_t *list);
 ```
 - `MND_PRINTF_LIKE(fmt, args)` は GCC / Clang で `__attribute__((format(printf, fmt, args)))`（MinGW-w64 では `gnu_printf`）、MSVC では空に展開するマクロで、書式の誤りをコンパイル時に検出する。
 - メッセージの組み立ては `vsnprintf` で長さを求めてから確保する（長さの上限なし）。
@@ -576,13 +577,13 @@ bool mnd_span_text(const char *data, size_t len, mnd_span span, mnd_slice *out);
  * 成功: true、*had_bom に BOM の有無。
  * 失敗: diags にエラーを 1 つ追加して false。content は空、*had_bom は false。 */
 bool mnd_file_read(const char *path, mnd_buf_t *content, bool *had_bom,
-                   mnd_diag_list *diags);
+                   mnd_diag_list_t *diags);
 
 /* data の len バイトを path に書く（既存のファイルは切り詰めて上書き）。
  * add_bom が true なら先頭に EF BB BF を書く。既定の使い方は false。
  * 失敗: diags にエラーを 1 つ追加して false。 */
 bool mnd_file_write(const char *path, const char *data, size_t len, bool add_bom,
-                    mnd_diag_list *diags);
+                    mnd_diag_list_t *diags);
 ```
 - 事後条件: BOM なしで読み込んだ内容を `add_bom = false` で書くと、元のファイルとバイト単位で一致する（5.6）。BOM ありで読んだ内容は `had_bom` を `add_bom` に渡せば元に戻る。
 - 空ファイルは `content->len == 0` の成功（4.5）。不正 UTF-8 の検証は BOM 除去後の内容に対して行い、オフセットもその基準（8.1 と一致）。
@@ -596,7 +597,7 @@ bool mnd_file_write(const char *path, const char *data, size_t len, bool add_bom
 
 ### Error Strategy
 - 詳細が自明な失敗（メモリ確保、範囲の検証）は `bool` の `false` のみで返す。
-- 理由の説明が必要な失敗（ファイル入出力、不正な UTF-8）は、`mnd_diag_list` にエラーを 1 つ追加して `false` を返す。
+- 理由の説明が必要な失敗（ファイル入出力、不正な UTF-8）は、`mnd_diag_list_t` にエラーを 1 つ追加して `false` を返す。
 - foundation のどの関数も `stderr` に書かず、プロセスを終了しない（9.4）。`assert` で契約違反（`NULL` 引数など）を検出するのはデバッグビルドのみとし、製品の挙動はそれに依存しない。
 
 ### Error Categories and Responses

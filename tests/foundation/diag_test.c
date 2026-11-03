@@ -7,7 +7,7 @@
 
 NAOS_TEST(list_init_macro_is_empty)
 {
-    mnd_diag_list list = MND_DIAG_LIST_INIT;
+    mnd_diag_list_t list = MND_DIAG_LIST_INIT;
 
     NAOS_CHECK_NULL(list.items);
     NAOS_CHECK_UINT_EQ(0, list.count);
@@ -20,7 +20,7 @@ NAOS_TEST(list_init_macro_is_empty)
 NAOS_TEST(list_init_resets_to_empty)
 {
     mnd_diag_t dummy;
-    mnd_diag_list list;
+    mnd_diag_list_t list;
 
     list.items = &dummy;
     list.count = 3;
@@ -36,7 +36,7 @@ NAOS_TEST(list_init_resets_to_empty)
 
 NAOS_TEST(add_stores_all_fields)
 {
-    mnd_diag_list list = MND_DIAG_LIST_INIT;
+    mnd_diag_list_t list = MND_DIAG_LIST_INIT;
     const mnd_diag_t *d;
 
     mnd_diag_add(&list, MND_SEVERITY_ERROR, "docs/guide.md", 12,
@@ -58,7 +58,7 @@ NAOS_TEST(add_stores_all_fields)
 
 NAOS_TEST(add_copies_message_and_path)
 {
-    mnd_diag_list list = MND_DIAG_LIST_INIT;
+    mnd_diag_list_t list = MND_DIAG_LIST_INIT;
     char path[] = "a/b.md";
     char arg[] = "word";
     const mnd_diag_t *d;
@@ -81,7 +81,7 @@ NAOS_TEST(add_copies_message_and_path)
 
 NAOS_TEST(add_without_path_and_line)
 {
-    mnd_diag_list list = MND_DIAG_LIST_INIT;
+    mnd_diag_list_t list = MND_DIAG_LIST_INIT;
     const mnd_diag_t *d;
 
     mnd_diag_add(&list, MND_SEVERITY_WARNING, NULL, 0, "diag-test no location");
@@ -100,7 +100,7 @@ NAOS_TEST(add_without_path_and_line)
 
 NAOS_TEST(add_keeps_insertion_order)
 {
-    mnd_diag_list list = MND_DIAG_LIST_INIT;
+    mnd_diag_list_t list = MND_DIAG_LIST_INIT;
     const mnd_diag_t *d;
 
     mnd_diag_add(&list, MND_SEVERITY_WARNING, "f.md", 10, "diag-test item %d", 1);
@@ -140,7 +140,7 @@ NAOS_TEST(add_keeps_insertion_order)
 
 NAOS_TEST(add_many_grows_list)
 {
-    mnd_diag_list list = MND_DIAG_LIST_INIT;
+    mnd_diag_list_t list = MND_DIAG_LIST_INIT;
     const mnd_diag_t *d;
     unsigned i;
 
@@ -167,7 +167,7 @@ NAOS_TEST(add_many_grows_list)
 NAOS_TEST(add_long_message_is_not_truncated)
 {
     enum { LONG_LEN = 10000 };
-    mnd_diag_list list = MND_DIAG_LIST_INIT;
+    mnd_diag_list_t list = MND_DIAG_LIST_INIT;
     const mnd_diag_t *d;
     char *arg;
 
@@ -206,7 +206,7 @@ NAOS_TEST(add_long_message_is_not_truncated)
 
 NAOS_TEST(add_formats_percent_literal)
 {
-    mnd_diag_list list = MND_DIAG_LIST_INIT;
+    mnd_diag_list_t list = MND_DIAG_LIST_INIT;
     const mnd_diag_t *d;
 
     mnd_diag_add(&list, MND_SEVERITY_WARNING, NULL, 0, "diag-test 100%% %s", "%d");
@@ -222,7 +222,7 @@ NAOS_TEST(add_formats_percent_literal)
 
 NAOS_TEST(has_error_false_for_warnings_only)
 {
-    mnd_diag_list list = MND_DIAG_LIST_INIT;
+    mnd_diag_list_t list = MND_DIAG_LIST_INIT;
 
     mnd_diag_add(&list, MND_SEVERITY_WARNING, NULL, 0, "diag-test warn 1");
     mnd_diag_add(&list, MND_SEVERITY_WARNING, "w.md", 3, "diag-test warn 2");
@@ -235,7 +235,7 @@ NAOS_TEST(has_error_false_for_warnings_only)
 
 NAOS_TEST(has_error_true_with_one_error)
 {
-    mnd_diag_list list = MND_DIAG_LIST_INIT;
+    mnd_diag_list_t list = MND_DIAG_LIST_INIT;
 
     mnd_diag_add(&list, MND_SEVERITY_WARNING, NULL, 0, "diag-test warn 1");
     mnd_diag_add(&list, MND_SEVERITY_ERROR, "e.md", 4, "diag-test error");
@@ -249,7 +249,7 @@ NAOS_TEST(has_error_true_with_one_error)
 
 NAOS_TEST(has_error_true_when_dropped)
 {
-    mnd_diag_list list = MND_DIAG_LIST_INIT;
+    mnd_diag_list_t list = MND_DIAG_LIST_INIT;
 
     list.dropped = true;
     NAOS_CHECK_TRUE(mnd_diag_list_has_error(&list));
@@ -264,7 +264,7 @@ NAOS_TEST(has_error_true_when_dropped)
 
 NAOS_TEST(free_resets_and_is_repeatable)
 {
-    mnd_diag_list list = MND_DIAG_LIST_INIT;
+    mnd_diag_list_t list = MND_DIAG_LIST_INIT;
 
     mnd_diag_list_free(&list);
     NAOS_CHECK_NULL(list.items);

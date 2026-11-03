@@ -14,7 +14,7 @@
  * 失敗: diags にエラーを 1 つ追加して false。content は空、*had_bom は false。
  */
 bool mnd_file_read(const char *path, mnd_buf_t *content, bool *had_bom,
-                   mnd_diag_list *diags);
+                   mnd_diag_list_t *diags);
 
 /*
  * data の len バイトを path に書く（既存のファイルは切り詰めて上書き）。
@@ -22,6 +22,6 @@ bool mnd_file_read(const char *path, mnd_buf_t *content, bool *had_bom,
  * 失敗: diags にエラーを 1 つ追加して false。
  */
 bool mnd_file_write(const char *path, const char *data, size_t len, bool add_bom,
-                    mnd_diag_list *diags);
+                    mnd_diag_list_t *diags);
 
 #endif

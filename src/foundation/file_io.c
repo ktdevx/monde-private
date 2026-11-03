@@ -113,7 +113,7 @@ static bool mnd_file_read_fail(mnd_buf_t *content, bool *had_bom)
 }
 
 bool mnd_file_read(const char *path, mnd_buf_t *content, bool *had_bom,
-                   mnd_diag_list *diags)
+                   mnd_diag_list_t *diags)
 {
     char chunk[MND_FILE_IO_CHUNK_SIZE];
     bool first = true;
@@ -195,7 +195,7 @@ bool mnd_file_read(const char *path, mnd_buf_t *content, bool *had_bom,
 }
 
 bool mnd_file_write(const char *path, const char *data, size_t len, bool add_bom,
-                    mnd_diag_list *diags)
+                    mnd_diag_list_t *diags)
 {
     bool ok = true;
     int err = 0;
