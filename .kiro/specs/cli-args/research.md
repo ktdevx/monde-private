@@ -4,7 +4,7 @@
 - **Feature**: `cli-args`
 - **Discovery Scope**: New Feature（新しいモジュール。既存の foundation と CMake 関数の上に積む）
 - **Key Findings**:
-  - foundation には UTF-16 から UTF-8 への変換がない（`file_io.c` は UTF-8 から UTF-16 への変換だけを `static` で持つ）。Windows で引数を UTF-8 で取得する処理は、cli-args が `WideCharToMultiByte` で自前で行う。
+  - foundation には UTF-16 から UTF-8 への変換がない（`file_io.c` は UTF-8 から UTF-16 への変換だけを `static` で持つ）。変換は Windows の API との境界で必要になる共通の処理なので、foundation に部品 `wide` を新設して両方向の変換をまとめ、`file_io.c` の既存の変換もそれに寄せる（設計レビューでの指摘を受けて変更）。
   - `monde_add_module` には、システムライブラリをリンクする引数がない。`CommandLineToArgvW` を使うには `shell32` が必要なため、`src/cli_args/CMakeLists.txt` で Windows のときだけ `target_link_libraries(... PUBLIC shell32)` を追加する。
   - 要件 8.2（サブコマンドのヘルプは他の使い方のエラーより優先する）と 7.4（最初の誤りで解析をやめる）を両立させるには、最初の誤りを記録した後もヘルプの要求だけを探し続ける「回復走査」が必要になる。
 
@@ -39,7 +39,7 @@
   - `GetCommandLineW` と `CommandLineToArgvW`（shell32）は、どちらのエントリポイントからでも呼べ、MSVC と MinGW-w64 の両方で使える。
   - `CommandLineToArgvW` の分割規則は、CRT の規則とごく一部で異なる（引用符の中で `""` が続く場合など）。
   - `WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, ...)` は、対になっていないサロゲートを含む場合に失敗する。
-- **Implications**: `GetCommandLineW` と `CommandLineToArgvW` で取得し、各要素を `WC_ERR_INVALID_CHARS` 付きで変換する。変換処理は単独でテストできる関数に分け、Windows のテストで不正なサロゲートを与えて要件 10.3 を検証する。
+- **Implications**: `GetCommandLineW` と `CommandLineToArgvW` で取得し、各要素を foundation の `mnd_wide_to_utf8`（内部で `WC_ERR_INVALID_CHARS` を指定）で変換する。変換処理は単独でテストできる関数に分け、Windows のテストで不正なサロゲートを与えて要件 10.3 を検証する。
 
 ## Architecture Pattern Evaluation
 
@@ -90,6 +90,17 @@
 - **Rationale**: エントリポイントを変えずに済み、分割の規則を自前で持たない。shell32 は OS 標準の DLL で、外部の実行時ライブラリには当たらない。
 - **Trade-offs**: CRT と分割規則がごく一部で異なる。shell32 へのリンクが増える。
 - **Follow-up**: CI の MSVC と MinGW-w64 の両方で、非 ASCII の引数を扱う変換テストを実行する。
+
+### Decision: UTF-8 と UTF-16 の相互変換を foundation の `wide` に置く
+- **Context**: UTF-8 から UTF-16 への変換は `file_io.c` の `static` 関数として既にある。cli-args は逆向き（UTF-16 から UTF-8）を必要とする。
+- **Alternatives Considered**:
+  1. cli-args の `args_argv.c` の中で `WideCharToMultiByte` を直接呼ぶ
+  2. `file_io.c` に逆向きの変換を追加して公開する
+  3. foundation に新しい部品 `wide`（`wide.h` / `wide.c`）を作り、両方向の変換をまとめる
+- **Selected Approach**: 3。`file_io.c` の既存の変換は `wide` を使う形に置き換える。
+- **Rationale**: 同じ関心事（Windows の API との境界での文字コード変換）を 1 か所にまとめる。2 では、ファイル入出力の部品が文字コード変換の窓口を兼ねてしまう。1 では、変換の規則（不正な入力を置換せずに失敗とする）が 2 か所に分かれる。
+- **Trade-offs**: 実装済みの foundation に手を入れる。`file_io` の公開 API と挙動は変えず、既存のテストで回帰がないことを確認する。`wide.c` は Windows でだけビルドに加える（空の翻訳単位は `-Wpedantic` で警告になる）。
+- **Follow-up**: steering の予約済み短縮名に `wide` を追記する。
 
 ### Decision: 自前実装（既存ライブラリを採用しない）
 - **Context**: Build vs. Adopt の検討。

@@ -6,7 +6,7 @@
 
 **Users**: monde-cli の開発者が、`monde` の 4 つのサブコマンドとオプションをこの部品で宣言し、解析結果を受け取って各処理に振り分ける。本部品は Monde 固有の知識を持たないため、テストでは架空のプログラムの宣言だけで挙動を検証する。
 
-**Impact**: 新しいモジュール `src/cli_args/`（ライブラリ `monde::cli_args`）とテスト `tests/cli_args/` を追加する。既存のコードの変更は、`src/CMakeLists.txt` と `tests/CMakeLists.txt` への `add_subdirectory` の追加と、steering の予約済み短縮名への `args` の追記だけである。
+**Impact**: 新しいモジュール `src/cli_args/`（ライブラリ `monde::cli_args`）とテスト `tests/cli_args/` を追加する。あわせて、foundation に Windows 専用の文字コード変換の部品 `wide`（UTF-8 と UTF-16 の相互変換）を追加し、`file_io.c` が内部に持っていた UTF-8 から UTF-16 への変換をそこへ移す。そのほかの既存のコードの変更は、`src/CMakeLists.txt` と `tests/CMakeLists.txt` への `add_subdirectory` の追加と、steering の予約済み短縮名への `args` と `wide` の追記だけである。
 
 ### Goals
 - 宣言テーブルを渡すだけで、サブコマンドの振り分け、長い・短いオプション、値・リスト値・既定値、位置引数、`--`、必須チェックを解析できる。
@@ -30,15 +30,17 @@
 - 使い方のエラーと宣言の誤りの英語のメッセージ（本書「メッセージ」の節）
 - 全体のヘルプ、サブコマンドのヘルプ、バージョン、使い方の案内の文面の書式
 - Windows でのコマンドライン引数の取得と UTF-8 への変換（`mnd_args_argv_t`）
+- foundation への部品 `wide` の追加（`mnd_wide_from_utf8`、`mnd_wide_to_utf8`）と、`file_io.c` の既存の変換をそれに置き換えるリファクタリング。`file_io` の公開 API と挙動（メッセージを含む）は変えない
 
 ### Out of Boundary
 - `monde` 固有の宣言の内容（サブコマンド名、オプション名、説明文、バージョン文字列）
 - 診断とヘルプを `stdout` / `stderr` に書く処理、終了コード（monde-cli）
 - オプション値の解釈（パスとしての検査、数値への変換、キー名の検査など）
-- foundation の型と関数の変更（本 spec は利用するだけ）
+- foundation の既存の公開 API の変更（本 spec は `wide` を追加するだけで、既存の型と関数は変えない）
 
 ### Allowed Dependencies
-- 製品コード（`src/cli_args/`）: C 標準ライブラリ、`monde::foundation` の `buf.h` と `diag.h`。Windows では Win32 API の `GetCommandLineW`、`CommandLineToArgvW`（shell32）、`LocalFree`、`WideCharToMultiByte` のみ。
+- 製品コード（`src/cli_args/`）: C 標準ライブラリ、`monde::foundation` の `buf.h`、`diag.h`、`wide.h`（Windows のみ）。Windows では Win32 API の `GetCommandLineW`、`CommandLineToArgvW`（shell32）、`LocalFree` のみ。文字コードの変換は `wide.h` を通し、`WideCharToMultiByte` / `MultiByteToWideChar` を直接呼ばない。
+- 製品コード（`src/foundation/wide.c`）: C 標準ライブラリと、Win32 API の `MultiByteToWideChar`、`WideCharToMultiByte` のみ。foundation の他の部品に依存しない。`file_io.c` は `wide` に依存してよい（foundation 内の依存は `file_io` から下位部品への一方向という既存の規則に従う）。
 - テストコード（`tests/cli_args/`）: 上記に加えて Naos。
 - モジュール間の依存は `foundation ← cli_args ← monde-cli` の一方向。cli_args は他の汎用パーサ（po、markdown、yaml）に依存しない。
 - モジュール内の依存の方向は「Architecture」の図に従う。`args_help.c` と `args_argv.c` は `args_parse.c` / `args_result.c` に依存しない。
@@ -50,6 +52,7 @@
 - ヘルプ・メッセージの文面の書式の変更 → monde-cli のテストの期待値、docs-and-release の利用マニュアル
 - 値の寿命の約束（引数列を指すこと）の変更 → monde-cli の引数列の扱い
 - Windows の引数の取得方法の変更 → monde-cli のエントリポイント、CI の Windows 環境
+- `mnd_wide_*` の契約（所有権、失敗時の理由）の変更 → foundation の `file_io`、cli_args の ArgvSource
 
 ## Architecture
 
@@ -74,6 +77,8 @@ graph TB
     subgraph foundation[foundation]
         Buf[buf]
         Diag[diag]
+        Wide[wide Windows のみ]
+        FileIo[file_io]
     end
     Main --> Argv
     Main --> Parser
@@ -87,12 +92,14 @@ graph TB
     Parser --> Diag
     Check --> Diag
     Argv --> Diag
+    Argv --> Wide
+    FileIo --> Wide
     Help --> Buf
 ```
 
 **Architecture Integration**:
 - 採用したパターン: 宣言テーブル + 単一パスの走査器。宣言からヘルプも生成するため、宣言と挙動がずれない（9.x）。
-- 依存の方向（違反はレビューで誤りとして扱う）: `args.h`（型） ← `args_decl.c`（検査と検索） ← `args_result.c`（結果の保持） ← `args_parse.c`（走査）。`args_help.c` は `args.h` と `args_decl.c` の検索関数だけに依存する。`args_argv.c` は `args.h` の `mnd_args_argv_t` と foundation の `diag` だけに依存する。
+- 依存の方向（違反はレビューで誤りとして扱う）: `args.h`（型） ← `args_decl.c`（検査と検索） ← `args_result.c`（結果の保持） ← `args_parse.c`（走査）。`args_help.c` は `args.h` と `args_decl.c` の検索関数だけに依存する。`args_argv.c` は `args_argv.h` と foundation の `diag`、`wide` だけに依存する。
 - 既存のパターンの踏襲: `monde_add_module`、接頭辞 `mnd_`、`_t` 付きの typedef、エラーは `mnd_diag_list_t` で返す、`stdout` / `stderr` に書かない、`exit` しない。
 - steering との整合: 汎用部品として Monde を知らない（1.7）。Windows の非 ASCII の扱いを部品に集約する。
 
@@ -101,8 +108,8 @@ graph TB
 | Layer | Choice / Version | Role in Feature | Notes |
 |-------|------------------|-----------------|-------|
 | 言語 | C99（MSVC は `/std:c11`） | 実装 | VLA を使わない |
-| 依存モジュール | `monde::foundation` | `mnd_buf_t`（文面の出力先）、`mnd_diag_list_t`（エラー） | |
-| OS API | Win32: kernel32、shell32 | Windows での引数の取得と変換 | `CommandLineToArgvW` のために shell32 をリンクする |
+| 依存モジュール | `monde::foundation` | `mnd_buf_t`（文面の出力先）、`mnd_diag_list_t`（エラー）、`mnd_wide_to_utf8`（Windows での変換） | `wide` は本 spec で追加する |
+| OS API | Win32: kernel32、shell32 | Windows での引数の取得（cli_args）と文字コードの変換（foundation の wide） | `CommandLineToArgvW` のために shell32 をリンクする |
 | テスト | Naos v0.4.0（CTest） | 単体テスト | ラベル `cli_args` |
 
 ## File Structure Plan
@@ -119,7 +126,11 @@ src/cli_args/
 ├── args_result.c      # ResultStore: 結果の初期化・解放、値の記録（フラグ、単一、リスト）、既定値の適用、取得関数
 ├── args_parse.c       # Parser: 引数列の走査、ヘルプの優先と回復走査、事後の検査、メッセージの生成
 ├── args_help.c        # HelpFormatter: 全体とサブコマンドのヘルプ、バージョン、使い方の案内
-└── args_argv.c        # ArgvSource: 引数列の取得（Windows では UTF-16 から UTF-8 への変換）
+└── args_argv.c        # ArgvSource: 引数列の取得（Windows では wide で UTF-8 に変換）
+
+src/foundation/
+├── wide.h             # 新規・公開: UTF-8 と UTF-16 の相互変換（_WIN32 のときだけ宣言する）
+└── wide.c             # 新規: Wide の実装（Windows でだけビルドに加える）
 
 tests/cli_args/
 ├── CMakeLists.txt     # monde_add_module_tests(cli_args SOURCES ...)
@@ -135,12 +146,18 @@ tests/cli_args/
 ├── errors_test.c      # スイート errors: 必須チェック、最初の誤り、ヘルプの優先、メッセージの内容（7.x、8.2）
 ├── help_test.c        # スイート help: 文面のバイト単位の比較（9.x、7.3、8.5）
 └── argv_test.c        # スイート argv: 引数の取得、Windows での変換と不正なサロゲート（10.x）
+
+tests/foundation/
+└── wide_test.c        # 新規: スイート wide（Windows でだけビルドに加える）
 ```
 
 ### Modified Files
 - `src/CMakeLists.txt` — `add_subdirectory(cli_args)` を追加する。
 - `tests/CMakeLists.txt` — `add_subdirectory(cli_args)` を追加する。
-- `.kiro/steering/structure.md` — 予約済みの短縮名に、cli_args が使う `args` を追記する。
+- `src/foundation/file_io.c` — `static` の `mnd_file_path_to_wide` を削除し、`mnd_wide_from_utf8` を使う。失敗時のメッセージ（`file path is not valid UTF-8`、`out of memory`）は変えない。
+- `src/foundation/CMakeLists.txt` — `if(WIN32)` のときだけ `wide.c` を `SOURCES` に加える（空の翻訳単位は `-Wpedantic` で警告になるため）。
+- `tests/foundation/CMakeLists.txt`、`tests/foundation/main.c` — Windows のときだけ `wide_test.c` とスイート `wide` を加える。
+- `.kiro/steering/structure.md` — 予約済みの短縮名に、cli_args が使う `args` と foundation が使う `wide` を追記する。
 
 ## 規約（本モジュール）
 
@@ -267,7 +284,7 @@ stateDiagram-v2
 | 8.1〜8.6 | ヘルプとバージョン | Parser、HelpFormatter | `MND_ARGS_HELP` ほか、`mnd_args_format_version` | サブコマンドより前、回復走査 |
 | 9.1〜9.6 | 文面の生成 | HelpFormatter | `mnd_args_format_help` | — |
 | 10.1, 10.5 | バイト列のまま、引数列を変えない | Parser、ResultStore | 値は引数列を指す | — |
-| 10.2〜10.4 | Windows での取得 | ArgvSource | `mnd_args_argv_get`、`mnd_args_argv_from_wide` | — |
+| 10.2〜10.4 | Windows での取得 | ArgvSource、Wide | `mnd_args_argv_get`、`mnd_args_argv_from_wide`、`mnd_wide_to_utf8` | — |
 | 11.1〜11.3 | 単体テスト | テスト | `cli_args_tests` | — |
 
 ## Components and Interfaces
@@ -279,7 +296,8 @@ stateDiagram-v2
 | ResultStore | 解析 | 解析結果の保持と取得 | 5.1, 5.3〜5.6, 6.1, 10.1, 10.5 | DeclCheck (P0) | Service, State |
 | Parser | 解析 | 引数列の走査と状態の決定 | 2.x, 3.x, 4.x, 5.2, 6.x, 7.1, 7.2, 7.4〜7.6, 8.1〜8.6 | DeclCheck (P0)、ResultStore (P0)、Diag (P0) | Service |
 | HelpFormatter | 文面 | ヘルプ、バージョン、案内の生成 | 7.3, 8.5, 9.1〜9.6 | DeclCheck (P1)、Buf (P0) | Service |
-| ArgvSource | 入力 | 引数列の UTF-8 での取得 | 10.2〜10.4 | Diag (P0)、Win32 (P0) | Service |
+| ArgvSource | 入力 | 引数列の UTF-8 での取得 | 10.2〜10.4 | Diag (P0)、Wide (P0)、Win32 (P0) | Service |
+| Wide | foundation | UTF-8 と UTF-16 の相互変換（Windows のみ） | 10.2, 10.3 | Win32 (P0) | Service |
 | CliArgsTests | テスト | 単体テスト | 11.1〜11.3 | Naos (P0) | — |
 
 ### 宣言
@@ -603,7 +621,7 @@ Options:
 
 **Responsibilities & Constraints**
 - Windows 以外: `main` の `argc` と `argv` をそのまま使う（コピーも変換もしない）（10.4）。
-- Windows: `main` の引数を使わず、`GetCommandLineW` と `CommandLineToArgvW` で取得し、各要素を `WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, ...)` で変換する。変換結果の文字列と配列は `mnd_args_argv_t` が所有する（10.2）。
+- Windows: `main` の引数を使わず、`GetCommandLineW` と `CommandLineToArgvW` で取得し、各要素を foundation の `mnd_wide_to_utf8` で変換する。変換結果の文字列と配列は `mnd_args_argv_t` が所有する（10.2）。
 - 変換に失敗した要素があれば、その添字（0 起点）を示す診断を追加し、それまでに確保した領域を解放して `false` を返す（10.3）。
 
 **Contracts**: Service [x]
@@ -636,6 +654,45 @@ bool mnd_args_argv_from_wide(int argc, wchar_t *const *wargv, mnd_args_argv_t *o
 - `src/cli_args/CMakeLists.txt` で、`if(WIN32)` のときだけ `target_link_libraries(monde_cli_args PUBLIC shell32)` を追加する。MinGW-w64 の静的リンク（`-static`）でもインポートライブラリとして解決される。
 - リスク: `CommandLineToArgvW` の分割規則は CRT とごく一部（引用符内の連続する `""`）で異なる。ファイルパスやキー名の受け渡しには影響しない。
 
+### foundation への追加
+
+#### Wide（`src/foundation/wide.h`、`wide.c`）
+
+| Field | Detail |
+|-------|--------|
+| Intent | Windows の API との境界で、UTF-8 と UTF-16 を相互に変換する |
+| Requirements | 10.2, 10.3（あわせて既存の foundation 4.6、5.4 の実現手段を置き換える） |
+
+**Responsibilities & Constraints**
+- Windows（`_WIN32`）でだけ宣言・ビルドする。他の OS では `wide.h` は何も宣言しない。
+- 不正な入力（不正な UTF-8、対になっていないサロゲート）は置換文字に変えずに失敗とする（`MB_ERR_INVALID_CHARS`、`WC_ERR_INVALID_CHARS`）。
+- 診断は追加しない。失敗の理由を固定の英語の文字列で返し、文脈（パスか、何番目の引数か）を付けた診断は呼び出し側が作る。
+- 長さの計算は `int` の範囲を超えないことを確認してから API に渡す。
+
+**Contracts**: Service [x]
+
+```c
+/* wide.h */
+#ifdef _WIN32
+#include <wchar.h>
+
+/*
+ * NUL 終端の UTF-8 を、確保した NUL 終端の UTF-16 に変換する。呼び出し側が free で解放する。
+ * 失敗時は NULL を返し、*reason に "invalid UTF-8" または "out of memory" を入れる
+ */
+wchar_t *mnd_wide_from_utf8(const char *utf8, const char **reason);
+
+/*
+ * NUL 終端の UTF-16 を、確保した NUL 終端の UTF-8 に変換する。呼び出し側が free で解放する。
+ * 失敗時は NULL を返し、*reason に "invalid UTF-16" または "out of memory" を入れる
+ */
+char *mnd_wide_to_utf8(const wchar_t *wide, const char **reason);
+#endif
+```
+
+**Implementation Notes**
+- `file_io.c` は `mnd_wide_from_utf8` の `reason` を見て、既存のメッセージ（`file path is not valid UTF-8`、`out of memory`）に対応付ける。foundation の既存テスト（`file_io` スイートの非 ASCII パス）が変更なしで通ることを確認する。
+
 ## Error Handling
 
 ### Error Strategy
@@ -667,6 +724,7 @@ bool mnd_args_argv_from_wide(int argc, wchar_t *const *wargv, mnd_args_argv_t *o
 - **positional**: `tool build -v x -o y` と `tool build -o y x -v` の結果が同じ（6.1、6.2）。`tool build -o y -- -v` で `-v` が位置引数、`tool cat -- a -- b` で `a`、`--`、`b`（6.3）。`tool copy a` が `missing argument <DEST>`、`tool copy a b c` が `unexpected argument 'c'`（6.4、6.5）。
 - **errors**: `tool build x` が `missing required option '--output'`（7.1）。各メッセージが `tool build: ` で始まり、問題の引数を含むこと（7.2）。`tool build --bad --worse x` の診断が 1 件で `--bad` を示すこと（7.4）。`tool build --bad -h` と `tool build x --help`（必須の欠落を含む）が `MND_ARGS_HELP`、`tool build -o -h x` が `-h` を値として解析すること（8.2）。診断の重大度がエラーで、`path == NULL` であること（7.5）。各状態が区別されること（7.6）。
 - **help**: `tool` の全体のヘルプ、`build`・`copy`・`cat` のヘルプ、バージョン、案内（サブコマンドあり・なし）を、期待する文面のリテラルとバイト単位で比較する（7.3、8.5、9.1〜9.6、11.3）。同じ宣言で 2 回生成した文面が一致すること（9.6）。
+- **wide**（Windows のみ、`foundation_tests`）: `"\xE6\x97\xA5\xE6\x9C\xAC"` と `L"\u65E5\u672C"` の相互変換、U+1F600 のようなサロゲートペアの往復、空文字列、不正な UTF-8（`"\xC0\x80"`）で `invalid UTF-8`、対になっていないサロゲートで `invalid UTF-16` が返ること。
 - **argv**: Windows 以外で `mnd_args_argv_get` が渡した `argv` を返し `owned` が偽であること（10.4）。Windows で `mnd_args_argv_from_wide` が `L"日本"` を UTF-8 のバイト列に変換すること、対になっていないサロゲート（`0xD800`）を含む 2 番目の要素で `false` と添字 `1` を含む診断が返ること（10.2、10.3）。Windows で `mnd_args_argv_get` が 1 個以上の要素を返すこと。
 
 ### 全体にかかわる確認
