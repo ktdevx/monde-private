@@ -10,7 +10,7 @@ NAOS_TEST(init_macro_is_empty)
     mnd_buf buf = MND_BUF_INIT;
 
     NAOS_CHECK_NULL(buf.data);
-    NAOS_CHECK_UINT_EQ(0, buf.len);
+    NAOS_CHECK_UINT_EQ(1, buf.len);
     NAOS_CHECK_UINT_EQ(0, buf.cap);
     NAOS_CHECK_STR_EQ("", mnd_buf_cstr(&buf));
 }

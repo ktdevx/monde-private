@@ -58,5 +58,8 @@ jobs:
       - name: Build
         run: cmake --build build --config Release
 
+      - name: Probe details (verification only)
+        run: ctest --test-dir build -C Release -R "toolchain\.probe" -V
+
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
