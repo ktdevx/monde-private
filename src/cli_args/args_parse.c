@@ -34,15 +34,6 @@ static mnd_args_status_t out_of_memory(mnd_args_result_t *result, mnd_diag_list_
     return finish(result, MND_ARGS_OUT_OF_MEMORY);
 }
 
-/* サブコマンドの選択後の使い方のエラー。メッセージは "<program> <command>: " で始める */
-static mnd_args_status_t scan_unknown_option(mnd_args_scan_t *scan, const char *token)
-{
-    mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0, "%s %s: unknown option '%s'",
-                 scan->program->name, scan->command->name, token);
-
-    return finish(scan->result, MND_ARGS_USAGE_ERROR);
-}
-
 /*
  * 診断に示す名前の長さ。"%.*s" の精度は int なので、それを超える長さは int の最大値に切り詰める
  * （引数の長さがそこまで達することは実際にはない）
@@ -163,10 +154,81 @@ static mnd_args_status_t scan_long(mnd_args_scan_t *scan, const char *token)
 }
 
 /*
+ * "-" に 1 文字以上が続くトークンを、2 文字目から 1 文字ずつ処理する（4.1〜4.6、8.2）。
+ * 戻り値が MND_ARGS_OK なら走査を続け、それ以外なら走査を終える
+ */
+static mnd_args_status_t scan_short(mnd_args_scan_t *scan, const char *token)
+{
+    const char *p;
+
+    for (p = token + 1; *p != '\0'; p++)
+    {
+        unsigned char c = (unsigned char)*p;
+        char arg[3];
+        size_t index;
+
+        if (c == 'h')
+        {
+            return finish(scan->result, MND_ARGS_HELP);
+        }
+
+        /* ASCII 以外のバイトは文字の境界が分からないので、トークン全体で示す */
+        if (c > 0x7F)
+        {
+            mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
+                         "%s %s: unknown option '%s'", scan->program->name,
+                         scan->command->name, token);
+
+            return finish(scan->result, MND_ARGS_USAGE_ERROR);
+        }
+
+        arg[0] = '-';
+        arg[1] = (char)c;
+        arg[2] = '\0';
+
+        index = mnd_args_find_short(scan->command, (char)c);
+        if (index == (size_t)-1)
+        {
+            mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
+                         "%s %s: unknown option '%s'", scan->program->name,
+                         scan->command->name, arg);
+
+            return finish(scan->result, MND_ARGS_USAGE_ERROR);
+        }
+
+        if (scan->command->options[index].kind == MND_ARGS_FLAG)
+        {
+            mnd_args_result_set_flag(scan->result, index);
+            continue;
+        }
+
+        /* 値付きオプションは残りを値とし、なければ次のトークンを値とする（4.2、4.4、4.1） */
+        if (p[1] != '\0')
+        {
+            return scan_record_value(scan, index, arg, 2, p + 1);
+        }
+
+        if (scan->next >= scan->argc)
+        {
+            mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
+                         "%s %s: option '%s' requires a value", scan->program->name,
+                         scan->command->name, arg);
+
+            return finish(scan->result, MND_ARGS_USAGE_ERROR);
+        }
+
+        scan->next++;
+
+        return scan_record_value(scan, index, arg, 2, scan->argv[scan->next - 1]);
+    }
+
+    return MND_ARGS_OK;
+}
+
+/*
  * サブコマンドの後のトークンを走査する。
- * "--" で始まるトークンは長いオプションとして処理する。
- * "-" 単独と "-" で始まらないトークンは位置引数として記録する。
- * "-" で始まるその他のトークンは、名前によるオプションの検索を経ずに未知のオプションとする
+ * "--" で始まるトークンは長いオプション、"-" に 1 文字以上が続くトークンは短いオプションとして処理する。
+ * "-" 単独と "-" で始まらないトークンは位置引数として記録する（4.7、6.1）
  */
 static mnd_args_status_t scan_command(mnd_args_scan_t *scan)
 {
@@ -191,7 +253,13 @@ static mnd_args_status_t scan_command(mnd_args_scan_t *scan)
 
         if ((token[0] == '-') && (token[1] != '\0'))
         {
-            return scan_unknown_option(scan, token);
+            status = scan_short(scan, token);
+            if (status != MND_ARGS_OK)
+            {
+                return status;
+            }
+
+            continue;
         }
 
         if (!mnd_args_result_add_positional(scan->result, token))

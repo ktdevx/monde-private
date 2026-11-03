@@ -101,7 +101,7 @@ NAOS_TEST(build_is_selected)
 
     run_init(&run);
     run_parse(&run, 5, tokens);
-    NAOS_CHECK_PTR_EQ(test_tool_build, run.result.command);
+    check_status(&run, MND_ARGS_OK, test_tool_build);
     run_free(&run);
 }
 

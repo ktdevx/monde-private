@@ -369,6 +369,22 @@ NAOS_TEST(parse_repeated_list_concatenates)
     run_free(&run);
 }
 
+NAOS_TEST(parse_repeated_list_concatenates_short_and_long)
+{
+    static const char *const tokens[] = {"tool", "build", "x", "-o", "y",
+                                         "-k", "a", "--keys", "b,c"};
+    values_run_t run;
+
+    run_parse(&run, 9, tokens);
+    check_ok(&run);
+    NAOS_REQUIRE_UINT_EQ(3, mnd_args_list_count(&run.result, "keys"));
+    NAOS_CHECK_STR_EQ("a", mnd_args_list_at(&run.result, "keys", 0));
+    NAOS_CHECK_STR_EQ("b", mnd_args_list_at(&run.result, "keys", 1));
+    NAOS_CHECK_STR_EQ("c", mnd_args_list_at(&run.result, "keys", 2));
+    NAOS_CHECK_TRUE(mnd_args_is_set(&run.result, "keys"));
+    run_free(&run);
+}
+
 NAOS_TEST(parse_rejects_empty_list_value)
 {
     static const char *const tokens[] = {"tool", "build", "x", "--output", "y", "--keys="};
@@ -421,6 +437,18 @@ NAOS_TEST(parse_repeated_flag_is_accepted)
 {
     static const char *const tokens[] = {"tool", "build", "--verbose", "x", "--verbose",
                                          "--output", "y"};
+    values_run_t run;
+
+    run_parse(&run, 7, tokens);
+    check_ok(&run);
+    NAOS_CHECK_TRUE(mnd_args_flag(&run.result, "verbose"));
+    NAOS_CHECK_TRUE(mnd_args_is_set(&run.result, "verbose"));
+    run_free(&run);
+}
+
+NAOS_TEST(parse_repeated_short_flag_is_accepted)
+{
+    static const char *const tokens[] = {"tool", "build", "-v", "x", "-v", "-o", "y"};
     values_run_t run;
 
     run_parse(&run, 7, tokens);
@@ -483,11 +511,13 @@ NAOS_SUITE(values,
     NAOS_ADD_TEST(inputs_are_not_modified_and_bytes_are_kept),
     NAOS_ADD_TEST(parse_list_items_keep_whitespace),
     NAOS_ADD_TEST(parse_repeated_list_concatenates),
+    NAOS_ADD_TEST(parse_repeated_list_concatenates_short_and_long),
     NAOS_ADD_TEST(parse_rejects_empty_list_value),
     NAOS_ADD_TEST(parse_rejects_empty_list_items),
     NAOS_ADD_TEST(parse_rejects_leading_and_trailing_commas),
     NAOS_ADD_TEST(parse_value_later_wins),
     NAOS_ADD_TEST(parse_repeated_flag_is_accepted),
+    NAOS_ADD_TEST(parse_repeated_short_flag_is_accepted),
     NAOS_ADD_TEST(parse_defaults_are_not_explicit),
     NAOS_ADD_TEST(parse_explicit_values_are_explicit)
 )
