@@ -120,7 +120,7 @@
   - 完了時: ワークフローの定義ファイルが追加され、5 環境のジョブ名・トリガー・`fail-fast: false`・標準の 3 行の手順が定義に含まれている
   - _Requirements: 1.1, 3.1, 3.2, 3.3, 3.4_
 
-- [ ] 5.2 ローカルで一連の手順を通し、失敗時の報告を確認する
+- [x] 5.2 ローカルで一連の手順を通し、失敗時の報告を確認する
   - 標準の 3 行の手順を実行し、foundation と toolchain のすべてのテストが合格することを確認する
   - 一時的に失敗するテストを入れて CTest の終了ステータスが 0 以外になり、失敗したテスト名と `file:line: error:` の出力が表示されることを確認してから元に戻す
   - CI での確認（5 環境すべての成功と、意図的に失敗するテストで該当環境だけが失敗し他の環境が完走しログに失敗したテストが残ること）は、人による push とプルリクエストが必要なため、確認手順を実装報告に記録して開発者に引き継ぐ
@@ -142,3 +142,4 @@
 - 3.4: 改行の数え方（LF の位置で判定し、直前が CR なら CRLF、単独 CR は数えない）は eol.c の static 関数。設計上 eol と source は相互に依存しないため、3.5 は同じ規則を source.c 内に実装する。
 - 4.1: ファイルを開く処理は file_io.c の static `mnd_file_open(path, mode)` に集約済み（4.3 はここだけ差し替える）。ディレクトリ読み込みは Windows では open 失敗、Linux/macOS では read 失敗（EISDIR）になる。
 - 4.3: MinGW-w64 の C99 厳密モードでの `_wfopen` 宣言と `windows.h` の -Wpedantic 対応は推論のみで未検証。CI（5.1/5.2）の mingw-w64 ジョブで確認する。非 ASCII ディレクトリ名は tests/foundation/CMakeLists.txt と file_io_test.c の NON_ASCII_DIR_NAME の 2 か所で一致させる。
+- 5.2: ローカル（MSVC）で 98/98 合格、意図的な失敗で ctest 終了 8 とテスト名・位置の出力を確認済み。CI での未確認事項（開発者が push / PR で確認）: (1) 5 ジョブすべて成功 (2) 検証用 PR で buf_test.c の init_macro_is_empty を失敗させ、全ジョブ完走・ワークフロー失敗・ログにテスト名と `file:line: error:`（MSVC は `file(line): error:`）が残ること。`#ifdef __linux__` で囲めば gcc/clang のみ失敗を確認できる (3) mingw-w64 で file_io.c の `_wfopen`/windows.h 警告なし、非 ASCII パスのテスト合格、gnu_printf 属性で誤検出なし (4) GCC/Clang 系で `ctest -R toolchain -V` により probe_vla_fails が `-Werror=vla`、probe_warning_fails が未使用変数で失敗していること。
