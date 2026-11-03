@@ -5,56 +5,18 @@
 #include <string.h>
 
 #ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
 #include <stdlib.h>
 #include <wchar.h>
-#include <windows.h>
 #endif
 
 #include "foundation/source.h"
 #include "foundation/utf8.h"
+#include "foundation/wide.h"
 
 /* 1 回の fread で読むバイト数 */
 #define MND_FILE_IO_CHUNK_SIZE 4096
 
 static const char mnd_file_io_bom[3] = { '\xEF', '\xBB', '\xBF' };
-
-#ifdef _WIN32
-/* path（UTF-8）を UTF-16 に変換する。失敗時は NULL を返し、*reason に理由を入れる */
-static wchar_t *mnd_file_path_to_wide(const char *path, const char **reason)
-{
-    wchar_t *wide;
-    int n;
-
-    n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, NULL, 0);
-    if (n <= 0)
-    {
-        *reason = "file path is not valid UTF-8";
-        return NULL;
-    }
-
-    wide = malloc((size_t)n * sizeof *wide);
-    if (wide == NULL)
-    {
-        *reason = "out of memory";
-        return NULL;
-    }
-
-    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, wide, n) != n)
-    {
-        free(wide);
-        *reason = "file path is not valid UTF-8";
-        return NULL;
-    }
-
-    return wide;
-}
-#endif
 
 /*
  * path をバイナリモードなどの mode で開く。ファイルを開くのはこの関数だけ。
@@ -66,6 +28,7 @@ static FILE *mnd_file_open(const char *path, const char *mode, const char **reas
     /* Windows の fopen は ANSI コードページでパスを解釈するため、UTF-16 に変換して _wfopen を使う */
     wchar_t wmode[4];
     wchar_t *wpath;
+    const char *wide_reason = NULL;
     FILE *fp;
     size_t i;
     int err;
@@ -79,9 +42,19 @@ static FILE *mnd_file_open(const char *path, const char *mode, const char **reas
     }
     wmode[i] = L'\0';
 
-    wpath = mnd_file_path_to_wide(path, reason);
+    wpath = mnd_wide_from_utf8(path, &wide_reason);
     if (wpath == NULL)
     {
+        /* wide の理由を、file_io の既存のメッセージに対応付ける */
+        if ((wide_reason != NULL) && (strcmp(wide_reason, "out of memory") == 0))
+        {
+            *reason = "out of memory";
+        }
+        else
+        {
+            *reason = "file path is not valid UTF-8";
+        }
+
         return NULL;
     }
 
