@@ -1,6 +1,6 @@
 # Project Structure
 
-> 現時点（2026-11-03）ではソースコードはまだなく、以下は roadmap と project-foundation の方針に基づく予定の構成である。実装が始まったら、実際のパターンに合わせて更新する。
+> 2026-11-03 時点で project-foundation の基盤（ビルド構成、テスト基盤、CI、`src/foundation/`）が実装済み。以下の規約は後続のすべての spec に共通する。
 
 ## Organization Philosophy
 
@@ -10,16 +10,21 @@
 
 ### モジュールのソース
 **Location**: `src/<module>/`  
-**Purpose**: 1 つの部品の実装とヘッダ。1 モジュール = 1 ライブラリターゲット。  
-**Example**: `src/po/`（PO の読み書き）、`src/markdown/`（CommonMark パーサ）、`src/foundation/`（共通ユーティリティ）
+**Purpose**: 1 つの部品の実装とヘッダ。1 モジュール = 1 静的ライブラリターゲット（`monde_add_module` で作る）。  
+**Example**: `src/foundation/`（共通ユーティリティ）、`src/po/`（PO の読み書き）、`src/markdown/`（CommonMark パーサ）
 
 ### モジュールのテスト
 **Location**: `tests/<module>/`  
-**Purpose**: 対応するモジュールの Naos テスト。CTest に登録する。  
-**Example**: `tests/po/` は `src/po/` をテストする
+**Purpose**: 対応するモジュールの Naos テスト。`monde_add_module_tests` で CTest に登録する。  
+**Example**: `tests/foundation/` は `src/foundation/` をテストする  
+**Exception**: `tests/toolchain/` は `src/` に対応するモジュールを持たない唯一の例外で、ビルド構成（警告・VLA のエラー化、MSVC のオプション）そのものを検証する。CTest のラベルは `toolchain`。
+
+### ビルド構成
+**Location**: `CMakeLists.txt`、`cmake/`  
+**Purpose**: コンパイラオプション（`monde_apply_compile_options`）、ターゲット作成関数（`monde_add_module` / `monde_add_module_tests` / `monde_add_executable`）、Naos の取得。オプションやターゲットの作り方はここに集約し、各モジュールの `CMakeLists.txt` では個別に設定しない。
 
 ### 受け入れテストのデータ
-**Location**: テスト用の独立したディレクトリ（名前は monde-cli の設計で確定）  
+**Location**: テスト用の独立したディレクトリ（名前は monde-cli の設計で決める）  
 **Purpose**: CommonMark spec.txt などの外部テストデータ。ライセンス表記を添えて無改変で置くか、テスト時に取得する。リリース成果物には含めない。
 
 ### ドキュメント
@@ -33,21 +38,33 @@
 
 ## Naming Conventions
 
-- **ディレクトリ・モジュール名**: 小文字。spec 名（kebab-case）とソースのモジュール名の対応は project-foundation の設計で確定する。
+- **モジュール名**: 小文字の snake_case で、spec 名の短い形とする（例: spec `project-foundation` → モジュール `foundation`）。ディレクトリ `src/<module>/`、`tests/<module>/` に使う。
+- **CMake ターゲット**: ライブラリは `monde_<module>`、別名 `monde::<module>`（リンクには別名を使う）。テスト実行ファイルは `<module>_tests`、CTest のテスト名は `<module>_tests.<suite>.<test>`、ラベルは `<module>`。
 - **ファイル**: 小文字の snake_case（`.c` / `.h`）。
-- **関数・型・変数**: snake_case。C には名前空間がないため、外部から見えるシンボルにはモジュール名の接頭辞を付ける（具体的な接頭辞の規則は project-foundation の設計で確定する）。
+- **関数・型・変数**: snake_case。C には名前空間がないため、外部から見えるシンボルには接頭辞 `mnd_` と短縮名を付ける。
+  - 関数・型: `mnd_<短縮名>_`（例: `mnd_buf_append`）
+  - マクロ・列挙値: `MND_<短縮名>_`
+  - 短縮名は各モジュールの設計で決め、既存のものと重複させない。foundation が予約済み: `buf`、`diag`、`severity`、`utf8`、`eol`、`span`、`slice`、`source`、`file`（ほかにマクロ `MND_PRINTF_LIKE` も foundation が使用している）
+- **ヘッダガード**: `MONDE_<MODULE>_<FILE>_H`（例: `MONDE_FOUNDATION_BUF_H`）。
 - **モジュール内部の関数**: `static` にしてファイル外に公開しない。
 
 ## Include Organization
 
 ```c
-#include "po/po_entry.h"   /* 他モジュールのヘッダは src/ からのパスで指定 */
-#include "local_helper.h"  /* 同じモジュール内のヘッダ */
-#include <stdio.h>         /* 標準ライブラリ */
+#include "foundation/buf.h"  /* プロジェクトのヘッダは同じモジュール内も含め src/ からのパスで指定 */
+#include <stdio.h>           /* 標準ライブラリ */
 ```
 
-- 各モジュールの公開ヘッダは、依存する他のモジュールからのみ include する。依存関係は CMake の `target_link_libraries` で明示する。
-- （include パスの基点は project-foundation の設計で確定する）
+- include の基点は `src/`。`monde_add_module` がこれを PUBLIC で公開するため、リンクしたモジュールのヘッダはそのまま include できる。
+- 各モジュールの公開ヘッダは、依存する他のモジュールからのみ include する。依存関係は `monde_add_module(<module> ... DEPENDS <module>...)` で明示する。
+
+## 新しいモジュールの追加手順
+
+1. `src/CMakeLists.txt` に `add_subdirectory(<module>)` を 1 行追加し、`src/<module>/CMakeLists.txt` で `monde_add_module(<module> SOURCES ... [DEPENDS ...])` を呼ぶ。
+2. `tests/CMakeLists.txt` に `add_subdirectory(<module>)` を 1 行追加し、`tests/<module>/CMakeLists.txt` で `monde_add_module_tests(<module> SOURCES ...)` を呼ぶ。
+3. 製品の実行ファイルは `monde_add_executable` で作る（Naos へのリンクは構成時エラーになる）。
+
+コンパイラオプションはこれらの関数が自動で適用する。
 
 ## Code Organization Principles
 

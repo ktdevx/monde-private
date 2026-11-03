@@ -30,7 +30,7 @@ foundation（UTF-8 入出力、改行検出、バッファ、ソース範囲、�
 ## Key Libraries
 
 - **実行時の外部依存はゼロ**。Markdown、YAML、PO、コマンドライン引数のパーサはすべて自前で実装する。C 標準ライブラリと、Windows の場合は Win32 API のみを使う。
-- **Naos はテスト専用**。pre-1.0 のため、タグまたはコミットを固定して取り込む（FetchContent など）。
+- **Naos はテスト専用**。pre-1.0 のため、FetchContent でタグ `v0.4.0` に固定して取り込む（`cmake/MondeNaos.cmake` の 1 か所で管理）。`BUILD_TESTING=OFF` では取得しない。
 
 ## Development Standards
 
@@ -65,12 +65,15 @@ foundation（UTF-8 入出力、改行検出、バッファ、ソース範囲、�
 | Linux | GCC、Clang |
 
 ### Common Commands
+単一構成・複数構成（Visual Studio）のどちらのジェネレータでも同じ 3 行で構成・ビルド・テストする。
 ```bash
-# Configure: cmake -S . -B build
-# Build:     cmake --build build
-# Test:      ctest --test-dir build --output-on-failure
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+ctest --test-dir build -C Release --output-on-failure
 ```
-（具体的なプリセットやオプション名は project-foundation の設計で確定する）
+- 製品だけをビルドする（Naos を取得しない）: 構成時に `-DBUILD_TESTING=OFF`
+- 1 部品のテストだけ実行する: `ctest ... -L <module>`（ビルド構成の自己検証は `-L toolchain`）
+- オフラインで構成する: `-DFETCHCONTENT_SOURCE_DIR_NAOS=<ローカルの Naos>`
 
 ## Key Technical Decisions
 
