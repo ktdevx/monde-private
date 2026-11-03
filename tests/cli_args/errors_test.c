@@ -5,6 +5,8 @@
 #include <string.h>
 
 #include "cli_args/args.h"
+#include "cli_args/args_help.h"
+#include "foundation/buf.h"
 #include "foundation/diag.h"
 #include "test_decl.h"
 
@@ -393,6 +395,35 @@ NAOS_TEST(each_status_is_distinct)
     }
 }
 
+/*
+ * monde-cli の典型的な使い方: 解析が使い方のエラーを返したら、結果に残った
+ * サブコマンドで使い方の案内を生成する。サブコマンドがなければ全体のヘルプを出す（7.3、11.1〜11.3）
+ */
+NAOS_TEST(usage_error_then_hint_for_selected_command)
+{
+    static const char *const usage_error[] = {"tool", "build", "--bad", "x"};
+    static const char *const no_command[] = {"tool"};
+    static const char global_help_head[] = "Usage: tool <command> [<options>] [<arguments>]\n";
+    errors_run_t run;
+    mnd_buf_t buf = MND_BUF_INIT;
+
+    run_parse(&run, 4, usage_error);
+    check_build_usage_error(&run, "tool build: unknown option '--bad'");
+    NAOS_REQUIRE_TRUE(mnd_args_format_usage_hint(&test_tool_program, run.result.command, &buf));
+    NAOS_CHECK_STR_EQ("Run 'tool build --help' for usage.\n", mnd_buf_cstr(&buf));
+    mnd_buf_free(&buf);
+    run_free(&run);
+
+    run_parse(&run, 1, no_command);
+    NAOS_CHECK_INT_EQ(MND_ARGS_NO_COMMAND, run.status);
+    NAOS_CHECK_NULL(run.result.command);
+    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run.diags));
+    NAOS_REQUIRE_TRUE(mnd_args_format_help(&test_tool_program, run.result.command, &buf));
+    NAOS_CHECK_INT_EQ(0, strncmp(mnd_buf_cstr(&buf), global_help_head, strlen(global_help_head)));
+    mnd_buf_free(&buf);
+    run_free(&run);
+}
+
 NAOS_SUITE(errors,
     NAOS_ADD_TEST(missing_required_option_is_reported),
     NAOS_ADD_TEST(missing_positional_is_checked_before_required_option),
@@ -409,5 +440,6 @@ NAOS_SUITE(errors,
     NAOS_ADD_TEST(help_consumed_before_error_does_not_win),
     NAOS_ADD_TEST(error_at_end_has_nothing_to_recover),
     NAOS_ADD_TEST(dash_h_consumed_as_value_is_not_help),
-    NAOS_ADD_TEST(each_status_is_distinct)
+    NAOS_ADD_TEST(each_status_is_distinct),
+    NAOS_ADD_TEST(usage_error_then_hint_for_selected_command)
 )

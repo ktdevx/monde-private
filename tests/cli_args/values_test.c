@@ -312,6 +312,7 @@ static void run_parse(values_run_t *run, int argc, const char *const *tokens)
         NAOS_CHECK_PTR_EQ(run->storage[i], run->argv[i]);
         NAOS_CHECK_STR_EQ(tokens[i], run->argv[i]);
     }
+    NAOS_CHECK_NULL(run->argv[argc]);
 }
 
 static void run_free(values_run_t *run)
@@ -494,6 +495,29 @@ NAOS_TEST(parse_explicit_values_are_explicit)
     run_free(&run);
 }
 
+/*
+ * 非 ASCII の UTF-8 を値・リスト値の項目・位置引数に渡し、同じバイト列が返ることを確かめる。
+ * 値と位置引数は引数の文字列そのものを指す（1.7、10.1、10.5）
+ */
+NAOS_TEST(parse_keeps_non_ascii_utf8_bytes)
+{
+    static const char *const tokens[] = {"tool", "build", "-o", "\xE5\x87\xBA\xE5\x8A\x9B",
+                                         "-k", "\xE6\x97\xA5,\xE6\x9C\xAC", "\xC3\xA9t\xC3\xA9"};
+    values_run_t run;
+
+    run_parse(&run, 7, tokens);
+    check_ok(&run);
+    NAOS_CHECK_PTR_EQ(run.argv[3], mnd_args_value(&run.result, "output"));
+    NAOS_CHECK_STR_EQ("\xE5\x87\xBA\xE5\x8A\x9B", mnd_args_value(&run.result, "output"));
+    NAOS_REQUIRE_UINT_EQ(2, mnd_args_list_count(&run.result, "keys"));
+    NAOS_CHECK_STR_EQ("\xE6\x97\xA5", mnd_args_list_at(&run.result, "keys", 0));
+    NAOS_CHECK_STR_EQ("\xE6\x9C\xAC", mnd_args_list_at(&run.result, "keys", 1));
+    NAOS_REQUIRE_UINT_EQ(1, mnd_args_positional_count(&run.result));
+    NAOS_CHECK_PTR_EQ(run.argv[6], mnd_args_positional_at(&run.result, 0));
+    NAOS_CHECK_STR_EQ("\xC3\xA9t\xC3\xA9", mnd_args_positional_at(&run.result, 0));
+    run_free(&run);
+}
+
 NAOS_SUITE(values,
     NAOS_ADD_TEST(init_is_empty_and_free_is_repeatable),
     NAOS_ADD_TEST(begin_without_options_succeeds),
@@ -519,5 +543,6 @@ NAOS_SUITE(values,
     NAOS_ADD_TEST(parse_repeated_flag_is_accepted),
     NAOS_ADD_TEST(parse_repeated_short_flag_is_accepted),
     NAOS_ADD_TEST(parse_defaults_are_not_explicit),
-    NAOS_ADD_TEST(parse_explicit_values_are_explicit)
+    NAOS_ADD_TEST(parse_explicit_values_are_explicit),
+    NAOS_ADD_TEST(parse_keeps_non_ascii_utf8_bytes)
 )
