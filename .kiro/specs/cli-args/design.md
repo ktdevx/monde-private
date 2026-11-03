@@ -121,7 +121,7 @@ src/cli_args/
 ├── args.h             # 公開: 宣言の型、状態、結果の型、解析と結果の取得の関数
 ├── args_help.h        # 公開: ヘルプ、バージョン、使い方の案内の文面を生成する関数
 ├── args_argv.h        # 公開: 引数列を UTF-8 で取得する関数（Windows では変換関数も公開）
-├── args_internal.h    # 内部: 宣言の検査と検索、結果を書き込む関数（モジュール内の .c だけが include する）
+├── args_internal.h    # 内部: 宣言の検査と検索、結果を書き込む関数（モジュール内の .c と tests/cli_args/ だけが include する）
 ├── args_decl.c        # DeclCheck: 宣言の妥当性の検査、サブコマンドとオプションの検索、値の表示名の既定
 ├── args_result.c      # ResultStore: 結果の初期化・解放、値の記録（フラグ、単一、リスト）、既定値の適用、取得関数
 ├── args_parse.c       # Parser: 引数列の走査、ヘルプの優先と回復走査、事後の検査、メッセージの生成
@@ -405,7 +405,7 @@ typedef enum mnd_args_status
 **Contracts**: Service [x]
 
 ```c
-/* args_internal.h（モジュール内部のみ） */
+/* args_internal.h（モジュール内部と tests/cli_args/ のみ） */
 /* 宣言が妥当なら true。誤りごとに診断を追加して false を返す */
 bool mnd_args_decl_check(const mnd_args_program_t *program, mnd_diag_list_t *diags);
 const mnd_args_command_t *mnd_args_find_command(const mnd_args_program_t *program,
