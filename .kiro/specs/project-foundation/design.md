@@ -29,7 +29,7 @@
 - Naos の取得とバージョン固定（v0.4.0）
 - GitHub Actions のビルド・テスト用ワークフロー（`.github/workflows/ci.yml`）
 - 命名とレイアウトの規約: モジュールのディレクトリ、ターゲット名、シンボル接頭辞 `mnd_`、include の基点 `src/`
-- `monde::foundation` の公開 API と型: `mnd_buf_t`、`mnd_diag` / `mnd_diag_list`、`mnd_utf8_validate`、`mnd_eol_info`、`mnd_span` / `mnd_slice` と行番号算出、`mnd_file_read` / `mnd_file_write`
+- `monde::foundation` の公開 API と型: `mnd_buf_t`、`mnd_diag_t` / `mnd_diag_list`、`mnd_utf8_validate`、`mnd_eol_info`、`mnd_span` / `mnd_slice` と行番号算出、`mnd_file_read` / `mnd_file_write`
 - 「LF と CRLF をそれぞれ 1 つの改行と数え、単独の CR は改行としない」という改行の数え方の規則
 
 ### Out of Boundary
@@ -49,7 +49,7 @@
 ### Revalidation Triggers
 - `mnd_span` の意味（オフセットの基準、終了を含まないこと、行番号の起点）の変更 → markdown-parser、yaml-front-matter、translation-units
 - 改行の数え方の規則の変更 → 行番号を出力する全部品、monde-cli の `#:` 出力
-- `mnd_diag` のフィールド変更、`mnd_diag_list` の所有権規則の変更 → 全部品と monde-cli
+- `mnd_diag_t` のフィールド変更、`mnd_diag_list` の所有権規則の変更 → 全部品と monde-cli
 - `mnd_file_read` の BOM 除去・UTF-8 検証の挙動変更 → monde-cli、translation-units
 - コンパイラフラグや `monde_add_*` 関数の引数の変更 → 全モジュール
 - Naos のバージョン更新 → 全モジュールのテスト
@@ -124,7 +124,7 @@ src/
 └── foundation/
     ├── CMakeLists.txt             # monde_add_module(foundation SOURCES ...)
     ├── buf.h / buf.c              # 可変長バイトバッファ mnd_buf_t
-    ├── diag.h / diag.c            # 診断 mnd_diag と蓄積リスト mnd_diag_list
+    ├── diag.h / diag.c            # 診断 mnd_diag_t と蓄積リスト mnd_diag_list
     ├── utf8.h / utf8.c            # UTF-8 の妥当性検査
     ├── eol.h / eol.c              # 改行コードの検出
     ├── source.h / source.c        # mnd_span、mnd_slice、範囲検証、行番号、範囲の内容
@@ -339,7 +339,7 @@ sequenceDiagram
 | 8.3 | LF・CRLF を 1 改行、単独 CR は数えない | Source | `mnd_source_line_of` | — |
 | 8.4 | 不正な範囲を返す | Source | `mnd_span_is_valid`、`false` 戻り値 | — |
 | 8.5 | 範囲の内容を変更せずに返す | Source | `mnd_span_text` | — |
-| 9.1 | 重大度・英語メッセージ・パス・行番号 | Diag | `mnd_diag` | — |
+| 9.1 | 重大度・英語メッセージ・パス・行番号 | Diag | `mnd_diag_t` | — |
 | 9.2 | 発生順に蓄積し全取り出し | Diag | `mnd_diag_list`、`mnd_diag_list_at` | — |
 | 9.3 | エラーの有無を返す | Diag | `mnd_diag_list_has_error` | — |
 | 9.4 | 記録時に stderr 出力・終了しない | Diag | `mnd_diag_add` の事後条件 | — |
@@ -427,15 +427,16 @@ typedef enum mnd_severity
     MND_SEVERITY_WARNING
 } mnd_severity_t;
 
-typedef struct mnd_diag {
+typedef struct mnd_diag
+{
     mnd_severity_t severity;
     char *message;  /* 英語のメッセージ（UTF-8、NUL 終端） */
     char *path;     /* ファイルパス（UTF-8）。不明なら NULL */
     size_t line;    /* 1 起点の行番号。不明なら 0 */
-} mnd_diag;
+} mnd_diag_t;
 
 typedef struct mnd_diag_list {
-    mnd_diag *items;
+    mnd_diag_t *items;
     size_t count;
     size_t cap;
     bool dropped;   /* メモリ不足で記録できなかった診断がある */
@@ -452,7 +453,7 @@ void mnd_diag_add(mnd_diag_list *list, mnd_severity_t severity,
     MND_PRINTF_LIKE(5, 6);
 
 size_t mnd_diag_list_count(const mnd_diag_list *list);
-const mnd_diag *mnd_diag_list_at(const mnd_diag_list *list, size_t index); /* index < count */
+const mnd_diag_t *mnd_diag_list_at(const mnd_diag_list *list, size_t index); /* index < count */
 /* エラーの診断が 1 つ以上ある、または dropped なら true */
 bool mnd_diag_list_has_error(const mnd_diag_list *list);
 ```

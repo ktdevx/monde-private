@@ -19,7 +19,7 @@ NAOS_TEST(list_init_macro_is_empty)
 
 NAOS_TEST(list_init_resets_to_empty)
 {
-    mnd_diag dummy;
+    mnd_diag_t dummy;
     mnd_diag_list list;
 
     list.items = &dummy;
@@ -37,7 +37,7 @@ NAOS_TEST(list_init_resets_to_empty)
 NAOS_TEST(add_stores_all_fields)
 {
     mnd_diag_list list = MND_DIAG_LIST_INIT;
-    const mnd_diag *d;
+    const mnd_diag_t *d;
 
     mnd_diag_add(&list, MND_SEVERITY_ERROR, "docs/guide.md", 12,
                  "diag-test unexpected '%s' at byte offset %d", "x", 7);
@@ -61,7 +61,7 @@ NAOS_TEST(add_copies_message_and_path)
     mnd_diag_list list = MND_DIAG_LIST_INIT;
     char path[] = "a/b.md";
     char arg[] = "word";
-    const mnd_diag *d;
+    const mnd_diag_t *d;
 
     mnd_diag_add(&list, MND_SEVERITY_WARNING, path, 1, "diag-test %s", arg);
     path[0] = 'z';
@@ -82,7 +82,7 @@ NAOS_TEST(add_copies_message_and_path)
 NAOS_TEST(add_without_path_and_line)
 {
     mnd_diag_list list = MND_DIAG_LIST_INIT;
-    const mnd_diag *d;
+    const mnd_diag_t *d;
 
     mnd_diag_add(&list, MND_SEVERITY_WARNING, NULL, 0, "diag-test no location");
 
@@ -101,7 +101,7 @@ NAOS_TEST(add_without_path_and_line)
 NAOS_TEST(add_keeps_insertion_order)
 {
     mnd_diag_list list = MND_DIAG_LIST_INIT;
-    const mnd_diag *d;
+    const mnd_diag_t *d;
 
     mnd_diag_add(&list, MND_SEVERITY_WARNING, "f.md", 10, "diag-test item %d", 1);
     mnd_diag_add(&list, MND_SEVERITY_ERROR, "g.md", 20, "diag-test item %d", 2);
@@ -141,7 +141,7 @@ NAOS_TEST(add_keeps_insertion_order)
 NAOS_TEST(add_many_grows_list)
 {
     mnd_diag_list list = MND_DIAG_LIST_INIT;
-    const mnd_diag *d;
+    const mnd_diag_t *d;
     unsigned i;
 
     for (i = 0; i < 100u; i++)
@@ -168,7 +168,7 @@ NAOS_TEST(add_long_message_is_not_truncated)
 {
     enum { LONG_LEN = 10000 };
     mnd_diag_list list = MND_DIAG_LIST_INIT;
-    const mnd_diag *d;
+    const mnd_diag_t *d;
     char *arg;
 
     arg = (char *)malloc(LONG_LEN + 1);
@@ -207,7 +207,7 @@ NAOS_TEST(add_long_message_is_not_truncated)
 NAOS_TEST(add_formats_percent_literal)
 {
     mnd_diag_list list = MND_DIAG_LIST_INIT;
-    const mnd_diag *d;
+    const mnd_diag_t *d;
 
     mnd_diag_add(&list, MND_SEVERITY_WARNING, NULL, 0, "diag-test 100%% %s", "%d");
 

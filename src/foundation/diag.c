@@ -67,7 +67,7 @@ static char *mnd_diag_vformat(const char *format, va_list args)
 static bool mnd_diag_list_grow(mnd_diag_list *list)
 {
     size_t new_cap;
-    mnd_diag *new_items;
+    mnd_diag_t *new_items;
 
     if (list->count < list->cap)
     {
@@ -80,7 +80,7 @@ static bool mnd_diag_list_grow(mnd_diag_list *list)
     }
     else
     {
-        if (list->cap > (SIZE_MAX / 2 / sizeof(mnd_diag)))
+        if (list->cap > (SIZE_MAX / 2 / sizeof(mnd_diag_t)))
         {
             return false;
         }
@@ -88,7 +88,7 @@ static bool mnd_diag_list_grow(mnd_diag_list *list)
         new_cap = list->cap * 2;
     }
 
-    new_items = (mnd_diag *)realloc(list->items, new_cap * sizeof(mnd_diag));
+    new_items = (mnd_diag_t *)realloc(list->items, new_cap * sizeof(mnd_diag_t));
     if (new_items == NULL)
     {
         return false;
@@ -106,7 +106,7 @@ void mnd_diag_add(mnd_diag_list *list, mnd_severity_t severity,
     va_list args;
     char *message;
     char *path_copy = NULL;
-    mnd_diag *d;
+    mnd_diag_t *d;
 
     va_start(args, format);
     message = mnd_diag_vformat(format, args);
@@ -163,7 +163,7 @@ size_t mnd_diag_list_count(const mnd_diag_list *list)
     return list->count;
 }
 
-const mnd_diag *mnd_diag_list_at(const mnd_diag_list *list, size_t index)
+const mnd_diag_t *mnd_diag_list_at(const mnd_diag_list *list, size_t index)
 {
     if (index >= list->count)
     {

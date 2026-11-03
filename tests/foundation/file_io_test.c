@@ -226,7 +226,7 @@ NAOS_TEST(read_invalid_utf8_reports_path_offset_and_line)
     static const char bytes[] = "ab\r\ncd\xFF" "ef\n";
     mnd_buf_t content = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
-    const mnd_diag *d;
+    const mnd_diag_t *d;
     bool had_bom = true;
 
     NAOS_REQUIRE_TRUE(mnd_buf_append_str(&content, "stale"));
@@ -255,7 +255,7 @@ NAOS_TEST(read_invalid_utf8_offset_is_after_bom)
     static const char bytes[] = "\xEF\xBB\xBF" "x\n\x80";
     mnd_buf_t content = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
-    const mnd_diag *d;
+    const mnd_diag_t *d;
     bool had_bom = true;
 
     NAOS_REQUIRE_TRUE(WRITE_LITERAL(path, bytes));
@@ -277,7 +277,7 @@ NAOS_TEST(read_missing_file_reports_target_path)
     static const char path[] = WORK_PATH("read_does_not_exist.txt");
     mnd_buf_t content = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
-    const mnd_diag *d;
+    const mnd_diag_t *d;
     bool had_bom = true;
 
     remove(path);
@@ -307,7 +307,7 @@ NAOS_TEST(read_directory_fails_with_one_diagnostic)
     static const char path[] = MONDE_TEST_WORK_DIR;
     mnd_buf_t content = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
-    const mnd_diag *d;
+    const mnd_diag_t *d;
     bool had_bom = true;
 
     NAOS_CHECK_FALSE(mnd_file_read(path, &content, &had_bom, &diags));
@@ -482,7 +482,7 @@ NAOS_TEST(write_into_missing_directory_reports_target_path)
 {
     static const char path[] = WORK_PATH("write_no_such_dir/out.txt");
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
-    const mnd_diag *d;
+    const mnd_diag_t *d;
 
     NAOS_CHECK_FALSE(mnd_file_write(path, "abc", 3, false, &diags));
     NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&diags));
@@ -527,7 +527,7 @@ NAOS_TEST(invalid_utf8_path_fails_with_one_diagnostic)
     static const char path[] = WORK_PATH("\xFF" "bad.txt");
     mnd_buf_t content = MND_BUF_INIT;
     mnd_diag_list diags = MND_DIAG_LIST_INIT;
-    const mnd_diag *d;
+    const mnd_diag_t *d;
     bool had_bom = true;
 
     /* POSIX ではこのファイルが存在しないので、どの環境でも読み込みは失敗する */

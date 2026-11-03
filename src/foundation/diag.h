@@ -25,11 +25,11 @@ typedef struct mnd_diag
     char *message;  /* 英語のメッセージ（UTF-8、NUL 終端） */
     char *path;     /* ファイルパス（UTF-8）。不明なら NULL */
     size_t line;    /* 1 起点の行番号。不明なら 0 */
-} mnd_diag;
+} mnd_diag_t;
 
 typedef struct mnd_diag_list
 {
-    mnd_diag *items;
+    mnd_diag_t *items;
     size_t count;
     size_t cap;
     bool dropped;   /* メモリ不足で記録できなかった診断がある */
@@ -46,7 +46,7 @@ void mnd_diag_add(mnd_diag_list *list, mnd_severity_t severity,
     MND_PRINTF_LIKE(5, 6);
 
 size_t mnd_diag_list_count(const mnd_diag_list *list);
-const mnd_diag *mnd_diag_list_at(const mnd_diag_list *list, size_t index); /* index < count */
+const mnd_diag_t *mnd_diag_list_at(const mnd_diag_list *list, size_t index); /* index < count */
 /* エラーの診断が 1 つ以上ある、または dropped なら true */
 bool mnd_diag_list_has_error(const mnd_diag_list *list);
 
