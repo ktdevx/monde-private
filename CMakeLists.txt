@@ -7,6 +7,7 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 include(MondeCompilerOptions)
+include(MondeTargets)
 
 # 単一構成ジェネレータで構成の種類が未指定なら Release とする（複数構成ジェネレータでは --config で選ぶ）
 get_property(MONDE_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
@@ -19,5 +20,6 @@ include(CTest)
 add_subdirectory(src)
 
 if(BUILD_TESTING)
+  include(MondeNaos)
   add_subdirectory(tests)
 endif()

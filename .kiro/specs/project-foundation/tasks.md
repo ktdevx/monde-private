@@ -11,7 +11,7 @@
   - 完了時: `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF` が警告・エラーなく完了し、`cmake_minimum_required` の値を一時的に引き上げると構成がバージョンを示すエラーで止まることを確認できる
   - _Requirements: 1.1, 1.2, 1.4, 1.5, 1.6, 1.7_
 
-- [ ] 1.2 テストフレームワーク Naos の固定版での取り込みと、ターゲット作成関数を用意する
+- [x] 1.2 テストフレームワーク Naos の固定版での取り込みと、ターゲット作成関数を用意する
   - Naos を v0.4.0 のタグで取得し（1.1 の分岐から読み込む）、対応するコミットをコメントに記録する。バージョン更新が 1 か所で済むよう専用の CMake ファイルにまとめ、オフライン時はローカルのソースを指定できるようにする
   - モジュールの静的ライブラリと別名を作り、include の基点 `src/` と依存モジュールを公開する関数を用意する
   - モジュールのテスト実行ファイルを作り、Naos 経由で CTest に `<module>_tests.<suite>.<test>` の名前とモジュール名のラベルで登録し、追加の定義・プロパティを受け付ける関数を用意する
@@ -136,3 +136,4 @@
 
 ## Implementation Notes
 - 1.1: 複数構成ジェネレータ（Visual Studio）で `-DBUILD_TESTING=OFF` のとき `CMAKE_BUILD_TYPE` が未使用警告になるため、トップレベルで単一構成ジェネレータかつ未指定時のみ Release を既定にするブロックを置いた。ローカルは MSVC のみで、GCC/Clang/MinGW の分岐は CI で検証する。
+- 1.2: MSVC 環境の Naos は失敗位置を `file(line): error:` 形式で出力する（GCC/Clang は `file:line: error:`）。5.2 の確認ではこの差を許容する。Naos の API（naos_add_executable の SOURCES/LIBRARIES/PREFIX/LABELS/PROPERTIES、Naos::naos）は設計の想定どおり。
