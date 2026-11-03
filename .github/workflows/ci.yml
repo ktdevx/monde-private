@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # 1 環境の失敗で他の環境を中断しない
+      fail-fast: false
+      matrix:
+        include:
+          - name: msvc
+            os: windows-latest
+          - name: mingw-w64
+            os: windows-latest
+            msys2: true
+            configure-args: -G Ninja
+          - name: apple-clang
+            os: macos-latest
+          - name: gcc
+            os: ubuntu-latest
+            cc: gcc
+          - name: clang
+            os: ubuntu-latest
+            cc: clang
+    defaults:
+      run:
+        shell: ${{ matrix.msys2 && 'msys2 {0}' || 'bash' }}
+    env:
+      # 空のときは CMake が無視し、既定のコンパイラを使う
+      CC: ${{ matrix.cc }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # git は FetchContent による Naos の取得に使う
+      - if: matrix.msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.configure-args }}
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
