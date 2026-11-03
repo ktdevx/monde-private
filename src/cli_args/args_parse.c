@@ -8,6 +8,32 @@
 #include <stddef.h>
 #include <string.h>
 
+/* 保留した使い方の誤りの種類（「メッセージ」の節の表の、サブコマンドの選択後の場面） */
+typedef enum mnd_args_error_kind
+{
+    MND_ARGS_ERR_UNKNOWN_OPTION,     /* unknown option '<arg>' */
+    MND_ARGS_ERR_REQUIRES_VALUE,     /* option '<arg>' requires a value */
+    MND_ARGS_ERR_TAKES_NO_VALUE,     /* option '<arg>' does not take a value */
+    MND_ARGS_ERR_EMPTY_ITEM,         /* option '<arg>' has an empty item in '<value>' */
+    MND_ARGS_ERR_MISSING_ARGUMENT,   /* missing argument <NAME> */
+    MND_ARGS_ERR_UNEXPECTED,         /* unexpected argument '<token>' */
+    MND_ARGS_ERR_MISSING_REQUIRED    /* missing required option '--<name>' */
+} mnd_args_error_kind_t;
+
+/*
+ * 保留した使い方の誤り。回復走査でヘルプの要求が見つかれば捨て、見つからなければ診断にする（7.4、8.2）。
+ * arg は arg_len バイトの名前で、短いオプションの "-c" のように引数列の中に連続して現れない形は
+ * arg_buf にコピーして指す
+ */
+typedef struct mnd_args_pending
+{
+    mnd_args_error_kind_t kind;
+    const char *arg;
+    size_t arg_len;
+    const char *value;  /* MND_ARGS_ERR_EMPTY_ITEM の値。ほかは NULL */
+    char arg_buf[3];
+} mnd_args_pending_t;
+
 /* 走査の状態。サブコマンドを選択した後のトークンを左から順に見る */
 typedef struct mnd_args_scan
 {
@@ -16,8 +42,10 @@ typedef struct mnd_args_scan
     int argc;
     char *const *argv;
     int next;                           /* 次に見るトークンの添字 */
+    bool terminated;                    /* "--" を見た */
     mnd_args_result_t *result;
     mnd_diag_list_t *diags;
+    mnd_args_pending_t pending;         /* 走査が MND_ARGS_USAGE_ERROR を返したときの最初の誤り */
 } mnd_args_scan_t;
 
 static mnd_args_status_t finish(mnd_args_result_t *result, mnd_args_status_t status)
@@ -49,6 +77,79 @@ static int name_precision(size_t len)
 }
 
 /*
+ * 最初の誤りを保留する。診断はまだ追加しない。
+ * 戻り値は常に MND_ARGS_USAGE_ERROR で、走査を終えるために呼び出し元へそのまま返す
+ */
+static mnd_args_status_t scan_error(mnd_args_scan_t *scan, mnd_args_error_kind_t kind,
+                                    const char *arg, size_t arg_len, const char *value)
+{
+    mnd_args_pending_t *pending = &scan->pending;
+
+    pending->kind = kind;
+    pending->value = value;
+    pending->arg_len = arg_len;
+    if (arg_len < sizeof pending->arg_buf)
+    {
+        memcpy(pending->arg_buf, arg, arg_len);
+        pending->arg_buf[arg_len] = '\0';
+        pending->arg = pending->arg_buf;
+    }
+    else
+    {
+        pending->arg = arg;
+    }
+
+    return MND_ARGS_USAGE_ERROR;
+}
+
+/* 保留した誤りを、選択されたサブコマンドの接頭辞を付けた診断として 1 件追加する（7.2） */
+static mnd_args_status_t report_pending(mnd_args_scan_t *scan)
+{
+    const mnd_args_pending_t *pending = &scan->pending;
+    const char *program = scan->program->name;
+    const char *command = scan->command->name;
+    int len = name_precision(pending->arg_len);
+
+    switch (pending->kind)
+    {
+    case MND_ARGS_ERR_UNKNOWN_OPTION:
+        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0, "%s %s: unknown option '%.*s'",
+                     program, command, len, pending->arg);
+        break;
+    case MND_ARGS_ERR_REQUIRES_VALUE:
+        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
+                     "%s %s: option '%.*s' requires a value", program, command, len,
+                     pending->arg);
+        break;
+    case MND_ARGS_ERR_TAKES_NO_VALUE:
+        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
+                     "%s %s: option '%.*s' does not take a value", program, command, len,
+                     pending->arg);
+        break;
+    case MND_ARGS_ERR_EMPTY_ITEM:
+        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
+                     "%s %s: option '%.*s' has an empty item in '%s'", program, command, len,
+                     pending->arg, pending->value);
+        break;
+    case MND_ARGS_ERR_MISSING_ARGUMENT:
+        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0, "%s %s: missing argument <%.*s>",
+                     program, command, len, pending->arg);
+        break;
+    case MND_ARGS_ERR_UNEXPECTED:
+        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
+                     "%s %s: unexpected argument '%.*s'", program, command, len, pending->arg);
+        break;
+    case MND_ARGS_ERR_MISSING_REQUIRED:
+        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
+                     "%s %s: missing required option '--%.*s'", program, command, len,
+                     pending->arg);
+        break;
+    }
+
+    return finish(scan->result, MND_ARGS_USAGE_ERROR);
+}
+
+/*
  * 1 つのオプションの値を記録する（5.1〜5.4）。arg と arg_len は利用者が書いたオプションの形
  * （"--name" または "-c"）で、空の項目のメッセージに使う
  */
@@ -72,11 +173,7 @@ static mnd_args_status_t scan_record_value(mnd_args_scan_t *scan, size_t index, 
 
     if (status != MND_ARGS_OK)
     {
-        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
-                     "%s %s: option '%.*s' has an empty item in '%s'", scan->program->name,
-                     scan->command->name, name_precision(arg_len), arg, value);
-
-        return finish(scan->result, MND_ARGS_USAGE_ERROR);
+        return scan_error(scan, MND_ARGS_ERR_EMPTY_ITEM, arg, arg_len, value);
     }
 
     return MND_ARGS_OK;
@@ -98,11 +195,7 @@ static mnd_args_status_t scan_long(mnd_args_scan_t *scan, const char *token)
     {
         if (equals != NULL)
         {
-            mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
-                         "%s %s: option '--help' does not take a value", scan->program->name,
-                         scan->command->name);
-
-            return finish(scan->result, MND_ARGS_USAGE_ERROR);
+            return scan_error(scan, MND_ARGS_ERR_TAKES_NO_VALUE, token, arg_len, NULL);
         }
 
         return finish(scan->result, MND_ARGS_HELP);
@@ -111,21 +204,14 @@ static mnd_args_status_t scan_long(mnd_args_scan_t *scan, const char *token)
     index = mnd_args_find_long(scan->command, name, name_len);
     if (index == (size_t)-1)
     {
-        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0, "%s %s: unknown option '%.*s'",
-                     scan->program->name, scan->command->name, name_precision(arg_len), token);
-
-        return finish(scan->result, MND_ARGS_USAGE_ERROR);
+        return scan_error(scan, MND_ARGS_ERR_UNKNOWN_OPTION, token, arg_len, NULL);
     }
 
     if (scan->command->options[index].kind == MND_ARGS_FLAG)
     {
         if (equals != NULL)
         {
-            mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
-                         "%s %s: option '%.*s' does not take a value", scan->program->name,
-                         scan->command->name, name_precision(arg_len), token);
-
-            return finish(scan->result, MND_ARGS_USAGE_ERROR);
+            return scan_error(scan, MND_ARGS_ERR_TAKES_NO_VALUE, token, arg_len, NULL);
         }
 
         mnd_args_result_set_flag(scan->result, index);
@@ -141,11 +227,7 @@ static mnd_args_status_t scan_long(mnd_args_scan_t *scan, const char *token)
     /* 次のトークンは "-" で始まる場合も含めて値とする（3.2） */
     if (scan->next >= scan->argc)
     {
-        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
-                     "%s %s: option '%s' requires a value", scan->program->name,
-                     scan->command->name, token);
-
-        return finish(scan->result, MND_ARGS_USAGE_ERROR);
+        return scan_error(scan, MND_ARGS_ERR_REQUIRES_VALUE, token, arg_len, NULL);
     }
 
     scan->next++;
@@ -175,11 +257,7 @@ static mnd_args_status_t scan_short(mnd_args_scan_t *scan, const char *token)
         /* ASCII 以外のバイトは文字の境界が分からないので、トークン全体で示す */
         if (c > 0x7F)
         {
-            mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
-                         "%s %s: unknown option '%s'", scan->program->name,
-                         scan->command->name, token);
-
-            return finish(scan->result, MND_ARGS_USAGE_ERROR);
+            return scan_error(scan, MND_ARGS_ERR_UNKNOWN_OPTION, token, strlen(token), NULL);
         }
 
         arg[0] = '-';
@@ -189,11 +267,7 @@ static mnd_args_status_t scan_short(mnd_args_scan_t *scan, const char *token)
         index = mnd_args_find_short(scan->command, (char)c);
         if (index == (size_t)-1)
         {
-            mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
-                         "%s %s: unknown option '%s'", scan->program->name,
-                         scan->command->name, arg);
-
-            return finish(scan->result, MND_ARGS_USAGE_ERROR);
+            return scan_error(scan, MND_ARGS_ERR_UNKNOWN_OPTION, arg, 2, NULL);
         }
 
         if (scan->command->options[index].kind == MND_ARGS_FLAG)
@@ -210,11 +284,7 @@ static mnd_args_status_t scan_short(mnd_args_scan_t *scan, const char *token)
 
         if (scan->next >= scan->argc)
         {
-            mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
-                         "%s %s: option '%s' requires a value", scan->program->name,
-                         scan->command->name, arg);
-
-            return finish(scan->result, MND_ARGS_USAGE_ERROR);
+            return scan_error(scan, MND_ARGS_ERR_REQUIRES_VALUE, arg, 2, NULL);
         }
 
         scan->next++;
@@ -225,12 +295,30 @@ static mnd_args_status_t scan_short(mnd_args_scan_t *scan, const char *token)
     return MND_ARGS_OK;
 }
 
+/* 位置引数を記録する。上限に達した後のトークンは余分な位置引数とする（6.1、6.5） */
+static mnd_args_status_t scan_positional(mnd_args_scan_t *scan, const char *token)
+{
+    if (scan->result->positional_count >= scan->command->max_positionals)
+    {
+        return scan_error(scan, MND_ARGS_ERR_UNEXPECTED, token, strlen(token), NULL);
+    }
+
+    if (!mnd_args_result_add_positional(scan->result, token))
+    {
+        return out_of_memory(scan->result, scan->diags);
+    }
+
+    return MND_ARGS_OK;
+}
+
 /*
- * サブコマンドの後のトークンを走査する。
- * "--" で始まるトークンは長いオプション、"-" に 1 文字以上が続くトークンは短いオプションとして処理する。
- * "-" 単独と "-" で始まらないトークンは位置引数として記録する（4.7、6.1）
+ * サブコマンドの後のトークンを末尾まで走査する。
+ * "--" は終端とし、以降のトークンはすべて位置引数とする（6.3）。
+ * "--" で始まるほかのトークンは長いオプション、"-" に 1 文字以上が続くトークンは短いオプションとして処理する。
+ * "-" 単独と "-" で始まらないトークンは位置引数として記録する（4.7、6.1）。
+ * 戻り値が MND_ARGS_OK なら末尾に到達した。MND_ARGS_USAGE_ERROR なら最初の誤りを保留して止まった
  */
-static mnd_args_status_t scan_command(mnd_args_scan_t *scan)
+static mnd_args_status_t scan_tokens(mnd_args_scan_t *scan)
 {
     mnd_args_status_t status;
 
@@ -240,32 +328,127 @@ static mnd_args_status_t scan_command(mnd_args_scan_t *scan)
 
         scan->next++;
 
-        if ((token[0] == '-') && (token[1] == '-'))
+        if (scan->terminated)
+        {
+            status = scan_positional(scan, token);
+        }
+        else if ((token[0] == '-') && (token[1] == '-') && (token[2] == '\0'))
+        {
+            scan->terminated = true;
+            status = MND_ARGS_OK;
+        }
+        else if ((token[0] == '-') && (token[1] == '-'))
         {
             status = scan_long(scan, token);
-            if (status != MND_ARGS_OK)
-            {
-                return status;
-            }
-
-            continue;
         }
-
-        if ((token[0] == '-') && (token[1] != '\0'))
+        else if ((token[0] == '-') && (token[1] != '\0'))
         {
             status = scan_short(scan, token);
-            if (status != MND_ARGS_OK)
-            {
-                return status;
-            }
-
-            continue;
         }
-
-        if (!mnd_args_result_add_positional(scan->result, token))
+        else
         {
-            return out_of_memory(scan->result, scan->diags);
+            status = scan_positional(scan, token);
         }
+
+        if (status != MND_ARGS_OK)
+        {
+            return status;
+        }
+    }
+
+    return MND_ARGS_OK;
+}
+
+/*
+ * 回復走査（7.4、8.2）。最初の誤りの原因となったトークン（消費した値を含む）の次から、
+ * "--" より前に残っているトークンのうち、完全に "--help" または "-h" と一致するものを探す
+ */
+static bool recover_help(const mnd_args_scan_t *scan)
+{
+    int i;
+
+    if (scan->terminated)
+    {
+        return false;
+    }
+
+    for (i = scan->next; i < scan->argc; i++)
+    {
+        const char *token = scan->argv[i];
+
+        if (strcmp(token, "--") == 0)
+        {
+            return false;
+        }
+
+        if ((strcmp(token, "--help") == 0) || (strcmp(token, "-h") == 0))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/*
+ * 誤りなしで走査を終えた後の検査（6.4、7.1）。位置引数の不足、必須のオプションの欠落の順に、
+ * 最初の 1 つを保留して MND_ARGS_USAGE_ERROR を返す
+ */
+static mnd_args_status_t post_check(mnd_args_scan_t *scan)
+{
+    const mnd_args_command_t *command = scan->command;
+    size_t count = scan->result->positional_count;
+    size_t i;
+
+    if (count < command->min_positionals)
+    {
+        const char *name = mnd_args_positional_name(command, count);
+
+        return scan_error(scan, MND_ARGS_ERR_MISSING_ARGUMENT, name, strlen(name), NULL);
+    }
+
+    for (i = 0; i < command->option_count; i++)
+    {
+        const mnd_args_option_t *option = &command->options[i];
+
+        if (option->required && !scan->result->values[i].explicit_set)
+        {
+            return scan_error(scan, MND_ARGS_ERR_MISSING_REQUIRED, option->long_name,
+                              strlen(option->long_name), NULL);
+        }
+    }
+
+    return MND_ARGS_OK;
+}
+
+/*
+ * サブコマンドの後のトークンを走査し、状態を決める（「走査の後の検査と優先順位」の節）。
+ * 使い方の誤りの診断は、ヘルプの要求がないと決まってから 1 件だけ追加する
+ */
+static mnd_args_status_t scan_command(mnd_args_scan_t *scan)
+{
+    mnd_args_status_t status;
+
+    status = scan_tokens(scan);
+    if (status == MND_ARGS_USAGE_ERROR)
+    {
+        if (recover_help(scan))
+        {
+            return finish(scan->result, MND_ARGS_HELP);
+        }
+
+        return report_pending(scan);
+    }
+
+    if (status != MND_ARGS_OK)
+    {
+        return status;
+    }
+
+    status = post_check(scan);
+    if (status != MND_ARGS_OK)
+    {
+        return report_pending(scan);
     }
 
     status = mnd_args_result_apply_defaults(scan->result);
@@ -295,8 +478,10 @@ static mnd_args_status_t select_command(const mnd_args_program_t *program,
     scan.argc = argc;
     scan.argv = argv;
     scan.next = 2;
+    scan.terminated = false;
     scan.result = result;
     scan.diags = diags;
+    memset(&scan.pending, 0, sizeof scan.pending);
 
     return scan_command(&scan);
 }
