@@ -21,7 +21,7 @@
   - _Requirements: 6.2, 10.3_
 
 - [ ] 2. データモデルと共通の変換
-- [ ] 2.1 (P) カタログとエントリの型の操作を実装し、単体テストを書く
+- [x] 2.1 (P) カタログとエントリの型の操作を実装し、単体テストを書く
   - エントリとカタログの初期化・解放、文字列・参照・エントリの配列への追加（末尾と位置の指定）を実装する。容量の計算は確保の前にオーバーフローを検査する
   - 状態の判定（fuzzy フラグ、すべての msgstr が空でないか）、フラグの有無・追加（重複させない）・削除（ほかの順序を保つ）を実装する
   - msgctxt の有無を区別し、廃止エントリを除いて msgctxt と msgid で検索する機能と、ヘッダの識別（廃止エントリでなく、msgctxt がなく、msgid が空の最初のエントリ）を実装する
@@ -142,3 +142,4 @@
 ## Implementation Notes
 - 1.1: Ucd の表の形式（`mnd_po_ucd_range_t` と `mnd_po_ucd_lb_ranges` / `mnd_po_ucd_width_ranges` とその件数）は `po_internal.h` で定義した内部の形式で、1.2 で変えてよい。SA → CM の解決に必要な一般カテゴリ Mn・Mc の判定は、設計の宣言にないため 1.2 で内部の関数として追加する。
 - 1.2: UCD 15.0.0 で U+FFFC が CB のため、`MND_PO_LB_CB` を XX の後ろに追加した。2.4 で CB を解決・処理する（UAX #14 LB20、libunistring 1.1 の扱いに合わせる）。Mn・Mc の判定は `mnd_po_ucd_is_mark`。生成コマンド: `python3 -I tools/gen_po_ucd.py <ucd>/LineBreak.txt <ucd>/EastAsianWidth.txt <ucd>/extracted/DerivedGeneralCategory.txt -o src/po/po_ucd_tables.c`。文字幅は libunistring 1.1 の `uc_width` と 386 個のコードポイント（Unicode 15.0 の新しい絵文字、CJK のブロック内の未割り当て、U+D7B0〜U+D7FB、U+00AD など）で異なる。正解ファイルと合わない場合は 6.1 で扱う。
+- 2.1: `mnd_po_find_duplicate(catalog, from, &first, &second)` は、`from` 以上で先に同じキーの有効なエントリがある最小の `second` と、その最初の定義 `first` を返す。すべての組は `from = second + 1` で繰り返して列挙する。`mnd_po_flag_remove` は一致するフラグをすべて削除する。
