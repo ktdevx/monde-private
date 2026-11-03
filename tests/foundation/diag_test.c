@@ -171,7 +171,8 @@ NAOS_TEST(add_long_message_is_not_truncated)
     char *arg;
 
     arg = (char *)malloc(LONG_LEN + 1);
-    NAOS_REQUIRE_NOT_NULL(arg);
+    /* 未初期化の領域を const void * で渡すと GCC が -Wmaybe-uninitialized を出すため、比較で確かめる */
+    NAOS_REQUIRE_TRUE(arg != NULL);
     memset(arg, 'q', LONG_LEN);
     arg[LONG_LEN] = '\0';
 
