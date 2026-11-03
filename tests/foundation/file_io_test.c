@@ -16,6 +16,14 @@
 #define WRITE_LITERAL(path, literal) \
     write_bytes((path), (literal), sizeof(literal) - 1)
 
+/* tests/foundation/CMakeLists.txt が作業ディレクトリの下に作る「日本語ディレクトリ」（UTF-8） */
+#define NON_ASCII_DIR_NAME \
+    "\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E" \
+    "\xE3\x83\x87\xE3\x82\xA3\xE3\x83\xAC\xE3\x82\xAF\xE3\x83\x88\xE3\x83\xAA"
+
+/* 非 ASCII のファイル名「翻訳.md」（UTF-8） */
+#define NON_ASCII_FILE_NAME "\xE7\xBF\xBB\xE8\xA8\xB3" ".md"
+
 /* 読み込みテストの入力ファイルをバイナリモードで作る（テストコードのみ fopen を直接使う） */
 static bool write_bytes(const char *path, const char *bytes, size_t len)
 {
@@ -479,6 +487,64 @@ NAOS_TEST(write_into_missing_directory_reports_target_path)
     mnd_diag_list_free(&diags);
 }
 
+NAOS_TEST(non_ascii_directory_and_file_name_round_trip)
+{
+    static const char path[] = WORK_PATH(NON_ASCII_DIR_NAME "/" NON_ASCII_FILE_NAME);
+    /* 内容にも多バイト文字（U+3042）と CRLF を含める */
+    static const char bytes[] = "# \xE3\x81\x82\r\nbody\n";
+    mnd_buf content = MND_BUF_INIT;
+    mnd_diag_list diags = MND_DIAG_LIST_INIT;
+    bool had_bom = true;
+
+    NAOS_CHECK_TRUE(mnd_file_write(path, bytes, sizeof(bytes) - 1, false, &diags));
+    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
+    NAOS_CHECK_TRUE(mnd_file_read(path, &content, &had_bom, &diags));
+    NAOS_CHECK_FALSE(had_bom);
+    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
+    NAOS_REQUIRE_UINT_EQ(sizeof(bytes) - 1, content.len);
+    NAOS_CHECK_MEM_EQ(bytes, sizeof(bytes) - 1, content.data, content.len);
+
+    mnd_buf_free(&content);
+    mnd_diag_list_free(&diags);
+}
+
+NAOS_TEST(invalid_utf8_path_fails_with_one_diagnostic)
+{
+    /* FF は UTF-8 に現れないバイト。直後の 'b' が 16 進数として続かないようにリテラルを分ける */
+    static const char path[] = WORK_PATH("\xFF" "bad.txt");
+    mnd_buf content = MND_BUF_INIT;
+    mnd_diag_list diags = MND_DIAG_LIST_INIT;
+    const mnd_diag *d;
+    bool had_bom = true;
+
+    /* POSIX ではこのファイルが存在しないので、どの環境でも読み込みは失敗する */
+    NAOS_CHECK_FALSE(mnd_file_read(path, &content, &had_bom, &diags));
+    NAOS_CHECK_FALSE(had_bom);
+    NAOS_CHECK_UINT_EQ(0, content.len);
+    NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&diags));
+    d = mnd_diag_list_at(&diags, 0);
+    NAOS_CHECK_INT_EQ(MND_SEVERITY_ERROR, d->severity);
+    NAOS_REQUIRE_NOT_NULL(d->path);
+    NAOS_CHECK_STR_EQ(path, d->path);
+#ifdef _WIN32
+    NAOS_CHECK_STR_EQ("cannot open file for reading: file path is not valid UTF-8",
+                      d->message);
+
+    /* Windows では UTF-16 に変換できないパスへの書き込みも open の段階で失敗する */
+    NAOS_CHECK_FALSE(mnd_file_write(path, "abc", 3, false, &diags));
+    NAOS_REQUIRE_UINT_EQ(2, mnd_diag_list_count(&diags));
+    d = mnd_diag_list_at(&diags, 1);
+    NAOS_CHECK_INT_EQ(MND_SEVERITY_ERROR, d->severity);
+    NAOS_REQUIRE_NOT_NULL(d->path);
+    NAOS_CHECK_STR_EQ(path, d->path);
+    NAOS_CHECK_STR_EQ("cannot open file for writing: file path is not valid UTF-8",
+                      d->message);
+#endif
+
+    mnd_buf_free(&content);
+    mnd_diag_list_free(&diags);
+}
+
 NAOS_SUITE(file_io,
     NAOS_ADD_TEST(read_keeps_crlf_mixed_lf_and_nul_bytes),
     NAOS_ADD_TEST(read_strips_bom_and_reports_it),
@@ -498,5 +564,7 @@ NAOS_SUITE(file_io,
     NAOS_ADD_TEST(write_round_trip_with_bom_restores_original),
     NAOS_ADD_TEST(write_truncates_existing_longer_file),
     NAOS_ADD_TEST(write_empty_content_creates_empty_or_bom_only_file),
-    NAOS_ADD_TEST(write_into_missing_directory_reports_target_path)
+    NAOS_ADD_TEST(write_into_missing_directory_reports_target_path),
+    NAOS_ADD_TEST(non_ascii_directory_and_file_name_round_trip),
+    NAOS_ADD_TEST(invalid_utf8_path_fails_with_one_diagnostic)
 )

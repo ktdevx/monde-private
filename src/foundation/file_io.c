@@ -4,6 +4,18 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <stdlib.h>
+#include <wchar.h>
+#include <windows.h>
+#endif
+
 #include "foundation/source.h"
 #include "foundation/utf8.h"
 
@@ -12,10 +24,64 @@
 
 static const char mnd_file_io_bom[3] = { '\xEF', '\xBB', '\xBF' };
 
-/* path をバイナリモードなどの mode で開く。ファイルを開くのはこの関数だけ */
-static FILE *mnd_file_open(const char *path, const char *mode)
+#ifdef _WIN32
+/* path（UTF-8）を UTF-16 に変換する。失敗時は NULL を返し、*reason に理由を入れる */
+static wchar_t *mnd_file_path_to_wide(const char *path, const char **reason)
 {
+    wchar_t *wide;
+    int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, NULL, 0);
+
+    if (n <= 0) {
+        *reason = "file path is not valid UTF-8";
+        return NULL;
+    }
+    wide = malloc((size_t)n * sizeof *wide);
+    if (wide == NULL) {
+        *reason = "out of memory";
+        return NULL;
+    }
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, wide, n) != n) {
+        free(wide);
+        *reason = "file path is not valid UTF-8";
+        return NULL;
+    }
+    return wide;
+}
+#endif
+
+/* path をバイナリモードなどの mode で開く。ファイルを開くのはこの関数だけ。
+ * 失敗時は NULL を返す。errno ではなく固定の説明を理由にする場合は *reason に入れる */
+static FILE *mnd_file_open(const char *path, const char *mode, const char **reason)
+{
+#ifdef _WIN32
+    /* Windows の fopen は ANSI コードページでパスを解釈するため、UTF-16 に変換して _wfopen を使う */
+    wchar_t wmode[4];
+    wchar_t *wpath;
+    FILE *fp;
+    size_t i;
+    int err;
+
+    *reason = NULL;
+    /* mode は "rb" / "wb" などの ASCII なので 1 文字ずつ広げる */
+    for (i = 0; mode[i] != '\0' && i + 1 < sizeof wmode / sizeof wmode[0]; i++) {
+        wmode[i] = (wchar_t)(unsigned char)mode[i];
+    }
+    wmode[i] = L'\0';
+
+    wpath = mnd_file_path_to_wide(path, reason);
+    if (wpath == NULL) {
+        return NULL;
+    }
+    errno = 0;
+    fp = _wfopen(wpath, wmode);
+    err = errno;
+    free(wpath);
+    errno = err;
+    return fp;
+#else
+    *reason = NULL;
     return fopen(path, mode);
+#endif
 }
 
 /* errno の値の説明を返す。errno が設定されていなければ固定の説明を返す */
@@ -40,14 +106,16 @@ bool mnd_file_read(const char *path, mnd_buf *content, bool *had_bom,
     bool bom = false;
     size_t invalid_offset = 0;
     size_t line = 0;
+    const char *open_reason;
     FILE *fp;
 
     errno = 0;
-    fp = mnd_file_open(path, "rb");
+    fp = mnd_file_open(path, "rb", &open_reason);
     if (fp == NULL) {
         int err = errno;
         mnd_diag_add(diags, MND_SEVERITY_ERROR, path, 0,
-                     "cannot open file for reading: %s", mnd_file_io_reason(err));
+                     "cannot open file for reading: %s",
+                     open_reason != NULL ? open_reason : mnd_file_io_reason(err));
         return mnd_file_read_fail(content, had_bom);
     }
 
@@ -103,14 +171,16 @@ bool mnd_file_write(const char *path, const char *data, size_t len, bool add_bom
 {
     bool ok = true;
     int err = 0;
+    const char *open_reason;
     FILE *fp;
 
     errno = 0;
-    fp = mnd_file_open(path, "wb");
+    fp = mnd_file_open(path, "wb", &open_reason);
     if (fp == NULL) {
         err = errno;
         mnd_diag_add(diags, MND_SEVERITY_ERROR, path, 0,
-                     "cannot open file for writing: %s", mnd_file_io_reason(err));
+                     "cannot open file for writing: %s",
+                     open_reason != NULL ? open_reason : mnd_file_io_reason(err));
         return false;
     }
 
