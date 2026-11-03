@@ -29,28 +29,37 @@ static const char mnd_file_io_bom[3] = { '\xEF', '\xBB', '\xBF' };
 static wchar_t *mnd_file_path_to_wide(const char *path, const char **reason)
 {
     wchar_t *wide;
-    int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, NULL, 0);
+    int n;
 
-    if (n <= 0) {
+    n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, NULL, 0);
+    if (n <= 0)
+    {
         *reason = "file path is not valid UTF-8";
         return NULL;
     }
+
     wide = malloc((size_t)n * sizeof *wide);
-    if (wide == NULL) {
+    if (wide == NULL)
+    {
         *reason = "out of memory";
         return NULL;
     }
-    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, wide, n) != n) {
+
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, wide, n) != n)
+    {
         free(wide);
         *reason = "file path is not valid UTF-8";
         return NULL;
     }
+
     return wide;
 }
 #endif
 
-/* path をバイナリモードなどの mode で開く。ファイルを開くのはこの関数だけ。
- * 失敗時は NULL を返す。errno ではなく固定の説明を理由にする場合は *reason に入れる */
+/*
+ * path をバイナリモードなどの mode で開く。ファイルを開くのはこの関数だけ。
+ * 失敗時は NULL を返す。errno ではなく固定の説明を理由にする場合は *reason に入れる
+ */
 static FILE *mnd_file_open(const char *path, const char *mode, const char **reason)
 {
 #ifdef _WIN32
@@ -62,21 +71,26 @@ static FILE *mnd_file_open(const char *path, const char *mode, const char **reas
     int err;
 
     *reason = NULL;
+
     /* mode は "rb" / "wb" などの ASCII なので 1 文字ずつ広げる */
-    for (i = 0; mode[i] != '\0' && i + 1 < sizeof wmode / sizeof wmode[0]; i++) {
+    for (i = 0; (mode[i] != '\0') && ((i + 1) < (sizeof(wmode) / sizeof(wmode[0]))); i++)
+    {
         wmode[i] = (wchar_t)(unsigned char)mode[i];
     }
     wmode[i] = L'\0';
 
     wpath = mnd_file_path_to_wide(path, reason);
-    if (wpath == NULL) {
+    if (wpath == NULL)
+    {
         return NULL;
     }
+
     errno = 0;
     fp = _wfopen(wpath, wmode);
     err = errno;
     free(wpath);
     errno = err;
+
     return fp;
 #else
     *reason = NULL;
@@ -87,7 +101,7 @@ static FILE *mnd_file_open(const char *path, const char *mode, const char **reas
 /* errno の値の説明を返す。errno が設定されていなければ固定の説明を返す */
 static const char *mnd_file_io_reason(int err)
 {
-    return err != 0 ? strerror(err) : "unknown error";
+    return (err != 0) ? strerror(err) : "unknown error";
 }
 
 /* 失敗時の出力（内容を空、BOM なし）にそろえる */
@@ -111,50 +125,63 @@ bool mnd_file_read(const char *path, mnd_buf *content, bool *had_bom,
 
     errno = 0;
     fp = mnd_file_open(path, "rb", &open_reason);
-    if (fp == NULL) {
+    if (fp == NULL)
+    {
         int err = errno;
+
         mnd_diag_add(diags, MND_SEVERITY_ERROR, path, 0,
                      "cannot open file for reading: %s",
-                     open_reason != NULL ? open_reason : mnd_file_io_reason(err));
+                     (open_reason != NULL) ? open_reason : mnd_file_io_reason(err));
         return mnd_file_read_fail(content, had_bom);
     }
 
     mnd_buf_clear(content);
-    for (;;) {
+    for (;;)
+    {
         size_t n;
         size_t skip = 0;
 
         errno = 0;
-        n = fread(chunk, 1, sizeof chunk, fp);
-        if (n < sizeof chunk && ferror(fp)) {
+        n = fread(chunk, 1, sizeof(chunk), fp);
+        if ((n < sizeof(chunk)) && ferror(fp))
+        {
             int err = errno;
+
             fclose(fp);
             mnd_diag_add(diags, MND_SEVERITY_ERROR, path, 0,
                          "cannot read file: %s", mnd_file_io_reason(err));
             return mnd_file_read_fail(content, had_bom);
         }
+
         /* fread は EOF かエラーでしか要求より少なく返さないので、BOM は最初のチャンクで判定できる */
-        if (first) {
+        if (first)
+        {
             first = false;
-            if (n >= sizeof mnd_file_io_bom
-                && memcmp(chunk, mnd_file_io_bom, sizeof mnd_file_io_bom) == 0) {
+            if ((n >= sizeof(mnd_file_io_bom))
+                && (memcmp(chunk, mnd_file_io_bom, sizeof(mnd_file_io_bom)) == 0))
+            {
                 bom = true;
-                skip = sizeof mnd_file_io_bom;
+                skip = sizeof(mnd_file_io_bom);
             }
         }
-        if (!mnd_buf_append(content, chunk + skip, n - skip)) {
+
+        if (!mnd_buf_append(content, chunk + skip, n - skip))
+        {
             fclose(fp);
             mnd_diag_add(diags, MND_SEVERITY_ERROR, path, 0,
                          "out of memory while reading file");
             return mnd_file_read_fail(content, had_bom);
         }
-        if (n < sizeof chunk) {
+
+        if (n < sizeof(chunk))
+        {
             break;
         }
     }
     fclose(fp);
 
-    if (!mnd_utf8_validate(content->data, content->len, &invalid_offset)) {
+    if (!mnd_utf8_validate(content->data, content->len, &invalid_offset))
+    {
         /* invalid_offset <= len なので行番号は必ず求まる */
         (void)mnd_source_line_of(content->data, content->len, invalid_offset, &line);
         mnd_diag_add(diags, MND_SEVERITY_ERROR, path, line,
@@ -163,6 +190,7 @@ bool mnd_file_read(const char *path, mnd_buf *content, bool *had_bom,
     }
 
     *had_bom = bom;
+
     return true;
 }
 
@@ -176,33 +204,42 @@ bool mnd_file_write(const char *path, const char *data, size_t len, bool add_bom
 
     errno = 0;
     fp = mnd_file_open(path, "wb", &open_reason);
-    if (fp == NULL) {
+    if (fp == NULL)
+    {
         err = errno;
         mnd_diag_add(diags, MND_SEVERITY_ERROR, path, 0,
                      "cannot open file for writing: %s",
-                     open_reason != NULL ? open_reason : mnd_file_io_reason(err));
+                     (open_reason != NULL) ? open_reason : mnd_file_io_reason(err));
         return false;
     }
 
     errno = 0;
     if (add_bom
-        && fwrite(mnd_file_io_bom, 1, sizeof mnd_file_io_bom, fp) != sizeof mnd_file_io_bom) {
+        && (fwrite(mnd_file_io_bom, 1, sizeof(mnd_file_io_bom), fp) != sizeof(mnd_file_io_bom)))
+    {
         ok = false;
         err = errno;
     }
-    if (ok && len > 0 && fwrite(data, 1, len, fp) != len) {
+
+    if (ok && (len > 0) && (fwrite(data, 1, len, fp) != len))
+    {
         ok = false;
         err = errno;
     }
+
     /* 書き込みに失敗しても閉じる。バッファされた内容の書き出しの失敗は close で分かる */
     errno = 0;
-    if (fclose(fp) != 0 && ok) {
+    if ((fclose(fp) != 0) && ok)
+    {
         ok = false;
         err = errno;
     }
-    if (!ok) {
+
+    if (!ok)
+    {
         mnd_diag_add(diags, MND_SEVERITY_ERROR, path, 0,
                      "cannot write file: %s", mnd_file_io_reason(err));
     }
+
     return ok;
 }

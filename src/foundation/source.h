@@ -5,12 +5,14 @@
 #include <stddef.h>
 
 /* 内容中の半開区間。オフセットの基準は BOM 除去後の内容の先頭 */
-typedef struct mnd_span {
+typedef struct mnd_span
+{
     size_t start;  /* 含む */
     size_t end;    /* 含まない。start <= end */
 } mnd_span;
 
-typedef struct mnd_slice {
+typedef struct mnd_slice
+{
     const char *data;  /* 元の内容の内部を指す（コピーしない） */
     size_t len;
 } mnd_slice;

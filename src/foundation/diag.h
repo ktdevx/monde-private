@@ -13,19 +13,22 @@
 #define MND_PRINTF_LIKE(fmt, args)
 #endif
 
-typedef enum mnd_severity {
+typedef enum mnd_severity
+{
     MND_SEVERITY_ERROR,
     MND_SEVERITY_WARNING
 } mnd_severity;
 
-typedef struct mnd_diag {
+typedef struct mnd_diag
+{
     mnd_severity severity;
     char *message;  /* 英語のメッセージ（UTF-8、NUL 終端） */
     char *path;     /* ファイルパス（UTF-8）。不明なら NULL */
     size_t line;    /* 1 起点の行番号。不明なら 0 */
 } mnd_diag;
 
-typedef struct mnd_diag_list {
+typedef struct mnd_diag_list
+{
     mnd_diag *items;
     size_t count;
     size_t cap;

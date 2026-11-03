@@ -6,11 +6,16 @@ int monde_probe_vla(int length)
     int values[length];
     int sum = 0;
     int i;
-    for (i = 0; i < length; ++i) {
+
+    for (i = 0; i < length; ++i)
+    {
         values[i] = i;
     }
-    for (i = 0; i < length; ++i) {
+
+    for (i = 0; i < length; ++i)
+    {
         sum += values[i];
     }
+
     return sum;
 }

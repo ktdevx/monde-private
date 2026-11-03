@@ -82,10 +82,12 @@ NAOS_TEST(appends_beyond_capacity_concatenate)
     size_t initial_cap = 0;
     size_t i;
 
-    for (i = 0; i < 1000; ++i) {
+    for (i = 0; i < 1000; ++i)
+    {
         expected[i] = (char)('a' + (int)(i % 26));
         NAOS_REQUIRE_TRUE(mnd_buf_append_byte(&buf, (unsigned char)expected[i]));
-        if (i == 0) {
+        if (i == 0)
+        {
             initial_cap = buf.cap;
         }
     }

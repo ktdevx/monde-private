@@ -47,7 +47,8 @@ NAOS_TEST(two_byte_characters_are_valid)
 NAOS_TEST(three_byte_characters_are_valid)
 {
     /* U+0800、U+65E5、U+D7FF、U+E000、U+FFFF */
-    static const unsigned char bytes[] = {
+    static const unsigned char bytes[] =
+    {
         0xE0, 0xA0, 0x80,
         0xE6, 0x97, 0xA5,
         0xED, 0x9F, 0xBF,
@@ -62,7 +63,8 @@ NAOS_TEST(three_byte_characters_are_valid)
 NAOS_TEST(four_byte_characters_are_valid)
 {
     /* U+10000、U+1F600、U+40000 */
-    static const unsigned char bytes[] = {
+    static const unsigned char bytes[] =
+    {
         0xF0, 0x90, 0x80, 0x80,
         0xF0, 0x9F, 0x98, 0x80,
         0xF1, 0x80, 0x80, 0x80,
@@ -151,7 +153,8 @@ NAOS_TEST(invalid_lead_bytes_are_invalid)
 {
     unsigned int lead;
 
-    for (lead = 0xF5; lead <= 0xFF; ++lead) {
+    for (lead = 0xF5; lead <= 0xFF; ++lead)
+    {
         unsigned char bytes[3];
         size_t offset = UNSET_OFFSET;
 
@@ -233,7 +236,8 @@ NAOS_TEST(length_limits_the_checked_range)
 NAOS_TEST(offset_points_to_first_invalid_sequence)
 {
     /* "a"、U+00E9、U+65E5 の後に不正な FF、その後ろにも不正な C0 80 */
-    static const unsigned char bytes[] = {
+    static const unsigned char bytes[] =
+    {
         0x61, 0xC3, 0xA9, 0xE6, 0x97, 0xA5, 0xFF, 0x62, 0xC0, 0x80,
     };
     size_t offset = UNSET_OFFSET;

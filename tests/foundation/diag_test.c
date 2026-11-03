@@ -144,7 +144,8 @@ NAOS_TEST(add_many_grows_list)
     const mnd_diag *d;
     unsigned i;
 
-    for (i = 0; i < 100u; i++) {
+    for (i = 0; i < 100u; i++)
+    {
         mnd_diag_add(&list, MND_SEVERITY_WARNING, NULL, (size_t)i, "diag-test n%u", i);
     }
 
@@ -178,18 +179,24 @@ NAOS_TEST(add_long_message_is_not_truncated)
 
     mnd_diag_add(&list, MND_SEVERITY_ERROR, NULL, 0, "[%s]", arg);
 
-    if (mnd_diag_list_count(&list) == 1) {
+    if (mnd_diag_list_count(&list) == 1)
+    {
         d = mnd_diag_list_at(&list, 0);
         NAOS_CHECK_NOT_NULL(d);
-        if (d != NULL && d->message != NULL) {
+        if ((d != NULL) && (d->message != NULL))
+        {
             NAOS_CHECK_UINT_EQ(LONG_LEN + 2, strlen(d->message));
             NAOS_CHECK_INT_EQ('[', d->message[0]);
             NAOS_CHECK_INT_EQ(']', d->message[LONG_LEN + 1]);
             NAOS_CHECK_MEM_EQ(arg, LONG_LEN, d->message + 1, LONG_LEN);
-        } else {
+        }
+        else
+        {
             NAOS_CHECK_TRUE(d != NULL && d->message != NULL);
         }
-    } else {
+    }
+    else
+    {
         NAOS_CHECK_UINT_EQ(1, mnd_diag_list_count(&list));
     }
 

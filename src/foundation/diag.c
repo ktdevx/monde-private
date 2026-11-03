@@ -19,12 +19,16 @@ void mnd_diag_list_init(mnd_diag_list *list)
 
 static char *mnd_diag_strdup(const char *s)
 {
-    size_t len = strlen(s);
-    char *copy = (char *)malloc(len + 1);
+    size_t len;
+    char *copy;
 
-    if (copy != NULL) {
+    len = strlen(s);
+    copy = (char *)malloc(len + 1);
+    if (copy != NULL)
+    {
         memcpy(copy, s, len + 1);
     }
+
     return copy;
 }
 
@@ -39,19 +43,24 @@ static char *mnd_diag_vformat(const char *format, va_list args)
     va_copy(sizing, args);
     needed = vsnprintf(NULL, 0, format, sizing);
     va_end(sizing);
-    if (needed < 0) {
+    if (needed < 0)
+    {
         return NULL;
     }
 
     message = (char *)malloc((size_t)needed + 1);
-    if (message == NULL) {
+    if (message == NULL)
+    {
         return NULL;
     }
+
     written = vsnprintf(message, (size_t)needed + 1, format, args);
-    if (written != needed) {
+    if (written != needed)
+    {
         free(message);
         return NULL;
     }
+
     return message;
 }
 
@@ -60,24 +69,34 @@ static bool mnd_diag_list_grow(mnd_diag_list *list)
     size_t new_cap;
     mnd_diag *new_items;
 
-    if (list->count < list->cap) {
+    if (list->count < list->cap)
+    {
         return true;
     }
-    if (list->cap == 0) {
+
+    if (list->cap == 0)
+    {
         new_cap = MND_DIAG_MIN_CAP;
-    } else {
-        if (list->cap > SIZE_MAX / 2 / sizeof(mnd_diag)) {
+    }
+    else
+    {
+        if (list->cap > (SIZE_MAX / 2 / sizeof(mnd_diag)))
+        {
             return false;
         }
+
         new_cap = list->cap * 2;
     }
 
     new_items = (mnd_diag *)realloc(list->items, new_cap * sizeof(mnd_diag));
-    if (new_items == NULL) {
+    if (new_items == NULL)
+    {
         return false;
     }
+
     list->items = new_items;
     list->cap = new_cap;
+
     return true;
 }
 
@@ -92,19 +111,25 @@ void mnd_diag_add(mnd_diag_list *list, mnd_severity severity,
     va_start(args, format);
     message = mnd_diag_vformat(format, args);
     va_end(args);
-    if (message == NULL) {
+    if (message == NULL)
+    {
         list->dropped = true;
         return;
     }
-    if (path != NULL) {
+
+    if (path != NULL)
+    {
         path_copy = mnd_diag_strdup(path);
-        if (path_copy == NULL) {
+        if (path_copy == NULL)
+        {
             free(message);
             list->dropped = true;
             return;
         }
     }
-    if (!mnd_diag_list_grow(list)) {
+
+    if (!mnd_diag_list_grow(list))
+    {
         free(path_copy);
         free(message);
         list->dropped = true;
@@ -123,10 +148,12 @@ void mnd_diag_list_free(mnd_diag_list *list)
 {
     size_t i;
 
-    for (i = 0; i < list->count; i++) {
+    for (i = 0; i < list->count; i++)
+    {
         free(list->items[i].message);
         free(list->items[i].path);
     }
+
     free(list->items);
     mnd_diag_list_init(list);
 }
@@ -138,9 +165,11 @@ size_t mnd_diag_list_count(const mnd_diag_list *list)
 
 const mnd_diag *mnd_diag_list_at(const mnd_diag_list *list, size_t index)
 {
-    if (index >= list->count) {
+    if (index >= list->count)
+    {
         return NULL;
     }
+
     return &list->items[index];
 }
 
@@ -148,13 +177,18 @@ bool mnd_diag_list_has_error(const mnd_diag_list *list)
 {
     size_t i;
 
-    if (list->dropped) {
+    if (list->dropped)
+    {
         return true;
     }
-    for (i = 0; i < list->count; i++) {
-        if (list->items[i].severity == MND_SEVERITY_ERROR) {
+
+    for (i = 0; i < list->count; i++)
+    {
+        if (list->items[i].severity == MND_SEVERITY_ERROR)
+        {
             return true;
         }
     }
+
     return false;
 }

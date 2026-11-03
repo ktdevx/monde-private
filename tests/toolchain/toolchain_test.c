@@ -18,7 +18,8 @@ NAOS_TEST(utf8_literal_bytes)
     size_t i;
 
     NAOS_REQUIRE_UINT_EQ(sizeof expected, sizeof literal - 1);
-    for (i = 0; i < sizeof expected; ++i) {
+    for (i = 0; i < sizeof expected; ++i)
+    {
         NAOS_CHECK_UINT_EQ(expected[i], bytes[i]);
     }
 }
@@ -32,7 +33,8 @@ NAOS_TEST(universal_character_name_bytes)
     size_t i;
 
     NAOS_REQUIRE_UINT_EQ(sizeof expected, sizeof literal - 1);
-    for (i = 0; i < sizeof expected; ++i) {
+    for (i = 0; i < sizeof expected; ++i)
+    {
         NAOS_CHECK_UINT_EQ(expected[i], bytes[i]);
     }
 }

@@ -30,13 +30,17 @@ static bool write_bytes(const char *path, const char *bytes, size_t len)
     FILE *fp = fopen(path, "wb");
     bool ok;
 
-    if (fp == NULL) {
+    if (fp == NULL)
+    {
         return false;
     }
-    ok = (len == 0 || fwrite(bytes, 1, len, fp) == len);
-    if (fclose(fp) != 0) {
+
+    ok = ((len == 0) || (fwrite(bytes, 1, len, fp) == len));
+    if (fclose(fp) != 0)
+    {
         ok = false;
     }
+
     return ok;
 }
 
@@ -48,21 +52,29 @@ static bool read_raw(const char *path, mnd_buf *out)
     bool ok = true;
     size_t n;
 
-    if (fp == NULL) {
+    if (fp == NULL)
+    {
         return false;
     }
+
     mnd_buf_clear(out);
-    do {
+    do
+    {
         n = fread(chunk, 1, sizeof chunk, fp);
-        if (!mnd_buf_append(out, chunk, n)) {
+        if (!mnd_buf_append(out, chunk, n))
+        {
             ok = false;
             break;
         }
     } while (n == sizeof chunk);
-    if (ferror(fp)) {
+
+    if (ferror(fp))
+    {
         ok = false;
     }
+
     fclose(fp);
+
     return ok;
 }
 
@@ -192,8 +204,9 @@ NAOS_TEST(read_file_larger_than_chunk)
     bool had_bom = true;
     size_t i;
 
-    for (i = 0; i < sizeof(bytes); i++) {
-        bytes[i] = (i % 61 == 60) ? '\n' : (char)('A' + (int)(i % 26));
+    for (i = 0; i < sizeof(bytes); i++)
+    {
+        bytes[i] = ((i % 61) == 60) ? '\n' : (char)('A' + (int)(i % 26));
     }
     NAOS_REQUIRE_TRUE(write_bytes(path, bytes, sizeof(bytes)));
     NAOS_CHECK_TRUE(mnd_file_read(path, &content, &had_bom, &diags));
@@ -306,8 +319,8 @@ NAOS_TEST(read_directory_fails_with_one_diagnostic)
     NAOS_CHECK_INT_EQ(MND_SEVERITY_ERROR, d->severity);
     NAOS_REQUIRE_NOT_NULL(d->path);
     NAOS_CHECK_STR_EQ(path, d->path);
-    NAOS_CHECK_TRUE(strstr(d->message, "cannot open file for reading: ") != NULL
-                    || strstr(d->message, "cannot read file: ") != NULL);
+    NAOS_CHECK_TRUE((strstr(d->message, "cannot open file for reading: ") != NULL)
+                    || (strstr(d->message, "cannot read file: ") != NULL));
 
     mnd_buf_free(&content);
     mnd_diag_list_free(&diags);
