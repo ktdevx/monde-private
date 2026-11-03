@@ -112,7 +112,7 @@ po-format は、GNU gettext の翻訳テンプレート（`.pot`）と翻訳フ�
 #### Acceptance Criteria
 1. When 呼び出し側がエントリの列を渡す, the PO ライター shall エントリを渡された順に、空行で区切って書き出す。
 2. The PO ライター shall 各エントリのコメントを、翻訳者コメント、抽出コメント、参照、フラグ、前回の msgctxt・msgid・msgid_plural の順に書き出し、その後に msgctxt、msgid、msgid_plural、msgstr（複数形では添字の順の msgstr[n]）を書き出す。
-3. When 廃止エントリを書き出す, the PO ライター shall 翻訳者コメントを除く各行の先頭に `#~ `（前回の msgid の行には `#~| `）を付けて書き出す。
+3. When 廃止エントリを書き出す, the PO ライター shall GNU gettext と同じく、msgctxt・msgid・msgid_plural・msgstr の行の先頭に `#~ ` を、前回の msgctxt・msgid・msgid_plural の行の先頭に `#~| ` を付け、翻訳者コメント・抽出コメント・参照・フラグの行は通常のエントリと同じ形で書き出す。
 4. The PO ライター shall 各行の改行コードを、呼び出し側が指定した LF または CRLF とし、指定がなければ LF とする。
 5. If 同じ msgctxt と msgid の組を持つ廃止エントリでないエントリが複数ある, then the PO ライター shall 何も書き出さずに、重複した msgctxt と msgid を示すエラーを報告する。
 6. When 呼び出し側が渡したエントリの列に、UTF-8 の charset を宣言するヘッダエントリがあり、重複がなく、翻訳済みのエントリの改行の始まりと終わりが msgid と msgstr で一致しており、複数形エントリがない（または Plural-Forms がヘッダにある）, the PO ライター shall GNU gettext の `msgfmt --check` がエラーなしで受け付ける内容を書き出す。
