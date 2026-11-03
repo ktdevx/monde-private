@@ -9,6 +9,10 @@ Monde の開発で Naos（テストフレームワーク）を使っていて気
 - 1 件 1 見出し。新しいものを下に追加する。
 - 状態は「未登録」で書き始める。開発者が Issue にしたら「登録済み（Issue の URL）」、見送ったら「見送り（理由）」に書き換える。
 - 対象の Naos のバージョンを書く（現在は v0.4.0）。
+- 優先度は Monde の開発への影響で決める。記録した時点の見立てで書き、状況が変われば更新する（開発者が書き換えてもよい）。
+  - 高: 回避策がない、または開発・CI が止まる
+  - 中: 回避策はあるが、手間・副作用（表示や検査の質が落ちるなど）がある
+  - 低: あると便利。今は困っていない
 - 実際に起きたこと（ログ、コード）と、Monde 側で取った回避策を必ず書く。推測だけのものは「確度」に明記する。
 - Monde の中で解決すべき問題（Monde のコードや CMake の誤り）はここに書かない。
 
@@ -17,6 +21,7 @@ Monde の開発で Naos（テストフレームワーク）を使っていて気
 ```markdown
 ### <要望の要約>
 - 状態: 未登録
+- 優先度: 高 / 中 / 低（理由を一言）
 - 対象: Naos v0.4.0
 - 確度: 再現済み / コードを読んで確認 / 推測
 - 背景: <何をしようとして、何が起きたか。ログやファイルの場所>
@@ -28,6 +33,7 @@ Monde の開発で Naos（テストフレームワーク）を使っていて気
 
 ### NAOS_REQUIRE_NOT_NULL / NAOS_CHECK_NOT_NULL が GCC の -Wmaybe-uninitialized を誘発する
 - 状態: 未登録
+- 優先度: 中（回避策はあるが、失敗時の表示がポインタ専用の形式でなくなる。GCC の -Werror 環境では知らないとビルドが止まる）
 - 対象: Naos v0.4.0
 - 確度: 再現済み（GitHub Actions の gcc ジョブ、ubuntu-latest）
 - 背景: `malloc` した直後の（中身をまだ書いていない）ポインタを `NAOS_REQUIRE_NOT_NULL(p)` で確認すると、GCC が `'p' may be used uninitialized [-Werror=maybe-uninitialized]` を出す。マクロがポインタを `naos_check_not_null(const void *ptr, ...)` に渡すため、GCC が「未初期化の領域を const ポインタで読み取り関数に渡している」とみなす。`-Werror` 環境ではビルドが止まる。Clang、MSVC では出ない。該当箇所: `tests/foundation/diag_test.c` の `add_long_message_is_not_truncated`。
@@ -36,6 +42,7 @@ Monde の開発で Naos（テストフレームワーク）を使っていて気
 
 ### 失敗位置の出力形式をコンパイラに関係なく揃えられるようにしてほしい
 - 状態: 未登録
+- 優先度: 低（ログの検索で両方の形式を許容すれば済む）
 - 対象: Naos v0.4.0
 - 確度: 再現済み（ローカルの MSVC と GitHub Actions の 5 環境）
 - 背景: 失敗位置が MSVC では `file(line): error:`、それ以外では `file:line: error:` になる（`src/human.c` の `put_location` が `_MSC_VER` で切り替えている）。IDE で位置へ飛べるようにする意図は理解できるが、複数環境の CI ログを同じ正規表現で集計・検索するときに形式が揃わない。
@@ -44,6 +51,7 @@ Monde の開発で Naos（テストフレームワーク）を使っていて気
 
 ### naos_add_executable の PROPERTIES にセミコロンを含む値を渡せない
 - 状態: 未登録
+- 優先度: 低（Monde ではまだ必要になっていない）
 - 対象: Naos v0.4.0
 - 確度: コードを読んで確認（Monde ではまだ必要になっていない）
 - 背景: `PROPERTIES` は `<name> <value>` の組を CMake のリストとして受け取り、要素数が奇数だとエラーにする（`cmake/Naos.cmake` の引数検査）。`ENVIRONMENT "A=1;B=2"` のように値自体がリストになるプロパティを渡すと、リストが展開されて組がずれ、エラーになるか別のプロパティとして解釈される。
