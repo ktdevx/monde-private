@@ -32,7 +32,7 @@ mnd_eol_info_t mnd_eol_detect(const char *data, size_t len)
     for (i = 0; i < len; ++i)
     {
         mnd_eol_t kind;
-        
+
         kind = line_break_ending_at(data, i);
         if (kind == MND_EOL_LF)
         {

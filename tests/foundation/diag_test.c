@@ -192,7 +192,7 @@ NAOS_TEST(add_long_message_is_not_truncated)
         }
         else
         {
-            NAOS_CHECK_TRUE(d != NULL && d->message != NULL);
+            NAOS_CHECK_TRUE((d != NULL) && (d->message != NULL));
         }
     }
     else

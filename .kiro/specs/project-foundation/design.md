@@ -127,7 +127,7 @@ src/
     ├── diag.h / diag.c            # 診断 mnd_diag_t と蓄積リスト mnd_diag_list_t
     ├── utf8.h / utf8.c            # UTF-8 の妥当性検査
     ├── eol.h / eol.c              # 改行コードの検出
-    ├── source.h / source.c        # mnd_span_t、mnd_slice、範囲検証、行番号、範囲の内容
+    ├── source.h / source.c        # mnd_span_t、mnd_slice_t、範囲検証、行番号、範囲の内容
     └── file_io.h / file_io.c      # ファイルの読み書き（BOM、UTF-8 検証、Windows のパス変換）
 tests/
 ├── CMakeLists.txt                 # add_subdirectory(toolchain)、add_subdirectory(foundation)

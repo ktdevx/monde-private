@@ -15,8 +15,10 @@ bool mnd_source_line_of(const char *data, size_t len, size_t offset, size_t *lin
         return false;
     }
 
-    /* 改行は LF の位置で完結する（CRLF も LF で数える）。単独の CR は数えない。
-     * したがって CRLF の CR と LF の間を指す offset は CR と同じ行になる */
+    /*
+     * 改行は LF の位置で完結する（CRLF も LF で数える）。単独の CR は数えない。
+     * したがって CRLF の CR と LF の間を指す offset は CR と同じ行になる
+     */
     for (i = 0; i < offset; ++i)
     {
         if (data[i] == '\n')

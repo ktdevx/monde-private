@@ -42,8 +42,9 @@
 - **CMake ターゲット**: ライブラリは `monde_<module>`、別名 `monde::<module>`（リンクには別名を使う）。テスト実行ファイルは `<module>_tests`、CTest のテスト名は `<module>_tests.<suite>.<test>`、ラベルは `<module>`。
 - **ファイル**: 小文字の snake_case（`.c` / `.h`）。
 - **関数・型・変数**: snake_case。C には名前空間がないため、外部から見えるシンボルには接頭辞 `mnd_` と短縮名を付ける。
-  - 関数・型: `mnd_<短縮名>_`（例: `mnd_buf_append`）
-  - マクロ・列挙値: `MND_<短縮名>_`
+  - 関数: `mnd_<短縮名>_<動作>`（例: `mnd_buf_append`、`mnd_diag_list_at`）。型名の `_t` は関数名に含めない（`mnd_buf_t_append` としない）。
+  - 型: `typedef` で定義し、型名の末尾に `_t` を付ける。構造体・列挙のタグ名は `_t` を除いた同じ名前にする（例: `typedef struct mnd_buf { ... } mnd_buf_t;`、`typedef enum mnd_severity { ... } mnd_severity_t;`）。
+  - マクロ・列挙値: `MND_<短縮名>_`（例: `MND_BUF_INIT`、`MND_SEVERITY_ERROR`）。`_T` は含めない。
   - 短縮名は各モジュールの設計で決め、既存のものと重複させない。foundation が予約済み: `buf`、`diag`、`severity`、`utf8`、`eol`、`span`、`slice`、`source`、`file`（ほかにマクロ `MND_PRINTF_LIKE` も foundation が使用している）
 - **ヘッダガード**: `MONDE_<MODULE>_<FILE>_H`（例: `MONDE_FOUNDATION_BUF_H`）。
 - **モジュール内部の関数**: `static` にしてファイル外に公開しない。
