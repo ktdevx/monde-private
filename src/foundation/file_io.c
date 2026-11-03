@@ -97,3 +97,42 @@ bool mnd_file_read(const char *path, mnd_buf *content, bool *had_bom,
     *had_bom = bom;
     return true;
 }
+
+bool mnd_file_write(const char *path, const char *data, size_t len, bool add_bom,
+                    mnd_diag_list *diags)
+{
+    bool ok = true;
+    int err = 0;
+    FILE *fp;
+
+    errno = 0;
+    fp = mnd_file_open(path, "wb");
+    if (fp == NULL) {
+        err = errno;
+        mnd_diag_add(diags, MND_SEVERITY_ERROR, path, 0,
+                     "cannot open file for writing: %s", mnd_file_io_reason(err));
+        return false;
+    }
+
+    errno = 0;
+    if (add_bom
+        && fwrite(mnd_file_io_bom, 1, sizeof mnd_file_io_bom, fp) != sizeof mnd_file_io_bom) {
+        ok = false;
+        err = errno;
+    }
+    if (ok && len > 0 && fwrite(data, 1, len, fp) != len) {
+        ok = false;
+        err = errno;
+    }
+    /* 書き込みに失敗しても閉じる。バッファされた内容の書き出しの失敗は close で分かる */
+    errno = 0;
+    if (fclose(fp) != 0 && ok) {
+        ok = false;
+        err = errno;
+    }
+    if (!ok) {
+        mnd_diag_add(diags, MND_SEVERITY_ERROR, path, 0,
+                     "cannot write file: %s", mnd_file_io_reason(err));
+    }
+    return ok;
+}
