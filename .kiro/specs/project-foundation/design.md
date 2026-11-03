@@ -329,19 +329,19 @@ sequenceDiagram
 | 6.3 | 混在を伝える | Eol | `mnd_eol_info_t.mixed` | — |
 | 6.4 | 改行なしを伝える | Eol | `MND_EOL_NONE` | — |
 | 6.5 | 単独 CR を数えない | Eol | 改行の数え方の規則 | — |
-| 7.1 | 追加時に容量を拡張し連結 | Buf | `mnd_buf_t_append` ほか | — |
+| 7.1 | 追加時に容量を拡張し連結 | Buf | `mnd_buf_append` ほか | — |
 | 7.2 | NUL を含むバイト列を保持 | Buf | `len` による長さ管理 | — |
-| 7.3 | 内容と長さを返し NUL 終端 | Buf | `data`、`len`、`mnd_buf_t_cstr` | — |
+| 7.3 | 内容と長さを返し NUL 終端 | Buf | `data`、`len`、`mnd_buf_cstr` | — |
 | 7.4 | 確保失敗で内容を壊さず失敗を返す | Buf | `bool` 戻り値 | — |
-| 7.5 | 空にする・解放する | Buf | `mnd_buf_t_clear`、`mnd_buf_t_free` | — |
+| 7.5 | 空にする・解放する | Buf | `mnd_buf_clear`、`mnd_buf_free` | — |
 | 8.1 | BOM 除去後基準の半開区間 | Source | `mnd_span_t` | — |
 | 8.2 | 行番号は 1 起点 | Source | `mnd_source_line_of` | — |
 | 8.3 | LF・CRLF を 1 改行、単独 CR は数えない | Source | `mnd_source_line_of` | — |
-| 8.4 | 不正な範囲を返す | Source | `mnd_span_t_is_valid`、`false` 戻り値 | — |
-| 8.5 | 範囲の内容を変更せずに返す | Source | `mnd_span_t_text` | — |
+| 8.4 | 不正な範囲を返す | Source | `mnd_span_is_valid`、`false` 戻り値 | — |
+| 8.5 | 範囲の内容を変更せずに返す | Source | `mnd_span_text` | — |
 | 9.1 | 重大度・英語メッセージ・パス・行番号 | Diag | `mnd_diag_t` | — |
-| 9.2 | 発生順に蓄積し全取り出し | Diag | `mnd_diag_list_t`、`mnd_diag_list_t_at` | — |
-| 9.3 | エラーの有無を返す | Diag | `mnd_diag_list_t_has_error` | — |
+| 9.2 | 発生順に蓄積し全取り出し | Diag | `mnd_diag_list_t`、`mnd_diag_list_at` | — |
+| 9.3 | エラーの有無を返す | Diag | `mnd_diag_list_has_error` | — |
 | 9.4 | 記録時に stderr 出力・終了しない | Diag | `mnd_diag_add` の事後条件 | — |
 
 ## Components and Interfaces
@@ -388,20 +388,20 @@ typedef struct mnd_buf
     size_t cap;  /* 確保済みのバイト数 */
 } mnd_buf_t;
 
-#define MND_BUF_t_INIT { NULL, 0, 0 }
+#define MND_BUF_INIT { NULL, 0, 0 }
 
-void mnd_buf_t_init(mnd_buf_t *buf);
+void mnd_buf_init(mnd_buf_t *buf);
 /* 追加で additional バイトを再確保なしに追加できる容量を確保する */
-bool mnd_buf_t_reserve(mnd_buf_t *buf, size_t additional);
-bool mnd_buf_t_append(mnd_buf_t *buf, const void *bytes, size_t len); /* len == 0 なら bytes は NULL 可 */
-bool mnd_buf_t_append_str(mnd_buf_t *buf, const char *str);
-bool mnd_buf_t_append_byte(mnd_buf_t *buf, unsigned char byte);
+bool mnd_buf_reserve(mnd_buf_t *buf, size_t additional);
+bool mnd_buf_append(mnd_buf_t *buf, const void *bytes, size_t len); /* len == 0 なら bytes は NULL 可 */
+bool mnd_buf_append_str(mnd_buf_t *buf, const char *str);
+bool mnd_buf_append_byte(mnd_buf_t *buf, unsigned char byte);
 /* 内容を C 文字列として返す。data == NULL なら "" を返す */
-const char *mnd_buf_t_cstr(const mnd_buf_t *buf);
+const char *mnd_buf_cstr(const mnd_buf_t *buf);
 /* 内容を破棄し、確保済みの領域は再利用のため残す（len = 0） */
-void mnd_buf_t_clear(mnd_buf_t *buf);
+void mnd_buf_clear(mnd_buf_t *buf);
 /* 領域を解放し、初期状態に戻す。初期状態・解放済みのバッファに対しても安全 */
-void mnd_buf_t_free(mnd_buf_t *buf);
+void mnd_buf_free(mnd_buf_t *buf);
 ```
 - 事後条件（追加が成功した場合）: 以前の内容の直後に追加したバイト列がそのまま続く（7.1、7.2）。
 
@@ -414,7 +414,7 @@ void mnd_buf_t_free(mnd_buf_t *buf);
 
 **Responsibilities & Constraints**
 - 診断はメッセージとパスのコピーを所有する。リストは呼び出し側が初期化・解放する。
-- 記録時に `stderr` への出力、`exit`、`abort` を行わない（9.4）。表示は CLI 層が `mnd_diag_list_t_at` で取り出して行う。
+- 記録時に `stderr` への出力、`exit`、`abort` を行わない（9.4）。表示は CLI 層が `mnd_diag_list_at` で取り出して行う。
 - メモリ不足で診断を記録できなかった場合、`dropped` を `true` にする。`dropped` のリストはエラーを含むとみなす（エラーの見落としを防ぐ）。
 
 **Contracts**: Service [x] / State [x]
@@ -443,20 +443,20 @@ typedef struct mnd_diag_list
     bool dropped;   /* メモリ不足で記録できなかった診断がある */
 } mnd_diag_list_t;
 
-#define MND_DIAG_LIST_t_INIT { NULL, 0, 0, false }
+#define MND_DIAG_LIST_INIT { NULL, 0, 0, false }
 
-void mnd_diag_list_t_init(mnd_diag_list_t *list);
-void mnd_diag_list_t_free(mnd_diag_list_t *list);  /* 初期状態・解放済みに対しても安全 */
+void mnd_diag_list_init(mnd_diag_list_t *list);
+void mnd_diag_list_free(mnd_diag_list_t *list);  /* 初期状態・解放済みに対しても安全 */
 
 /* printf 形式でメッセージを組み立てて末尾に追加する。path は NULL 可、line は 0 可 */
 void mnd_diag_add(mnd_diag_list_t *list, mnd_severity_t severity,
                   const char *path, size_t line, const char *format, ...)
     MND_PRINTF_LIKE(5, 6);
 
-size_t mnd_diag_list_t_count(const mnd_diag_list_t *list);
-const mnd_diag_t *mnd_diag_list_t_at(const mnd_diag_list_t *list, size_t index); /* index < count */
+size_t mnd_diag_list_count(const mnd_diag_list_t *list);
+const mnd_diag_t *mnd_diag_list_at(const mnd_diag_list_t *list, size_t index); /* index < count */
 /* エラーの診断が 1 つ以上ある、または dropped なら true */
-bool mnd_diag_list_t_has_error(const mnd_diag_list_t *list);
+bool mnd_diag_list_has_error(const mnd_diag_list_t *list);
 ```
 - `MND_PRINTF_LIKE(fmt, args)` は GCC / Clang で `__attribute__((format(printf, fmt, args)))`（MinGW-w64 では `gnu_printf`）、MSVC では空に展開するマクロで、書式の誤りをコンパイル時に検出する。
 - メッセージの組み立ては `vsnprintf` で長さを求めてから確保する（長さの上限なし）。
@@ -614,11 +614,11 @@ bool mnd_file_write(const char *path, const char *data, size_t len, bool add_bom
 すべて Naos で書き、`foundation_tests` に 1 ファイル 1 スイートでまとめる（2.5）。入力のバイト列はソース内のリテラルで持ち、Git の改行変換の影響を受けない。
 
 ### Unit Tests
-- **buf**: 空バッファへの追加、容量を超える連続追加で内容が連結されること（7.1）。`"a\0b"` の追加で `len == 3` かつ `MEM_EQ` で一致し、`data[len] == '\0'`（7.2、7.3）。`mnd_buf_t_reserve(&b, SIZE_MAX)` と長さがオーバーフローする追加が `false` を返し、既存の内容・長さが変わらないこと（7.4）。`clear` 後に `len == 0` で容量が残り再利用できること、`free` を 2 回呼んでも安全なこと（7.5）。
+- **buf**: 空バッファへの追加、容量を超える連続追加で内容が連結されること（7.1）。`"a\0b"` の追加で `len == 3` かつ `MEM_EQ` で一致し、`data[len] == '\0'`（7.2、7.3）。`mnd_buf_reserve(&b, SIZE_MAX)` と長さがオーバーフローする追加が `false` を返し、既存の内容・長さが変わらないこと（7.4）。`clear` 後に `len == 0` で容量が残り再利用できること、`free` を 2 回呼んでも安全なこと（7.5）。
 - **diag**: 重大度・メッセージ・パス・行番号が保存されること、`path` に `NULL`・`line` に 0 を渡せること（9.1）。3 件追加して追加順に取り出せること（9.2）。警告のみなら `has_error` が偽、エラーを 1 件含めば真（9.3）。9.4 はコードレビューと、テストの出力に診断が現れないことで確認する。
 - **utf8**: ASCII、2〜4 バイト文字、U+0000、U+10FFFF が妥当。`C0 80`、`ED A0 80`（サロゲート）、`F4 90 80 80`（U+10FFFF 超）、末尾で切れたシーケンス、単独の `80`、`FF` が不正で、オフセットが最初の不正シーケンスの先頭を指すこと（4.4）。
 - **eol**: LF のみ・CRLF のみ・改行なし（6.1、6.4）、LF 2 + CRLF 1 で LF かつ `mixed`（6.1、6.3）、同数で先に現れた方（6.2）、`"a\rb"` が改行なし、`"\r\r\n"` が CRLF 1（6.5）。
-- **source**: 1 行目の先頭が 1（8.2）、LF・CRLF の直後の行番号、単独 CR では行が増えないこと、CRLF の CR と LF の間が同じ行（8.3）。`offset == len` が有効で `len + 1` が `false`、`start > end` と `end > len` の範囲が不正（8.4）。`mnd_span_t_text` が元の内容の該当バイト列を指すこと（8.5）。
+- **source**: 1 行目の先頭が 1（8.2）、LF・CRLF の直後の行番号、単独 CR では行が増えないこと、CRLF の CR と LF の間が同じ行（8.3）。`offset == len` が有効で `len + 1` が `false`、`start > end` と `end > len` の範囲が不正（8.4）。`mnd_span_text` が元の内容の該当バイト列を指すこと（8.5）。
 
 ### Integration Tests（file_io スイート。ビルドディレクトリ配下の作業ディレクトリを使用）
 - CRLF・LF 混在・NUL を含むバイト列を書いて読み、バイト単位で一致すること（4.1、5.1、5.6）。
