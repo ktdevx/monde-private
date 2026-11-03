@@ -36,7 +36,7 @@
   - 完了時: `ctest -L toolchain` で `toolchain.probe_clean_builds`、`toolchain.probe_warning_fails`、`toolchain.probe_vla_fails` の 3 件がすべて合格として表示される
   - _Requirements: 1.4, 1.5, 1.6_
 
-- [ ] 2.2 MSVC のソース文字コードとプリプロセッサの設定を検証するテストを追加する
+- [x] 2.2 MSVC のソース文字コードとプリプロセッサの設定を検証するテストを追加する
   - Naos のテスト実行ファイル `toolchain_tests` を追加し、共通のコンパイラオプションを適用して `toolchain` ラベルを付けたうえで、ソースに書いた UTF-8 リテラル「日本」のバイト列が `E6 97 A5 E6 9C AC` と一致することを検証する
   - MSVC でビルドする場合は標準準拠のプリプロセッサが有効でないとコンパイル時エラーになる検査を入れる
   - 2.1 と同じ toolchain のビルドファイルを編集するため、2.1 の後に行う
@@ -137,3 +137,4 @@
 ## Implementation Notes
 - 1.1: 複数構成ジェネレータ（Visual Studio）で `-DBUILD_TESTING=OFF` のとき `CMAKE_BUILD_TYPE` が未使用警告になるため、トップレベルで単一構成ジェネレータかつ未指定時のみ Release を既定にするブロックを置いた。ローカルは MSVC のみで、GCC/Clang/MinGW の分岐は CI で検証する。
 - 1.2: MSVC 環境の Naos は失敗位置を `file(line): error:` 形式で出力する（GCC/Clang は `file:line: error:`）。5.2 の確認ではこの差を許容する。Naos の API（naos_add_executable の SOURCES/LIBRARIES/PREFIX/LABELS/PROPERTIES、Naos::naos）は設計の想定どおり。
+- 2.2: CP932 環境の MSVC では `/utf-8` なしでも生の UTF-8 リテラルのバイトは変わらない（C4819 + /WX でのみ検出）ため、`\u` エスケープのテストを追加した。編集ツールが `\u` エスケープを実際の文字に置き換えることがあるので、エスケープを書いたら od などでバイトを確認する。

@@ -20,3 +20,11 @@ set_tests_properties(
   toolchain.probe_warning_fails
   toolchain.probe_vla_fails
   PROPERTIES WILL_FAIL TRUE)
+
+# MSVC の /utf-8 と /Zc:preprocessor の有効性を検証する（モジュールではないため naos_add_executable を直接使う）
+naos_add_executable(toolchain_tests
+  SOURCES toolchain_test.c
+  PREFIX "toolchain_tests."
+  LABELS toolchain
+)
+monde_apply_compile_options(toolchain_tests)
