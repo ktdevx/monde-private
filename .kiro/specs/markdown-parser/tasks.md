@@ -54,7 +54,7 @@
   - _Boundary: LineIndex_
   - _Requirements: 1.3, 1.6, 3.1_
 
-- [ ] 2.3 (P) 1 行の中のブロックの開始の判定と、タブの桁の計算を実装する
+- [x] 2.3 (P) 1 行の中のブロックの開始の判定と、タブの桁の計算を実装する
   - テーマ区切り、ATX 見出しの開始とレベルと内容の範囲（閉じの並びと前後の空白を除く）、Setext の下線、開きフェンス（文字・長さ・情報文字列の範囲）、閉じフェンス、リスト記号（順序付きは 9 桁まで、範囲と開始番号）を判定する純粋な関数を実装する
   - 4 桁ごとのタブの桁の計算と、指定した桁数の空白を取り除いたときの位置と補う空白の数の計算を実装する
   - 完了時: scan スイートで、各判定の正例と負例（`***` と `* * *`、7 個の `#`、`#5`、`` ``` `` と `~~~` の情報文字列、`` ` `` を含む情報文字列のバッククォートのフェンス、10 桁の番号）と、`\t` の一部を使ったときの補う空白の数のテストが合格する
@@ -215,3 +215,4 @@
 - 1.4: spec_reader の API は `mnd_md_spec_load(path, &spec, diags)` / `mnd_md_spec_free`。例は `spec.examples[i]` の `number`、`section`、`markdown`、`html`（`mnd_buf_t`、NUL 終端）。
 - 2.1: 共有の内部 API（`md_internal.h`）: アリーナ `mnd_md_arena_*`（ゼロ初期化）、作業用の配列 `mnd_md_array_*`（伸長は確保＋複製＋解放）、`mnd_md_size_mul`、`mnd_md_doc_create`、`mnd_md_node_new/append_child/insert_before/insert_after/unlink`。テスト用の確保関数は `tests/markdown/test_alloc.h` の `mnd_md_test_alloc_t`（n 回目で失敗、0 は失敗しない）。
 - 2.2: 行の分割は `mnd_md_lines_next(data, &pos, end, &line)`（`mnd_md_phys_line_t`、`pos >= end` で false）。行番号の表は `mnd_md_line_index_build(&index, data, len, arena)` でアリーナに作り、`mnd_md_line_index_line_of` で引く。
+- 2.3: Scan の判定関数は、インデントを除いた位置（最初の空白でない文字）から呼ぶ。インデント 3 以下の検査、判定の優先順位、段落の中断の条件（空の項目、開始番号 1）は呼び出し側（BlockParser）が行う。`mnd_md_scan_pos_t.column` は取り除いた仮想の空白を含む論理的な桁で、物理的な桁は `column + pad`。空の ATX 見出しと情報文字列のないフェンスの範囲は、記号の並びの直後の空の範囲。
