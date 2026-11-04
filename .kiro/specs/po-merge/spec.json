@@ -1,0 +1,22 @@
+{
+  "feature_name": "po-merge",
+  "created_at": "2026-11-04T06:36:22Z",
+  "updated_at": "2026-11-04T06:57:40Z",
+  "language": "ja",
+  "phase": "design-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": false,
+      "approved": false
+    }
+  },
+  "ready_for_implementation": false
+}
