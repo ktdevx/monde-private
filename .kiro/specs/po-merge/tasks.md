@@ -40,7 +40,7 @@
   - _Depends: 1.3_
   - _Requirements: 2.1, 2.6, 2.7, 8.1, 8.2_
 
-- [ ] 2.3 (P) ヘッダのマージと nplurals の読み取りを実装し、単体テストを書く
+- [x] 2.3 (P) ヘッダのマージと nplurals の読み取りを実装し、単体テストを書く
   - 設計の「ヘッダの規則」の手順 1〜5（行に分ける、既知の 10 項目の取り出し、Language の補完、テンプレートの Report-Msgid-Bugs-To と POT-Creation-Date による置き換え、表の順と綴りでの並べ替え）で msgstr を作る
   - ヘッダのエントリの翻訳者コメント・fuzzy は既存のヘッダから、抽出コメント・参照・fuzzy 以外のフラグはテンプレートのヘッダから取り、前回の msgid は付けない
   - Plural-Forms の `nplurals` を設計の規則で読み、1〜100 以外は 2 を返す
@@ -141,3 +141,4 @@
 - 1.2: テストの入力は `TEST_READ_PO`、結果の比較は `TEST_CHECK_WRITTEN`、データは `TEST_READ_DATA_FILE`（tests/po_merge/test_util.h）を使う。`TEST_READ_PO` は警告でも失敗させる。ヘッダは msgcat の正規形（複数行）で書かないと書き出しが一致しない
 - 2.1: `mnd_merge_ratio(n, sum)` の n は LCS（2 倍する前）。`mnd_merge_upper_numerator` は 2×LCS の上限（常に偶数）を返すので、3.2 の上限の比較値は `mnd_merge_ratio(upper / 2, sum)` とする（`(double)upper / (double)sum` と同じ値）
 - 2.2: KeyIndex は init で最大のキー長を求めて作業領域を確保し、find は確保をしない（作業領域に書くので再入不可）。登録しない添字の find は見つからない。重複を作るカタログはリーダーが拒むので、テストでは po.h の関数で直接作る
+- 2.3: po のリーダーはコメントの先頭の空白を除く（テストの期待値に注意）。ヘッダのマージは msgmerge 0.21 と同じ出力になることをレビューで確認済み（Language の推測だけが意図した差）
