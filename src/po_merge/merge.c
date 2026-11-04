@@ -301,6 +301,111 @@ static bool merge_place_header(merge_state_t *state)
     return true;
 }
 
+/*
+ * 手順 4: T のエントリを順に、廃止エントリと T のヘッダを飛ばして組み立て、出力に加える。
+ * O に同じキーのエントリがあれば完全一致（combine）、なければ新規（fresh）とする。
+ * false はメモリ不足
+ */
+static bool merge_template_entries(merge_state_t *state)
+{
+    const mnd_po_catalog_t *template_catalog = state->template_catalog;
+    size_t header_index = 0;
+    bool has_header = mnd_po_catalog_header(template_catalog, &header_index);
+    size_t j;
+
+    for (j = 0; j < template_catalog->count; j++)
+    {
+        const mnd_po_entry_t *template_entry = &template_catalog->entries[j];
+        mnd_po_entry_t *dst;
+        size_t old_index = 0;
+
+        if (template_entry->obsolete || (has_header && (j == header_index)))
+        {
+            continue;
+        }
+
+        dst = mnd_po_catalog_append(state->out);
+        if (dst == NULL)
+        {
+            return false;
+        }
+
+        if (mnd_merge_key_index_find(&state->old_index, template_entry, &old_index))
+        {
+            if (!mnd_merge_combine(dst, &state->old_catalog->entries[old_index], template_entry,
+                                   false, state->nplurals))
+            {
+                return false;
+            }
+
+            state->used[old_index] = true;
+            state->stats.matched++;
+            continue;
+        }
+
+        /* 完全一致がなければ新規とする */
+        if (!mnd_merge_fresh(dst, template_entry, state->nplurals))
+        {
+            return false;
+        }
+
+        state->stats.added++;
+    }
+
+    return true;
+}
+
+/* 手順 6: 手順 3 と 4 で加えたエントリ（この時点の出力のすべて）の前回の msgid を整理する */
+static void merge_tidy_previous(merge_state_t *state)
+{
+    size_t i;
+
+    for (i = 0; i < state->out->count; i++)
+    {
+        mnd_merge_tidy_previous(&state->out->entries[i]);
+    }
+}
+
+/*
+ * 手順 7: O の使われなかったエントリを O の順に調べ、訳のあるものを廃止エントリとして
+ * 出力の末尾に加える。訳のないものは出力しない。元が廃止エントリでないものだけを
+ * obsoleted に数える。O のヘッダは手順 3 で「使われた」としている。false はメモリ不足
+ */
+static bool merge_append_obsolete(merge_state_t *state)
+{
+    const mnd_po_catalog_t *old_catalog = state->old_catalog;
+    size_t i;
+
+    for (i = 0; i < old_catalog->count; i++)
+    {
+        const mnd_po_entry_t *old_entry = &old_catalog->entries[i];
+        mnd_po_entry_t *dst;
+
+        if (state->used[i] || (!mnd_merge_has_translation(old_entry)))
+        {
+            continue;
+        }
+
+        dst = mnd_po_catalog_append(state->out);
+        if (dst == NULL)
+        {
+            return false;
+        }
+
+        if (!mnd_merge_obsolete(dst, old_entry))
+        {
+            return false;
+        }
+
+        if (!old_entry->obsolete)
+        {
+            state->stats.obsoleted++;
+        }
+    }
+
+    return true;
+}
+
 /* 統計を 0 にする（NULL 可） */
 static void merge_stats_clear(mnd_merge_stats_t *stats)
 {
@@ -313,7 +418,10 @@ static void merge_stats_clear(mnd_merge_stats_t *stats)
     }
 }
 
-/* 手順 2 以降（索引、ヘッダ）を順に行う。false はメモリ不足 */
+/*
+ * 手順 2 以降（索引、ヘッダ、テンプレートの各エントリ、前回の msgid の整理、廃止エントリ）を
+ * 順に行う。統計（手順 8）は各手順で数える。false はメモリ不足
+ */
 static bool merge_run(merge_state_t *state)
 {
     if (!merge_index_old(state))
@@ -326,7 +434,14 @@ static bool merge_run(merge_state_t *state)
         return false;
     }
 
-    return true;
+    if (!merge_template_entries(state))
+    {
+        return false;
+    }
+
+    merge_tidy_previous(state);
+
+    return merge_append_obsolete(state);
 }
 
 bool mnd_merge_catalogs(const mnd_po_catalog_t *template_catalog, const char *template_path,
