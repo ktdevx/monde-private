@@ -61,7 +61,7 @@
   - _Boundary: Scan_
   - _Requirements: 2.3, 2.4, 2.5, 3.5, 3.6, 4.5_
 
-- [ ] 2.4 (P) HTML の字句と、HTML ブロックの開始・終了条件を実装する
+- [x] 2.4 (P) HTML の字句と、HTML ブロックの開始・終了条件を実装する
   - 開始タグ（属性を含む）、終了タグ、コメント、処理命令、宣言、CDATA を、位置から認識して長さを返す
   - HTML ブロックの開始条件 1〜7（条件 6 のタグ名は spec 0.31.2 の一覧）と、それぞれの終了条件を判定する。条件 7 は段落を中断しないことを判定結果で示す
   - 完了時: html スイートで、各字句の正例と負例（属性値の引用符、`<!-->`、`<a h*#ref="hi">`）と、条件 1〜7 を 1 つずつ判定するテストが合格する
@@ -216,3 +216,4 @@
 - 2.1: 共有の内部 API（`md_internal.h`）: アリーナ `mnd_md_arena_*`（ゼロ初期化）、作業用の配列 `mnd_md_array_*`（伸長は確保＋複製＋解放）、`mnd_md_size_mul`、`mnd_md_doc_create`、`mnd_md_node_new/append_child/insert_before/insert_after/unlink`。テスト用の確保関数は `tests/markdown/test_alloc.h` の `mnd_md_test_alloc_t`（n 回目で失敗、0 は失敗しない）。
 - 2.2: 行の分割は `mnd_md_lines_next(data, &pos, end, &line)`（`mnd_md_phys_line_t`、`pos >= end` で false）。行番号の表は `mnd_md_line_index_build(&index, data, len, arena)` でアリーナに作り、`mnd_md_line_index_line_of` で引く。
 - 2.3: Scan の判定関数は、インデントを除いた位置（最初の空白でない文字）から呼ぶ。インデント 3 以下の検査、判定の優先順位、段落の中断の条件（空の項目、開始番号 1）は呼び出し側（BlockParser）が行う。`mnd_md_scan_pos_t.column` は取り除いた仮想の空白を含む論理的な桁で、物理的な桁は `column + pad`。空の ATX 見出しと情報文字列のないフェンスの範囲は、記号の並びの直後の空の範囲。
+- 2.4: Html の字句の関数は `(data, pos, end)` の連続したバイト列だけを見て、コンテナのプレフィックスを知らない。InlineParser（4.1）は、プレフィックスをまたぐ生の HTML を論理的な文字列か連続した範囲で扱う。閉じのない `<!--`・`<?`・CDATA・引用符の属性値は `end` まで走査するため、InlineParser は「この位置より後ろにない」ことを記録して二乗の時間を避ける（8.3）。条件 6・7 の終わり（空行）は BlockParser が判定する。`<pre/>` は spec の文言どおり種類 0。
