@@ -12,17 +12,19 @@
 /*
  * roundtrip: data/ の正解ファイル（Ubuntu 24.04 の msgcat 0.21 の出力。作り方は data/README.md）を
  * 読み込んで書き出し、バイト単位で比べる。正解ファイルはバイト列のまま読み、全環境で同じ結果を求める。
- * fuzzy_empty_in.po だけは手で書いた入力で、書き出した結果を msgcat の出力 fuzzy_empty.po と比べる
+ * fuzzy_empty_in.po と obsolete_empty_in.po だけは手で書いた入力で、書き出した結果を msgcat の出力
+ * fuzzy_empty.po と obsolete_empty.po と比べる
  */
 
 /* 既定の設定でバイト単位の往復を確かめる正解ファイル（nowrap_option.po は折り返しなしで確かめる） */
 static const char *const golden_files[] = {
     "basic.po", "wrap_latin.po", "wrap_cjk.po", "refs.po", "nowrap_flag.po", "fuzzy_empty.po",
+    "obsolete_empty.po",
 };
 
 #define GOLDEN_FILE_COUNT (sizeof(golden_files) / sizeof(golden_files[0]))
 
-/* テスト用: data/<name>（正解ファイルか fuzzy_empty_in.po）をバイト列のまま content に読む。BOM がなく、空でないことも確かめる */
+/* テスト用: data/<name>（正解ファイルか手で書いた入力）をバイト列のまま content に読む。BOM がなく、空でないことも確かめる */
 static void load_golden(const char *name, mnd_buf_t *content)
 {
     mnd_buf_t path = MND_BUF_INIT;
@@ -434,6 +436,64 @@ NAOS_TEST(roundtrip_fuzzy_with_empty_msgstr_is_written_like_msgcat)
     mnd_po_catalog_free(&again);
 }
 
+NAOS_TEST(roundtrip_obsolete_with_empty_msgstr_is_written_like_msgcat)
+{
+    mnd_buf_t input = MND_BUF_INIT;
+    mnd_buf_t expected = MND_BUF_INIT;
+    mnd_buf_t out = MND_BUF_INIT;
+    mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+    mnd_po_catalog_t again = MND_PO_CATALOG_INIT;
+    size_t dropped = 0;
+    size_t kept = 0;
+    size_t i = 0;
+
+    /*
+     * 5.8、7.1、7.2: 手で書いた obsolete_empty_in.po（最初の msgstr が空の廃止エントリを先頭・途中・末尾に
+     * 含む）を既定の設定で書き出すと、msgcat 0.21 の出力 obsolete_empty.po と一致する。読み直したカタログは、
+     * 5.8 で書かなかった廃止エントリを除いて最初のカタログと一致する
+     */
+    load_golden("obsolete_empty_in.po", &input);
+    load_golden("obsolete_empty.po", &expected);
+    read_clean(input.data, input.len, "obsolete_empty_in.po", &catalog);
+    write_clean(&catalog, false, MND_EOL_LF, &out);
+    check_same_text(&out, &expected);
+    read_clean(out.data, out.len, "written.po", &again);
+
+    /* 最初のカタログから、ライターが書かない廃止エントリ（最初の msgstr が空のもの）を取り除く */
+    while (i < catalog.count)
+    {
+        mnd_po_entry_t *entry = &catalog.entries[i];
+
+        if (!entry->obsolete)
+        {
+            i++;
+            continue;
+        }
+
+        if ((entry->msgstr.count > 0) && (entry->msgstr.items[0].len > 0))
+        {
+            kept++;
+            i++;
+            continue;
+        }
+
+        mnd_po_entry_free(entry);
+        memmove(entry, entry + 1, (catalog.count - i - 1) * sizeof(*entry));
+        catalog.count--;
+        dropped++;
+    }
+
+    /* 入力は、書かない廃止エントリ 7 件と書く廃止エントリ 3 件を含む（入力を変えたら数を合わせる） */
+    NAOS_CHECK_UINT_EQ(7, dropped);
+    NAOS_CHECK_UINT_EQ(3, kept);
+    check_same_catalog(&again, &catalog);
+    mnd_buf_free(&input);
+    mnd_buf_free(&expected);
+    mnd_buf_free(&out);
+    mnd_po_catalog_free(&catalog);
+    mnd_po_catalog_free(&again);
+}
+
 NAOS_TEST(roundtrip_refs_outside_golden_files_read_back)
 {
     /*
@@ -477,5 +537,6 @@ NAOS_SUITE(roundtrip,
     NAOS_ADD_TEST(roundtrip_other_line_splitting_is_reformatted_by_the_rules),
     NAOS_ADD_TEST(roundtrip_irregular_input_is_reformatted_by_the_rules),
     NAOS_ADD_TEST(roundtrip_fuzzy_with_empty_msgstr_is_written_like_msgcat),
+    NAOS_ADD_TEST(roundtrip_obsolete_with_empty_msgstr_is_written_like_msgcat),
     NAOS_ADD_TEST(roundtrip_refs_outside_golden_files_read_back)
 )

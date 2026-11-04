@@ -112,7 +112,7 @@
 - **Selected Approach**: 2。データモデルには fuzzy フラグを残し（gettext のメモリ上の表現と同じ）、ライターが書かないことと状態の判定で gettext に合わせる（1.5、5.7、7.1、7.2）。
 - **Rationale**: gettext の書き出しの規則そのものであり、持ち主の部品で直せば po-merge・init・monde-cli のすべての出力と翻訳率が gettext と一致する。7.3（gettext の出力のラウンドトリップ）は、gettext がこの形を書かないので影響を受けない。
 - **Follow-up**: po-merge の正解ファイルに、訳のない fuzzy のエントリになる入力のケースを加え、po-merge の research.md の「msgmerge と意図して異なる点」からこの差異を消す。
-- **未決（下記の Decision で扱う）**: msgcat は msgstr が空の廃止エントリを書き出さない（実測）。本部品のライターは書き出す。本件とは別に扱う。
+- **未決（解消済み。下記の Decision、po-format 5.8、タスク 8.1・8.2）**: msgcat は msgstr が空の廃止エントリを書き出さない（実測）。本部品のライターは書き出していた。本件とは別に扱い、ライターも書き出さないようにした（`obsolete_empty_in.po` と `obsolete_empty.po` で msgcat と一致することを確かめる）。
 - **設計への反映（2026-11-04、既存の設計への追加のため発見は最小限）**: ライターの `fuzzy` を書く条件と状態の判定で「最初の msgstr が空でない」を同じ条件にする。gettext が書き換える入力（fuzzy_empty_in.po）と msgcat の出力（fuzzy_empty.po）を正解ファイルに加え、`msgcat_compare.cmake` に入力の指定を足して、msgcat と同じ結果になることを互換性テストで確かめる。公開の型と関数は変えない。
 
 ### Decision: 最初の msgstr が空の廃止エントリは書き出さない

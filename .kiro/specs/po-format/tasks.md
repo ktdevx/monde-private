@@ -170,7 +170,7 @@
   - 完了時: po-merge の golden スイートと `po_merge_msgmerge_golden.<case>` に新しいケースが加わって合格し、標準の 3 行の手順で全体のテストが合格する
   - _Requirements: 5.7_
 
-- [ ] 8. 最初の msgstr が空の廃止エントリを gettext と同じく書き出さない
+- [x] 8. 最初の msgstr が空の廃止エントリを gettext と同じく書き出さない
 - [x] 8.1 ライターが最初の msgstr が空の廃止エントリを書き出さないようにし、単体テストを書く
   - 設計の「エントリの並びと区切り」の「書き出さない廃止エントリ（5.8）」のとおり、廃止エントリで msgstr が 0 個か最初の msgstr が空のものを、コメント・フラグ・前回の msgid を含めて 1 行も書かずに飛ばす。判定は 5.7・1.5 と同じ条件（状態の判定と同じ「最初の msgstr が空でない」）とし、空行の区切りは実際に書いたエントリの間にだけ置く。カタログは変更しない
   - 既存の write のテスト `write_zero_msgstr_entries` の、msgstr が 0 個の複数形の廃止エントリ（`gone`）の期待値を直す。エントリごと書かないことを確かめるか、廃止エントリの msgstr[n] の書き方を確かめ続ける場合は訳を与える（どちらにしたかをテストのコメントに書く）
@@ -182,7 +182,7 @@
   - _Boundary: Writer（po-merge の単体テストの期待値と、その補助関数の修正を含む）_
   - _Requirements: 5.1, 5.7, 5.8, 7.1, 7.2_
 
-- [ ] 8.2 msgcat で作った正解ファイルを加え、往復のテストと互換性テストで gettext と一致することを確かめる
+- [x] 8.2 msgcat で作った正解ファイルを加え、往復のテストと互換性テストで gettext と一致することを確かめる
   - 統合タスクとする。テストデータ、roundtrip のテスト、テストのビルドファイル、po-format の research.md を編集する
   - 設計の互換性テストの「po_msgcat_normalize.obsolete_empty」のとおり、書かない廃止エントリ（単数形、コメント・フラグ・`#~|`・msgctxt を持つもの、複数形ですべて空・msgstr[0] だけ空）と、書く廃止エントリ（訳のあるもの、複数形で msgstr[1] だけ空）を、先頭・途中・末尾に置いた入力 `obsolete_empty_in.po` を手で書き、Ubuntu 24.04 の msgcat 0.21 で書き出した `obsolete_empty.po` を作る。作り方と内容をテストデータの README に書く
   - roundtrip スイートで、`obsolete_empty.po` を既存の正解ファイルと同じ比較の対象に加え、`obsolete_empty_in.po` を読み込んで書き出した結果が `obsolete_empty.po` と一致すること、それを読み直したカタログが 5.8 で書かなかった廃止エントリを除いて最初のカタログと一致することを確かめる
@@ -211,3 +211,4 @@
 - 7.2: ライターは `mnd_po_entry_state(entry) == MND_PO_STATE_FUZZY` のときだけ `fuzzy` を書く（7.1 と同じ条件）。po-merge の merge_test は、`#, fuzzy` で msgstr が空の既存の入力が書き戻しで変わるため、`merge_test_run_written` の `old_written` で期待する書き戻しを渡す。この場合のマージ結果の fuzzy の有無は書き出しに現れないので、必要なら 7.4 で出力のカタログのフラグを直接確かめる
 - 7.4: msgcat は最初の msgstr が空のエントリから `fuzzy` を除くので、「fuzzy で訳のない既存のエントリとの完全一致」は msgcat で整形した old.po に入れられない。正解ファイル（po-merge の untranslated_fuzzy）は単数形と複数形の食い違いで扱い、完全一致の場合は po-merge の merge_test の `merge_untranslated_fuzzy_keeps_flag_in_catalog` で出力のカタログを直接確かめる
 - 8.1: 「最初の msgstr が空でない」は po_internal.h の `mnd_po_entry_first_msgstr_is_nonempty`（po_entry.c）にまとめ、状態の判定（1.5）とライターの廃止エントリの省略（5.8）が使う（5.7 は状態の判定を通す）。po-merge の merge_test の補助関数 `merge_test_run_written` に、テンプレートの期待する書き戻し `template_written` を加えた
+- 8.2: msgcat は廃止エントリを末尾に移すので、obsolete_empty_in.po の「書く廃止エントリ」は通常のエントリの後ろに置く（書かない廃止エントリはどこに置いてもよい）。正規化の互換性テストは tests/po/CMakeLists.txt の `foreach(normalize IN ITEMS fuzzy_empty obsolete_empty)` で登録する
