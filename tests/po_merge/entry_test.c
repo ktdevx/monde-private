@@ -57,9 +57,12 @@ static void destroy_catalog(mnd_po_catalog_t *catalog)
     mnd_po_catalog_free(catalog);
 }
 
-/* old_text と template_text の最初のエントリから combine で result（初期化済み）を作る */
+/*
+ * old_text と template_text の最初のエントリから、nplurals を渡して combine で
+ * result（初期化済み）を作る
+ */
 static void combine_texts(const char *old_text, const char *template_text, bool force_fuzzy,
-                          mnd_po_entry_t *result)
+                          size_t nplurals, mnd_po_entry_t *result)
 {
     mnd_po_catalog_t old_catalog;
     mnd_po_catalog_t template_catalog;
@@ -70,20 +73,25 @@ static void combine_texts(const char *old_text, const char *template_text, bool 
     NAOS_REQUIRE_UINT_EQ(1, template_catalog.count);
 
     NAOS_REQUIRE_TRUE(mnd_merge_combine(result, &old_catalog.entries[0],
-                                        &template_catalog.entries[0], force_fuzzy, 2));
+                                        &template_catalog.entries[0], force_fuzzy,
+                                        nplurals));
 
     /* 結果は入力と領域を共有しないので、入力を壊して解放しても結果は変わらない */
     destroy_catalog(&template_catalog);
     destroy_catalog(&old_catalog);
 }
 
-#define COMBINE_TEXTS(old_text, template_text, force_fuzzy, result) \
+#define COMBINE_TEXTS_N(old_text, template_text, force_fuzzy, nplurals, result) \
     do \
     { \
-        NAOS_TRACE_PUSH("in COMBINE_TEXTS"); \
-        combine_texts((old_text), (template_text), (force_fuzzy), (result)); \
+        NAOS_TRACE_PUSH("in COMBINE_TEXTS_N"); \
+        combine_texts((old_text), (template_text), (force_fuzzy), (nplurals), (result)); \
         NAOS_TRACE_POP(); \
     } while (0)
+
+/* nplurals を 2（Plural-Forms のないときの値）として combine する */
+#define COMBINE_TEXTS(old_text, template_text, force_fuzzy, result) \
+    COMBINE_TEXTS_N((old_text), (template_text), (force_fuzzy), 2, (result))
 
 NAOS_TEST(entry_scaffold_default_options_enable_fuzzy_matching)
 {
@@ -514,6 +522,418 @@ NAOS_TEST(entry_copy_keeps_absent_optional_strings_absent)
     mnd_po_entry_free(&dst);
 }
 
+NAOS_TEST(entry_combine_singular_to_plural)
+{
+    static const char *const three[] = { "%d 個", "%d 個", "%d 個" };
+    static const char *const one[] = { "%d 個" };
+    static const char *const empty_two[] = { "", "" };
+    mnd_po_entry_t old_entry;
+    mnd_po_entry_t template_entry;
+    mnd_po_entry_t result;
+
+    /* r が複数形で d が単数形: d の msgstr を nplurals 個に複製して fuzzy */
+    mnd_po_entry_init(&result);
+    COMBINE_TEXTS_N(
+        "msgid \"%d item\"\n"
+        "msgstr \"%d 個\"\n",
+        "msgid \"%d item\"\n"
+        "msgid_plural \"%d items\"\n"
+        "msgstr[0] \"\"\n"
+        "msgstr[1] \"\"\n",
+        false, 3, &result);
+    NAOS_CHECK_TRUE(mnd_po_flag_has(&result, "fuzzy"));
+    NAOS_CHECK_TRUE(result.has_msgid_plural);
+    NAOS_CHECK_STR_EQ("%d items", mnd_buf_cstr(&result.msgid_plural));
+    CHECK_STRINGS(&result.msgstr, three, 3);
+    /* 前回の値は d の値。d に msgid_plural がないので前回の msgid_plural はない（6.5） */
+    NAOS_CHECK_TRUE(result.has_prev_msgid);
+    NAOS_CHECK_STR_EQ("%d item", mnd_buf_cstr(&result.prev_msgid));
+    NAOS_CHECK_FALSE(result.has_prev_msgid_plural);
+    mnd_po_entry_free(&result);
+
+    /* nplurals が 1 なら 1 個 */
+    mnd_po_entry_init(&result);
+    COMBINE_TEXTS_N(
+        "msgid \"%d item\"\n"
+        "msgstr \"%d 個\"\n",
+        "msgid \"%d item\"\n"
+        "msgid_plural \"%d items\"\n"
+        "msgstr[0] \"\"\n"
+        "msgstr[1] \"\"\n",
+        false, 1, &result);
+    NAOS_CHECK_TRUE(mnd_po_flag_has(&result, "fuzzy"));
+    CHECK_STRINGS(&result.msgstr, one, 1);
+    mnd_po_entry_free(&result);
+
+    /* d に msgstr がなければ、空文字列を nplurals 個 */
+    mnd_po_entry_init(&old_entry);
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&old_entry.msgid, "%d item"));
+    mnd_po_entry_init(&template_entry);
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&template_entry.msgid, "%d item"));
+    template_entry.has_msgid_plural = true;
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&template_entry.msgid_plural, "%d items"));
+    mnd_po_entry_init(&result);
+    NAOS_REQUIRE_TRUE(mnd_merge_combine(&result, &old_entry, &template_entry, false, 2));
+    NAOS_CHECK_TRUE(mnd_po_flag_has(&result, "fuzzy"));
+    CHECK_STRINGS(&result.msgstr, empty_two, 2);
+    mnd_po_entry_free(&result);
+    mnd_po_entry_free(&template_entry);
+    mnd_po_entry_free(&old_entry);
+}
+
+NAOS_TEST(entry_combine_plural_to_singular)
+{
+    static const char *const first[] = { "%d 個" };
+    static const char *const empty_one[] = { "" };
+    mnd_po_entry_t old_entry;
+    mnd_po_entry_t template_entry;
+    mnd_po_entry_t result;
+
+    /* r が単数形で d が複数形: d の最初の msgstr だけにして fuzzy（nplurals に依らない） */
+    mnd_po_entry_init(&result);
+    COMBINE_TEXTS_N(
+        "msgid \"%d item\"\n"
+        "msgid_plural \"%d items\"\n"
+        "msgstr[0] \"%d 個\"\n"
+        "msgstr[1] \"%d 個たち\"\n"
+        "msgstr[2] \"%d 個ら\"\n",
+        "msgid \"%d item\"\n"
+        "msgstr \"\"\n",
+        false, 3, &result);
+    NAOS_CHECK_TRUE(mnd_po_flag_has(&result, "fuzzy"));
+    NAOS_CHECK_FALSE(result.has_msgid_plural);
+    CHECK_STRINGS(&result.msgstr, first, 1);
+    /* 前回の値は d の msgid と msgid_plural（6.5） */
+    NAOS_CHECK_TRUE(result.has_prev_msgid);
+    NAOS_CHECK_STR_EQ("%d item", mnd_buf_cstr(&result.prev_msgid));
+    NAOS_CHECK_TRUE(result.has_prev_msgid_plural);
+    NAOS_CHECK_STR_EQ("%d items", mnd_buf_cstr(&result.prev_msgid_plural));
+    mnd_po_entry_free(&result);
+
+    /* d に msgstr がなければ、空文字列 1 個 */
+    mnd_po_entry_init(&old_entry);
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&old_entry.msgid, "%d item"));
+    old_entry.has_msgid_plural = true;
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&old_entry.msgid_plural, "%d items"));
+    mnd_po_entry_init(&template_entry);
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&template_entry.msgid, "%d item"));
+    mnd_po_entry_init(&result);
+    NAOS_REQUIRE_TRUE(mnd_merge_combine(&result, &old_entry, &template_entry, false, 2));
+    NAOS_CHECK_TRUE(mnd_po_flag_has(&result, "fuzzy"));
+    CHECK_STRINGS(&result.msgstr, empty_one, 1);
+    mnd_po_entry_free(&result);
+    mnd_po_entry_free(&template_entry);
+    mnd_po_entry_free(&old_entry);
+}
+
+NAOS_TEST(entry_combine_plural_keeps_msgstr_count)
+{
+    static const char *const three[] = { "%d 個", "%d 個たち", "%d 個ら" };
+    static const char *const one[] = { "%d 個" };
+    mnd_po_entry_t result;
+
+    /* 両方が複数形で msgid_plural が同じ: nplurals と異なる個数でもそのまま、fuzzy にしない（6.1、6.7） */
+    mnd_po_entry_init(&result);
+    COMBINE_TEXTS_N(
+        "msgid \"%d item\"\n"
+        "msgid_plural \"%d items\"\n"
+        "msgstr[0] \"%d 個\"\n"
+        "msgstr[1] \"%d 個たち\"\n"
+        "msgstr[2] \"%d 個ら\"\n",
+        "msgid \"%d item\"\n"
+        "msgid_plural \"%d items\"\n"
+        "msgstr[0] \"\"\n"
+        "msgstr[1] \"\"\n",
+        false, 2, &result);
+    NAOS_CHECK_FALSE(mnd_po_flag_has(&result, "fuzzy"));
+    CHECK_STRINGS(&result.msgstr, three, 3);
+    mnd_po_entry_free(&result);
+
+    mnd_po_entry_init(&result);
+    COMBINE_TEXTS_N(
+        "msgid \"%d item\"\n"
+        "msgid_plural \"%d items\"\n"
+        "msgstr[0] \"%d 個\"\n",
+        "msgid \"%d item\"\n"
+        "msgid_plural \"%d items\"\n"
+        "msgstr[0] \"\"\n"
+        "msgstr[1] \"\"\n",
+        false, 3, &result);
+    NAOS_CHECK_FALSE(mnd_po_flag_has(&result, "fuzzy"));
+    CHECK_STRINGS(&result.msgstr, one, 1);
+    mnd_po_entry_free(&result);
+
+    /* msgid_plural が異なれば fuzzy で、個数はそのまま。前回の値は d の msgid と msgid_plural（6.4、6.5） */
+    mnd_po_entry_init(&result);
+    COMBINE_TEXTS_N(
+        "msgid \"%d item\"\n"
+        "msgid_plural \"%d items\"\n"
+        "msgstr[0] \"%d 個\"\n"
+        "msgstr[1] \"%d 個たち\"\n"
+        "msgstr[2] \"%d 個ら\"\n",
+        "msgid \"%d item\"\n"
+        "msgid_plural \"%d entries\"\n"
+        "msgstr[0] \"\"\n"
+        "msgstr[1] \"\"\n",
+        false, 2, &result);
+    NAOS_CHECK_TRUE(mnd_po_flag_has(&result, "fuzzy"));
+    NAOS_CHECK_STR_EQ("%d entries", mnd_buf_cstr(&result.msgid_plural));
+    CHECK_STRINGS(&result.msgstr, three, 3);
+    NAOS_CHECK_TRUE(result.has_prev_msgid);
+    NAOS_CHECK_STR_EQ("%d item", mnd_buf_cstr(&result.prev_msgid));
+    NAOS_CHECK_TRUE(result.has_prev_msgid_plural);
+    NAOS_CHECK_STR_EQ("%d items", mnd_buf_cstr(&result.prev_msgid_plural));
+    mnd_po_entry_free(&result);
+}
+
+/* template_text の最初のエントリから、nplurals を渡して fresh で result（初期化済み）を作る */
+static void fresh_text(const char *template_text, size_t nplurals, mnd_po_entry_t *result)
+{
+    mnd_po_catalog_t template_catalog;
+
+    TEST_READ_PO(template_text, &template_catalog);
+    NAOS_REQUIRE_UINT_EQ(1, template_catalog.count);
+    NAOS_REQUIRE_TRUE(mnd_merge_fresh(result, &template_catalog.entries[0], nplurals));
+    destroy_catalog(&template_catalog);
+}
+
+#define FRESH_TEXT(template_text, nplurals, result) \
+    do \
+    { \
+        NAOS_TRACE_PUSH("in FRESH_TEXT"); \
+        fresh_text((template_text), (nplurals), (result)); \
+        NAOS_TRACE_POP(); \
+    } while (0)
+
+NAOS_TEST(entry_fresh_copies_template)
+{
+    static const char *const translator[] = { "template translator" };
+    static const char *const extracted[] = { "note" };
+    static const char *const flags[] = { "c-format", "x-unknown" };
+    static const char *const msgstr[] = { "" };
+    mnd_po_entry_t result;
+
+    /* 新規: r の複製（3.10）。行番号は 0、廃止エントリではない */
+    mnd_po_entry_init(&result);
+    FRESH_TEXT(
+        "\n"
+        "# template translator\n"
+        "#. note\n"
+        "#: main.c:7\n"
+        "#, c-format, x-unknown\n"
+        "msgctxt \"menu\"\n"
+        "msgid \"Open %s\"\n"
+        "msgstr \"\"\n",
+        3, &result);
+    CHECK_STRINGS(&result.translator_comments, translator, 1);
+    CHECK_STRINGS(&result.extracted_comments, extracted, 1);
+    NAOS_REQUIRE_UINT_EQ(1, result.refs.count);
+    NAOS_CHECK_STR_EQ("main.c", mnd_buf_cstr(&result.refs.items[0].file));
+    NAOS_CHECK_UINT_EQ(7, result.refs.items[0].line);
+    CHECK_STRINGS(&result.flags, flags, 2);
+    NAOS_CHECK_TRUE(result.has_msgctxt);
+    NAOS_CHECK_STR_EQ("menu", mnd_buf_cstr(&result.msgctxt));
+    NAOS_CHECK_STR_EQ("Open %s", mnd_buf_cstr(&result.msgid));
+    NAOS_CHECK_FALSE(result.has_msgid_plural);
+    /* 単数形は nplurals に依らず msgstr をそのまま */
+    CHECK_STRINGS(&result.msgstr, msgstr, 1);
+    NAOS_CHECK_FALSE(result.obsolete);
+    NAOS_CHECK_UINT_EQ(0, result.line);
+    mnd_po_entry_free(&result);
+}
+
+NAOS_TEST(entry_fresh_plural_msgstr_count)
+{
+    static const char *const empty_three[] = { "", "", "" };
+    static const char *const empty_one[] = { "" };
+    static const char *const partial[] = { "", "x" };
+    mnd_po_entry_t template_entry;
+    mnd_po_entry_t result;
+
+    /* 複数形で msgstr がすべて空なら、空文字列 nplurals 個（6.6） */
+    mnd_po_entry_init(&result);
+    FRESH_TEXT(
+        "msgid \"%d file\"\n"
+        "msgid_plural \"%d files\"\n"
+        "msgstr[0] \"\"\n"
+        "msgstr[1] \"\"\n",
+        3, &result);
+    NAOS_CHECK_TRUE(result.has_msgid_plural);
+    CHECK_STRINGS(&result.msgstr, empty_three, 3);
+    NAOS_CHECK_FALSE(mnd_po_flag_has(&result, "fuzzy"));
+    mnd_po_entry_free(&result);
+
+    mnd_po_entry_init(&result);
+    FRESH_TEXT(
+        "msgid \"%d file\"\n"
+        "msgid_plural \"%d files\"\n"
+        "msgstr[0] \"\"\n"
+        "msgstr[1] \"\"\n",
+        1, &result);
+    CHECK_STRINGS(&result.msgstr, empty_one, 1);
+    mnd_po_entry_free(&result);
+
+    /* 空でない msgstr があれば、個数を変えない（6.7） */
+    mnd_po_entry_init(&result);
+    FRESH_TEXT(
+        "msgid \"%d file\"\n"
+        "msgid_plural \"%d files\"\n"
+        "msgstr[0] \"\"\n"
+        "msgstr[1] \"x\"\n",
+        3, &result);
+    CHECK_STRINGS(&result.msgstr, partial, 2);
+    mnd_po_entry_free(&result);
+
+    /* msgstr が 1 個もない複数形も「すべて空」とする（msgmerge の判定と同じく、空でないものがない） */
+    mnd_po_entry_init(&template_entry);
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&template_entry.msgid, "%d file"));
+    template_entry.has_msgid_plural = true;
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&template_entry.msgid_plural, "%d files"));
+    template_entry.obsolete = true;
+    template_entry.line = 9;
+    mnd_po_entry_init(&result);
+    NAOS_REQUIRE_TRUE(mnd_merge_fresh(&result, &template_entry, 3));
+    CHECK_STRINGS(&result.msgstr, empty_three, 3);
+    NAOS_CHECK_FALSE(result.obsolete);
+    NAOS_CHECK_UINT_EQ(0, result.line);
+    mnd_po_entry_free(&result);
+    mnd_po_entry_free(&template_entry);
+}
+
+NAOS_TEST(entry_obsolete_drops_extracted_comments_and_refs)
+{
+    static const char *const translator[] = { "old translator" };
+    static const char *const flags[] = { "fuzzy", "c-format", "x-unknown" };
+    static const char *const msgstr[] = { "%d 個のファイル", "%d 個のファイルたち" };
+    mnd_po_catalog_t old_catalog;
+    mnd_po_entry_t result;
+
+    /* 抽出コメントと参照だけを消し、ほかの要素を保つ（4.2）。廃止エントリで、行番号は 0 */
+    TEST_READ_PO(
+        "\n"
+        "# old translator\n"
+        "#. old note\n"
+        "#: old.c:1 other.c:2\n"
+        "#, fuzzy, c-format, x-unknown\n"
+        "#| msgctxt \"prev\"\n"
+        "#| msgid \"%d old file\"\n"
+        "#| msgid_plural \"%d old files\"\n"
+        "msgctxt \"ctx\"\n"
+        "msgid \"%d file\"\n"
+        "msgid_plural \"%d files\"\n"
+        "msgstr[0] \"%d 個のファイル\"\n"
+        "msgstr[1] \"%d 個のファイルたち\"\n",
+        &old_catalog);
+    NAOS_REQUIRE_UINT_EQ(1, old_catalog.count);
+    NAOS_REQUIRE_TRUE(old_catalog.entries[0].line != 0);
+
+    mnd_po_entry_init(&result);
+    NAOS_REQUIRE_TRUE(mnd_merge_obsolete(&result, &old_catalog.entries[0]));
+    destroy_catalog(&old_catalog);
+
+    CHECK_STRINGS(&result.translator_comments, translator, 1);
+    NAOS_CHECK_UINT_EQ(0, result.extracted_comments.count);
+    NAOS_CHECK_UINT_EQ(0, result.refs.count);
+    CHECK_STRINGS(&result.flags, flags, 3);
+    NAOS_CHECK_TRUE(result.has_prev_msgctxt);
+    NAOS_CHECK_STR_EQ("prev", mnd_buf_cstr(&result.prev_msgctxt));
+    NAOS_CHECK_TRUE(result.has_prev_msgid);
+    NAOS_CHECK_STR_EQ("%d old file", mnd_buf_cstr(&result.prev_msgid));
+    NAOS_CHECK_TRUE(result.has_prev_msgid_plural);
+    NAOS_CHECK_STR_EQ("%d old files", mnd_buf_cstr(&result.prev_msgid_plural));
+    NAOS_CHECK_TRUE(result.has_msgctxt);
+    NAOS_CHECK_STR_EQ("ctx", mnd_buf_cstr(&result.msgctxt));
+    NAOS_CHECK_STR_EQ("%d file", mnd_buf_cstr(&result.msgid));
+    NAOS_CHECK_TRUE(result.has_msgid_plural);
+    NAOS_CHECK_STR_EQ("%d files", mnd_buf_cstr(&result.msgid_plural));
+    CHECK_STRINGS(&result.msgstr, msgstr, 2);
+    NAOS_CHECK_TRUE(result.obsolete);
+    NAOS_CHECK_UINT_EQ(0, result.line);
+    mnd_po_entry_free(&result);
+
+    /* 元が廃止エントリでも同じ */
+    TEST_READ_PO(
+        "#~ msgid \"Close\"\n"
+        "#~ msgstr \"閉じる\"\n",
+        &old_catalog);
+    NAOS_REQUIRE_UINT_EQ(1, old_catalog.count);
+    mnd_po_entry_init(&result);
+    NAOS_REQUIRE_TRUE(mnd_merge_obsolete(&result, &old_catalog.entries[0]));
+    destroy_catalog(&old_catalog);
+    NAOS_CHECK_STR_EQ("Close", mnd_buf_cstr(&result.msgid));
+    NAOS_REQUIRE_UINT_EQ(1, result.msgstr.count);
+    NAOS_CHECK_STR_EQ("閉じる", mnd_buf_cstr(&result.msgstr.items[0]));
+    NAOS_CHECK_TRUE(result.obsolete);
+    NAOS_CHECK_UINT_EQ(0, result.line);
+    mnd_po_entry_free(&result);
+}
+
+/* entry に前回の msgctxt・msgid・msgid_plural をすべて設定する */
+static void set_previous(mnd_po_entry_t *entry)
+{
+    entry->has_prev_msgctxt = true;
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&entry->prev_msgctxt, "pc"));
+    entry->has_prev_msgid = true;
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&entry->prev_msgid, "pid"));
+    entry->has_prev_msgid_plural = true;
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&entry->prev_msgid_plural, "pids"));
+}
+
+/* entry に前回の値が 1 つもないことを調べる */
+static void check_no_previous(const mnd_po_entry_t *entry)
+{
+    NAOS_CHECK_FALSE(entry->has_prev_msgctxt);
+    NAOS_CHECK_FALSE(entry->has_prev_msgid);
+    NAOS_CHECK_FALSE(entry->has_prev_msgid_plural);
+}
+
+NAOS_TEST(entry_tidy_previous)
+{
+    mnd_po_entry_t entry;
+
+    /* fuzzy で訳があれば保つ */
+    mnd_po_entry_init(&entry);
+    set_previous(&entry);
+    NAOS_REQUIRE_TRUE(mnd_po_flag_add(&entry, "fuzzy"));
+    NAOS_REQUIRE_TRUE(mnd_po_strings_push(&entry.msgstr, "x", 1));
+    mnd_merge_tidy_previous(&entry);
+    NAOS_CHECK_TRUE(entry.has_prev_msgctxt);
+    NAOS_CHECK_STR_EQ("pc", mnd_buf_cstr(&entry.prev_msgctxt));
+    NAOS_CHECK_TRUE(entry.has_prev_msgid);
+    NAOS_CHECK_STR_EQ("pid", mnd_buf_cstr(&entry.prev_msgid));
+    NAOS_CHECK_TRUE(entry.has_prev_msgid_plural);
+    NAOS_CHECK_STR_EQ("pids", mnd_buf_cstr(&entry.prev_msgid_plural));
+    mnd_po_entry_free(&entry);
+
+    /* fuzzy でなければ消す（2.5） */
+    mnd_po_entry_init(&entry);
+    set_previous(&entry);
+    NAOS_REQUIRE_TRUE(mnd_po_strings_push(&entry.msgstr, "x", 1));
+    mnd_merge_tidy_previous(&entry);
+    check_no_previous(&entry);
+    NAOS_CHECK_UINT_EQ(1, entry.msgstr.count);
+    mnd_po_entry_free(&entry);
+
+    /* fuzzy でも最初の msgstr が空なら消す */
+    mnd_po_entry_init(&entry);
+    set_previous(&entry);
+    NAOS_REQUIRE_TRUE(mnd_po_flag_add(&entry, "fuzzy"));
+    NAOS_REQUIRE_TRUE(mnd_po_strings_push(&entry.msgstr, "", 0));
+    NAOS_REQUIRE_TRUE(mnd_po_strings_push(&entry.msgstr, "y", 1));
+    mnd_merge_tidy_previous(&entry);
+    check_no_previous(&entry);
+    NAOS_CHECK_TRUE(mnd_po_flag_has(&entry, "fuzzy"));
+    mnd_po_entry_free(&entry);
+
+    /* fuzzy でも msgstr がなければ消す */
+    mnd_po_entry_init(&entry);
+    set_previous(&entry);
+    NAOS_REQUIRE_TRUE(mnd_po_flag_add(&entry, "fuzzy"));
+    mnd_merge_tidy_previous(&entry);
+    check_no_previous(&entry);
+    mnd_po_entry_free(&entry);
+}
+
 NAOS_SUITE(entry,
     NAOS_ADD_TEST(entry_scaffold_default_options_enable_fuzzy_matching),
     NAOS_ADD_TEST(entry_combine_takes_elements_by_table),
@@ -525,5 +945,12 @@ NAOS_SUITE(entry,
     NAOS_ADD_TEST(entry_combine_untranslated_exact_match),
     NAOS_ADD_TEST(entry_has_translation),
     NAOS_ADD_TEST(entry_copy_is_deep),
-    NAOS_ADD_TEST(entry_copy_keeps_absent_optional_strings_absent)
+    NAOS_ADD_TEST(entry_copy_keeps_absent_optional_strings_absent),
+    NAOS_ADD_TEST(entry_combine_singular_to_plural),
+    NAOS_ADD_TEST(entry_combine_plural_to_singular),
+    NAOS_ADD_TEST(entry_combine_plural_keeps_msgstr_count),
+    NAOS_ADD_TEST(entry_fresh_copies_template),
+    NAOS_ADD_TEST(entry_fresh_plural_msgstr_count),
+    NAOS_ADD_TEST(entry_obsolete_drops_extracted_comments_and_refs),
+    NAOS_ADD_TEST(entry_tidy_previous)
 )

@@ -174,9 +174,12 @@ bool mnd_merge_entry_copy(mnd_po_entry_t *dst, const mnd_po_entry_t *src);
 /* combine(d, r, force_fuzzy)。nplurals は 1 以上 */
 bool mnd_merge_combine(mnd_po_entry_t *dst, const mnd_po_entry_t *old_entry,
                        const mnd_po_entry_t *template_entry, bool force_fuzzy, size_t nplurals);
-/* fresh(r) */
+/*
+ * fresh(r)。r の複製で、複数形で msgstr がすべて空（1 個もない場合を含む）なら空文字列
+ * nplurals 個にする。nplurals は 1 以上。失敗時は dst を初期状態に戻して false
+ */
 bool mnd_merge_fresh(mnd_po_entry_t *dst, const mnd_po_entry_t *template_entry, size_t nplurals);
-/* 廃止エントリの複製（抽出コメントと参照を除く） */
+/* 廃止エントリの複製（抽出コメントと参照を除く）。失敗時は dst を初期状態に戻して false */
 bool mnd_merge_obsolete(mnd_po_entry_t *dst, const mnd_po_entry_t *old_entry);
 /* 手順 6: fuzzy でない、または訳がなければ前回の msgid を消す */
 void mnd_merge_tidy_previous(mnd_po_entry_t *entry);
