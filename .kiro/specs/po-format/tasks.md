@@ -171,7 +171,7 @@
   - _Requirements: 5.7_
 
 - [ ] 8. 最初の msgstr が空の廃止エントリを gettext と同じく書き出さない
-- [ ] 8.1 ライターが最初の msgstr が空の廃止エントリを書き出さないようにし、単体テストを書く
+- [x] 8.1 ライターが最初の msgstr が空の廃止エントリを書き出さないようにし、単体テストを書く
   - 設計の「エントリの並びと区切り」の「書き出さない廃止エントリ（5.8）」のとおり、廃止エントリで msgstr が 0 個か最初の msgstr が空のものを、コメント・フラグ・前回の msgid を含めて 1 行も書かずに飛ばす。判定は 5.7・1.5 と同じ条件（状態の判定と同じ「最初の msgstr が空でない」）とし、空行の区切りは実際に書いたエントリの間にだけ置く。カタログは変更しない
   - 既存の write のテスト `write_zero_msgstr_entries` の、msgstr が 0 個の複数形の廃止エントリ（`gone`）の期待値を直す。エントリごと書かないことを確かめるか、廃止エントリの msgstr[n] の書き方を確かめ続ける場合は訳を与える（どちらにしたかをテストのコメントに書く）
   - 7.2 で加えた write のテストのうち、msgstr が空の廃止エントリに `fuzzy` を書かないことを確かめている部分は、エントリごと書かないことの確認に直す。訳のある fuzzy の廃止エントリが `#, fuzzy` 付きで書かれることの確認は残す
@@ -210,3 +210,4 @@
 - 6.3: `printf` の検索を部分一致で該当なしにするため、po_header.c と po_write.c の snprintf を po_entry.c の `mnd_po_format_decimal(value, min_digits, out, size)`（0 埋めの 10 進数、収まらなければ 0）に置き換えた。検索の `monde` は include guard の `MONDE_PO_` と CMake の `monde_add_module`、サブコマンド名の部分一致は PO の用語（extracted_comments、TRANSLATED）と Init の名前だけである。
 - 7.2: ライターは `mnd_po_entry_state(entry) == MND_PO_STATE_FUZZY` のときだけ `fuzzy` を書く（7.1 と同じ条件）。po-merge の merge_test は、`#, fuzzy` で msgstr が空の既存の入力が書き戻しで変わるため、`merge_test_run_written` の `old_written` で期待する書き戻しを渡す。この場合のマージ結果の fuzzy の有無は書き出しに現れないので、必要なら 7.4 で出力のカタログのフラグを直接確かめる
 - 7.4: msgcat は最初の msgstr が空のエントリから `fuzzy` を除くので、「fuzzy で訳のない既存のエントリとの完全一致」は msgcat で整形した old.po に入れられない。正解ファイル（po-merge の untranslated_fuzzy）は単数形と複数形の食い違いで扱い、完全一致の場合は po-merge の merge_test の `merge_untranslated_fuzzy_keeps_flag_in_catalog` で出力のカタログを直接確かめる
+- 8.1: 「最初の msgstr が空でない」は po_internal.h の `mnd_po_entry_first_msgstr_is_nonempty`（po_entry.c）にまとめ、状態の判定（1.5）とライターの廃止エントリの省略（5.8）が使う（5.7 は状態の判定を通す）。po-merge の merge_test の補助関数 `merge_test_run_written` に、テンプレートの期待する書き戻し `template_written` を加えた

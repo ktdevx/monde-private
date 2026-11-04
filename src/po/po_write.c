@@ -429,12 +429,22 @@ static bool mnd_po_write_entry(mnd_po_writer_t *writer, const mnd_po_entry_t *en
     return true;
 }
 
+/*
+ * 書き出さないエントリか（5.8）。msgstr がないか最初の msgstr が空の廃止エントリは、コメント・フラグ・
+ * 前回の msgid を含めて 1 行も書かない（gettext 0.21 と同じ）。判定は状態（1.5）・fuzzy（5.7）と同じ条件
+ */
+static bool mnd_po_write_skips(const mnd_po_entry_t *entry)
+{
+    return entry->obsolete && !mnd_po_entry_first_msgstr_is_nonempty(entry);
+}
+
 bool mnd_po_write(const mnd_po_catalog_t *catalog, const mnd_po_write_options_t *options,
                   mnd_buf_t *out, mnd_diag_list_t *diags)
 {
     mnd_po_writer_t writer;
     size_t start = out->len;
     size_t i;
+    bool written = false;
 
     if (mnd_po_write_report_duplicates(catalog, diags))
     {
@@ -447,7 +457,13 @@ bool mnd_po_write(const mnd_po_catalog_t *catalog, const mnd_po_write_options_t 
 
     for (i = 0; i < catalog->count; i++)
     {
-        if (((i > 0) && !mnd_buf_append_str(out, writer.eol))
+        if (mnd_po_write_skips(&catalog->entries[i]))
+        {
+            continue;
+        }
+
+        /* 空行の区切りは実際に書いたエントリの間にだけ置く（5.1） */
+        if ((written && !mnd_buf_append_str(out, writer.eol))
             || !mnd_po_write_entry(&writer, &catalog->entries[i]))
         {
             out->len = start;
@@ -460,6 +476,8 @@ bool mnd_po_write(const mnd_po_catalog_t *catalog, const mnd_po_write_options_t 
 
             return false;
         }
+
+        written = true;
     }
 
     return true;

@@ -1050,7 +1050,12 @@ NAOS_TEST(write_zero_msgstr_entries)
     mnd_buf_t out = MND_BUF_INIT;
     mnd_po_entry_t *entry;
 
-    /* 単数形: msgstr ""。複数形: msgstr[0] "" と msgstr[1] "" */
+    /*
+     * 単数形: msgstr ""。複数形: msgstr[0] "" と msgstr[1] ""。
+     * msgstr が 0 個の複数形の廃止エントリ gone は、最初の msgstr が空でないという条件を満たさないので、
+     * エントリごと書かないことを確かめる（5.8。廃止エントリの msgstr[n] の書き方は
+     * write_obsolete_entry_prefixes で訳のあるエントリで確かめる）
+     */
     NAOS_REQUIRE_NOT_NULL(add_msg(&catalog, NULL, "one", NULL));
     entry = add_msg(&catalog, NULL, "file", NULL);
     NAOS_REQUIRE_NOT_NULL(entry);
@@ -1082,11 +1087,6 @@ NAOS_TEST(write_zero_msgstr_entries)
                       "msgid_plural \"files\"\n"
                       "msgstr[0] \"\"\n"
                       "msgstr[1] \"\"\n"
-                      "\n"
-                      "#~ msgid \"gone\"\n"
-                      "#~ msgid_plural \"gones\"\n"
-                      "#~ msgstr[0] \"\"\n"
-                      "#~ msgstr[1] \"\"\n"
                       "\n"
                       "msgid \"two\"\n"
                       "msgstr \"first\"\n"
@@ -1242,7 +1242,10 @@ NAOS_TEST(write_fuzzy_skipped_for_obsolete_and_header)
     mnd_buf_t out = MND_BUF_INIT;
     mnd_po_entry_t *entry;
 
-    /* 5.7: ヘッダと廃止エントリにも同じ規則を当てはめる */
+    /*
+     * 5.7: ヘッダにも同じ規則を当てはめる。最初の msgstr が空の廃止エントリ o と p は、fuzzy を
+     * 飛ばすのではなくエントリごと書かない（5.8）。訳のある fuzzy の廃止エントリ q は #, fuzzy 付きで書く
+     */
     entry = add_msg(&catalog, NULL, "", "");
     NAOS_REQUIRE_NOT_NULL(entry);
     NAOS_REQUIRE_TRUE(push_str(&entry->translator_comments, "h"));
@@ -1266,13 +1269,6 @@ NAOS_TEST(write_fuzzy_skipped_for_obsolete_and_header)
                       "# h\n"
                       "msgid \"\"\n"
                       "msgstr \"\"\n"
-                      "\n"
-                      "#~ msgid \"o\"\n"
-                      "#~ msgstr \"\"\n"
-                      "\n"
-                      "#, c-format\n"
-                      "#~ msgid \"p\"\n"
-                      "#~ msgstr \"\"\n"
                       "\n"
                       "#, fuzzy\n"
                       "#~ msgid \"q\"\n"
@@ -1316,6 +1312,195 @@ NAOS_TEST(write_fuzzy_skip_leaves_entry_flags_unchanged)
     mnd_po_catalog_free(&catalog);
 }
 
+/* テスト用: 単数形の廃止エントリ msgid（msgstr が NULL なら 0 個）を加える */
+static mnd_po_entry_t *add_obsolete(mnd_po_catalog_t *catalog, const char *msgid,
+                                    const char *msgstr)
+{
+    mnd_po_entry_t *entry = add_msg(catalog, NULL, msgid, msgstr);
+
+    if (entry != NULL)
+    {
+        entry->obsolete = true;
+    }
+
+    return entry;
+}
+
+/* テスト用: 複数形の廃止エントリ msgid を加え、msgstr[0] と msgstr[1] を s0 と s1 にする */
+static mnd_po_entry_t *add_obsolete_plural(mnd_po_catalog_t *catalog, const char *msgid,
+                                           const char *s0, const char *s1)
+{
+    mnd_po_entry_t *entry = add_obsolete(catalog, msgid, s0);
+
+    if ((entry == NULL) || !mnd_buf_append_str(&entry->msgid_plural, "pl")
+        || !push_str(&entry->msgstr, s1))
+    {
+        return NULL;
+    }
+
+    entry->has_msgid_plural = true;
+
+    return entry;
+}
+
+NAOS_TEST(write_obsolete_without_first_msgstr_is_skipped)
+{
+    mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+    mnd_buf_t out = MND_BUF_INIT;
+    mnd_po_entry_t *entry;
+
+    /* 5.8: 単数形の空、msgstr が 0 個（単数形と複数形）は書かない */
+    NAOS_REQUIRE_NOT_NULL(add_msg(&catalog, NULL, "keep1", "K1"));
+    NAOS_REQUIRE_NOT_NULL(add_obsolete(&catalog, "empty", ""));
+    NAOS_REQUIRE_NOT_NULL(add_obsolete(&catalog, "none", NULL));
+    entry = add_obsolete(&catalog, "noneplural", NULL);
+    NAOS_REQUIRE_NOT_NULL(entry);
+    entry->has_msgid_plural = true;
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&entry->msgid_plural, "pl"));
+    /* コメント・参照・フラグ・前回の msgctxt と msgid と msgid_plural・msgctxt を持つものも 1 行も書かない */
+    entry = add_msg(&catalog, "ctx", "full", "");
+    NAOS_REQUIRE_NOT_NULL(entry);
+    entry->obsolete = true;
+    NAOS_REQUIRE_TRUE(push_str(&entry->translator_comments, "tc"));
+    NAOS_REQUIRE_TRUE(push_str(&entry->extracted_comments, "ex"));
+    NAOS_REQUIRE_TRUE(mnd_po_refs_push(&entry->refs, "f.c", 1));
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "fuzzy"));
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "c-format"));
+    entry->has_prev_msgctxt = true;
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&entry->prev_msgctxt, "pc"));
+    entry->has_prev_msgid = true;
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&entry->prev_msgid, "pm"));
+    entry->has_prev_msgid_plural = true;
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&entry->prev_msgid_plural, "pp"));
+    /* 複数形ですべて空、msgstr[0] だけ空のものは書かない */
+    NAOS_REQUIRE_NOT_NULL(add_obsolete_plural(&catalog, "allempty", "", ""));
+    NAOS_REQUIRE_NOT_NULL(add_obsolete_plural(&catalog, "first", "", "S1"));
+    /* 複数形で msgstr[1] だけ空のものと、訳のあるものは書く */
+    NAOS_REQUIRE_NOT_NULL(add_obsolete_plural(&catalog, "second", "S0", ""));
+    NAOS_REQUIRE_NOT_NULL(add_obsolete_plural(&catalog, "both", "B0", "B1"));
+    NAOS_REQUIRE_NOT_NULL(add_obsolete(&catalog, "single", "T"));
+
+    write_ok(&catalog, NULL, &out);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&out),
+                      "msgid \"keep1\"\n"
+                      "msgstr \"K1\"\n"
+                      "\n"
+                      "#~ msgid \"second\"\n"
+                      "#~ msgid_plural \"pl\"\n"
+                      "#~ msgstr[0] \"S0\"\n"
+                      "#~ msgstr[1] \"\"\n"
+                      "\n"
+                      "#~ msgid \"both\"\n"
+                      "#~ msgid_plural \"pl\"\n"
+                      "#~ msgstr[0] \"B0\"\n"
+                      "#~ msgstr[1] \"B1\"\n"
+                      "\n"
+                      "#~ msgid \"single\"\n"
+                      "#~ msgstr \"T\"\n");
+    mnd_buf_free(&out);
+    mnd_po_catalog_free(&catalog);
+}
+
+/* テスト用: catalog を書き出した結果が expected であることを確かめる */
+static void check_written(const mnd_po_catalog_t *catalog, const char *expected)
+{
+    mnd_buf_t out = MND_BUF_INIT;
+
+    write_ok(catalog, NULL, &out);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&out), expected);
+    mnd_buf_free(&out);
+}
+
+NAOS_TEST(write_skipped_obsolete_separators)
+{
+    mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+    mnd_buf_t out = MND_BUF_INIT;
+    mnd_po_entry_t *entry;
+
+    /* 5.1・5.8: 空行は実際に書いたエントリの間にだけ置く。先頭・途中で連続・末尾で連続に飛ばす */
+    NAOS_REQUIRE_NOT_NULL(add_obsolete(&catalog, "s1", ""));
+    NAOS_REQUIRE_NOT_NULL(add_msg(&catalog, NULL, "a", "A"));
+    NAOS_REQUIRE_NOT_NULL(add_obsolete(&catalog, "s2", NULL));
+    NAOS_REQUIRE_NOT_NULL(add_obsolete(&catalog, "s3", ""));
+    NAOS_REQUIRE_NOT_NULL(add_msg(&catalog, NULL, "b", "B"));
+    NAOS_REQUIRE_NOT_NULL(add_obsolete(&catalog, "s4", ""));
+    NAOS_REQUIRE_NOT_NULL(add_msg(&catalog, NULL, "c", "C"));
+    NAOS_REQUIRE_NOT_NULL(add_obsolete(&catalog, "s5", ""));
+    NAOS_REQUIRE_NOT_NULL(add_obsolete(&catalog, "s6", NULL));
+    check_written(&catalog,
+                  "msgid \"a\"\n"
+                  "msgstr \"A\"\n"
+                  "\n"
+                  "msgid \"b\"\n"
+                  "msgstr \"B\"\n"
+                  "\n"
+                  "msgid \"c\"\n"
+                  "msgstr \"C\"\n");
+    mnd_po_catalog_free(&catalog);
+
+    /* 書くエントリが 1 つだけなら空行を書かない */
+    mnd_po_catalog_init(&catalog);
+    NAOS_REQUIRE_NOT_NULL(add_obsolete(&catalog, "s1", ""));
+    NAOS_REQUIRE_NOT_NULL(add_obsolete(&catalog, "w", "W"));
+    NAOS_REQUIRE_NOT_NULL(add_obsolete(&catalog, "s2", ""));
+    check_written(&catalog,
+                  "#~ msgid \"w\"\n"
+                  "#~ msgstr \"W\"\n");
+    mnd_po_catalog_free(&catalog);
+
+    /* すべて飛ばすなら空のカタログと同じく何も書かずに成功する（既存の出力はそのまま） */
+    mnd_po_catalog_init(&catalog);
+    NAOS_REQUIRE_NOT_NULL(add_obsolete(&catalog, "s1", ""));
+    entry = add_obsolete(&catalog, "s2", NULL);
+    NAOS_REQUIRE_NOT_NULL(entry);
+    NAOS_REQUIRE_TRUE(push_str(&entry->translator_comments, "tc"));
+    NAOS_REQUIRE_NOT_NULL(add_obsolete_plural(&catalog, "s3", "", "X"));
+    check_written(&catalog, "");
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&out, "keep\n"));
+    write_ok(&catalog, NULL, &out);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&out), "keep\n");
+    mnd_buf_free(&out);
+    mnd_po_catalog_free(&catalog);
+}
+
+NAOS_TEST(write_skipped_obsolete_leaves_catalog_unchanged)
+{
+    static const char *const flags[] = {"fuzzy", "c-format"};
+    mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+    mnd_po_entry_t *entry;
+
+    /* 5.8: 書かなかった廃止エントリもカタログから消さず、内容を変えない */
+    NAOS_REQUIRE_NOT_NULL(add_msg(&catalog, NULL, "a", "A"));
+    entry = add_obsolete(&catalog, "s", "");
+    NAOS_REQUIRE_NOT_NULL(entry);
+    NAOS_REQUIRE_TRUE(push_str(&entry->translator_comments, "tc"));
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "fuzzy"));
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "c-format"));
+    entry->has_prev_msgid = true;
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&entry->prev_msgid, "pm"));
+    NAOS_REQUIRE_NOT_NULL(add_obsolete(&catalog, "n", NULL));
+
+    check_written(&catalog, "msgid \"a\"\nmsgstr \"A\"\n");
+    NAOS_REQUIRE_UINT_EQ(catalog.count, (size_t)3);
+    entry = &catalog.entries[1];
+    NAOS_CHECK_TRUE(entry->obsolete);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->msgid), "s");
+    NAOS_REQUIRE_UINT_EQ(entry->msgstr.count, (size_t)1);
+    NAOS_CHECK_UINT_EQ(entry->msgstr.items[0].len, (size_t)0);
+    NAOS_REQUIRE_UINT_EQ(entry->translator_comments.count, (size_t)1);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->translator_comments.items[0]), "tc");
+    check_flags(entry, flags, 2);
+    NAOS_CHECK_TRUE(entry->has_prev_msgid);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->prev_msgid), "pm");
+    NAOS_CHECK_TRUE(catalog.entries[2].obsolete);
+    NAOS_CHECK_UINT_EQ(catalog.entries[2].msgstr.count, (size_t)0);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&catalog.entries[2].msgid), "n");
+
+    /* 2 回目の書き出しも同じ結果になる */
+    check_written(&catalog, "msgid \"a\"\nmsgstr \"A\"\n");
+    mnd_po_catalog_free(&catalog);
+}
+
 NAOS_SUITE(write,
     NAOS_ADD_TEST(write_options_init_is_wrap_and_lf),
     NAOS_ADD_TEST(write_wrap_79_columns_fits_on_keyword_line),
@@ -1353,5 +1538,8 @@ NAOS_SUITE(write,
     NAOS_ADD_TEST(write_fuzzy_skipped_when_no_msgstr),
     NAOS_ADD_TEST(write_fuzzy_plural_depends_on_first_msgstr),
     NAOS_ADD_TEST(write_fuzzy_skipped_for_obsolete_and_header),
-    NAOS_ADD_TEST(write_fuzzy_skip_leaves_entry_flags_unchanged)
+    NAOS_ADD_TEST(write_fuzzy_skip_leaves_entry_flags_unchanged),
+    NAOS_ADD_TEST(write_obsolete_without_first_msgstr_is_skipped),
+    NAOS_ADD_TEST(write_skipped_obsolete_separators),
+    NAOS_ADD_TEST(write_skipped_obsolete_leaves_catalog_unchanged)
 )
