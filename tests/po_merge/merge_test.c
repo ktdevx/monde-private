@@ -59,13 +59,14 @@ static size_t merge_test_count_messages(const mnd_po_catalog_t *catalog)
 }
 
 /*
- * template_po と old_po（NULL なら空のカタログ）を読み込んでマージし、書き出した結果が expected
- * と一致すること、統計が expected_stats と一致し matched + fuzzy + added がテンプレートの
+ * template_po と old_po（NULL なら空のカタログ）を読み込んで options（NULL なら既定）でマージし、
+ * 書き出した結果が expected と一致すること、統計が expected_stats と一致し matched + fuzzy + added がテンプレートの
  * メッセージの数に等しいこと、診断がないこと、入力のカタログがマージの前後で変わらないこと
  * （書き出しが入力の文字列と一致すること）を確かめる。入力の文字列は書き出しの正規形で書く
  */
-static void merge_test_run(const char *template_po, const char *old_po, const char *expected,
-                           const mnd_merge_stats_t *expected_stats)
+static void merge_test_run_options(const mnd_merge_options_t *options, const char *template_po,
+                                   const char *old_po, const char *expected,
+                                   const mnd_merge_stats_t *expected_stats)
 {
     mnd_po_catalog_t template_catalog;
     mnd_po_catalog_t old_catalog;
@@ -90,8 +91,8 @@ static void merge_test_run(const char *template_po, const char *old_po, const ch
     TEST_CHECK_WRITTEN(&template_catalog, template_po);
     TEST_CHECK_WRITTEN(&old_catalog, (old_po != NULL) ? old_po : "");
 
-    NAOS_REQUIRE_TRUE(mnd_merge_catalogs(&template_catalog, "t.pot", &old_catalog, "o.po", NULL,
-                                         &out, &stats, &diags));
+    NAOS_REQUIRE_TRUE(mnd_merge_catalogs(&template_catalog, "t.pot", &old_catalog, "o.po",
+                                         options, &out, &stats, &diags));
     NAOS_CHECK_UINT_EQ(mnd_diag_list_count(&diags), 0);
 
     /* 結果は mnd_po_write で重複のエラーなく書き出せる（診断があれば失敗する） */
@@ -111,6 +112,13 @@ static void merge_test_run(const char *template_po, const char *old_po, const ch
     mnd_po_catalog_free(&out);
     mnd_po_catalog_free(&old_catalog);
     mnd_po_catalog_free(&template_catalog);
+}
+
+/* 既定の設定（options が NULL）で merge_test_run_options を行う */
+static void merge_test_run(const char *template_po, const char *old_po, const char *expected,
+                           const mnd_merge_stats_t *expected_stats)
+{
+    merge_test_run_options(NULL, template_po, old_po, expected, expected_stats);
 }
 
 /* 統計がすべて 0 であることを確かめる */
@@ -1035,6 +1043,178 @@ NAOS_TEST(merge_plural_cases_use_nplurals_of_old_header)
                    &stats);
 }
 
+NAOS_TEST(merge_fuzzy_match_elements_and_previous)
+{
+    static const char template_po[] =
+        "msgid \"\"\n"
+        "msgstr \"Content-Type: text/plain; charset=UTF-8\\n\"\n"
+        "\n"
+        "#. new extracted\n"
+        "#: new.c:1\n"
+        "#, c-format\n"
+        "msgctxt \"menu\"\n"
+        "msgid \"Open the file %s\"\n"
+        "msgstr \"\"\n"
+        "\n"
+        "#: new.c:2\n"
+        "msgid \"%d file removed\"\n"
+        "msgid_plural \"%d files removed\"\n"
+        "msgstr[0] \"\"\n"
+        "msgstr[1] \"\"\n"
+        "\n"
+        "msgid \"Save all documents now\"\n"
+        "msgstr \"\"\n";
+    static const char old_po[] =
+        "msgid \"\"\n"
+        "msgstr \"\"\n"
+        "\"Content-Type: text/plain; charset=UTF-8\\n\"\n"
+        "\"Plural-Forms: nplurals=2; plural=n != 1;\\n\"\n"
+        "\n"
+        "# tc\n"
+        "#. old extracted\n"
+        "#: old.c:1\n"
+        "#, c-format\n"
+        "msgctxt \"dialog\"\n"
+        "msgid \"Open a file %s\"\n"
+        "msgstr \"Ouvrir %s\"\n"
+        "\n"
+        "msgid \"%d file deleted\"\n"
+        "msgid_plural \"%d files deleted\"\n"
+        "msgstr[0] \"D0\"\n"
+        "msgstr[1] \"D1\"\n"
+        "\n"
+        "# t3\n"
+        "#, fuzzy\n"
+        "#| msgctxt \"old\"\n"
+        "#| msgid \"Save all docs\"\n"
+        "msgid \"Save all documents\"\n"
+        "msgstr \"Tout enregistrer\"\n";
+    static const mnd_merge_options_t options = MND_MERGE_OPTIONS_INIT;
+    static const mnd_merge_stats_t stats = { 0, 3, 0, 0 };
+
+    /*
+     * あいまい一致では、msgstr と翻訳者コメントを候補から、抽出コメント・参照・フラグを
+     * テンプレートから取り、fuzzy を付ける。前回の msgid は、fuzzy でない候補なら候補の
+     * msgctxt・msgid・msgid_plural（msgctxt が異なる候補も使う）、fuzzy の候補なら候補の前回の
+     * msgid。使われた候補は廃止エントリにならない（msgmerge --previous 0.21 の出力と同じ）
+     */
+    merge_test_run_options(&options, template_po, old_po,
+                           "msgid \"\"\n"
+                           "msgstr \"\"\n"
+                           "\"Content-Type: text/plain; charset=UTF-8\\n\"\n"
+                           "\"Plural-Forms: nplurals=2; plural=n != 1;\\n\"\n"
+                           "\n"
+                           "# tc\n"
+                           "#. new extracted\n"
+                           "#: new.c:1\n"
+                           "#, fuzzy, c-format\n"
+                           "#| msgctxt \"dialog\"\n"
+                           "#| msgid \"Open a file %s\"\n"
+                           "msgctxt \"menu\"\n"
+                           "msgid \"Open the file %s\"\n"
+                           "msgstr \"Ouvrir %s\"\n"
+                           "\n"
+                           "#: new.c:2\n"
+                           "#, fuzzy\n"
+                           "#| msgid \"%d file deleted\"\n"
+                           "#| msgid_plural \"%d files deleted\"\n"
+                           "msgid \"%d file removed\"\n"
+                           "msgid_plural \"%d files removed\"\n"
+                           "msgstr[0] \"D0\"\n"
+                           "msgstr[1] \"D1\"\n"
+                           "\n"
+                           "# t3\n"
+                           "#, fuzzy\n"
+                           "#| msgctxt \"old\"\n"
+                           "#| msgid \"Save all docs\"\n"
+                           "msgid \"Save all documents now\"\n"
+                           "msgstr \"Tout enregistrer\"\n",
+                           &stats);
+}
+
+/* あいまい一致の有効・無効を比べる入力（テンプレート） */
+static const char merge_test_shared_template_po[] =
+    "msgid \"Print the document.\"\n"
+    "msgstr \"\"\n"
+    "\n"
+    "msgid \"Zebra\"\n"
+    "msgstr \"\"\n"
+    "\n"
+    "msgid \"Print the documents\"\n"
+    "msgstr \"\"\n";
+
+/* あいまい一致の有効・無効を比べる入力（既存。候補は廃止エントリ） */
+static const char merge_test_shared_old_po[] =
+    "msgid \"\"\n"
+    "msgstr \"Content-Type: text/plain; charset=UTF-8\\n\"\n"
+    "\n"
+    "msgid \"Quit\"\n"
+    "msgstr \"Quitter\"\n"
+    "\n"
+    "#~ msgid \"Print the document\"\n"
+    "#~ msgstr \"Imprimer le document\"\n";
+
+NAOS_TEST(merge_fuzzy_candidate_shared_and_obsolete_used)
+{
+    static const mnd_merge_stats_t stats = { 0, 2, 1, 1 };
+
+    /*
+     * options が NULL なら既定であいまい一致を行う。1 つの廃止エントリを 2 つのテンプレートの
+     * エントリが候補として使い、使われた廃止エントリは廃止エントリとして出力しない。
+     * 候補のない Zebra は新規、使われなかった Quit は廃止エントリになる
+     */
+    merge_test_run(merge_test_shared_template_po, merge_test_shared_old_po,
+                   "msgid \"\"\n"
+                   "msgstr \"Content-Type: text/plain; charset=UTF-8\\n\"\n"
+                   "\n"
+                   "#, fuzzy\n"
+                   "#| msgid \"Print the document\"\n"
+                   "msgid \"Print the document.\"\n"
+                   "msgstr \"Imprimer le document\"\n"
+                   "\n"
+                   "msgid \"Zebra\"\n"
+                   "msgstr \"\"\n"
+                   "\n"
+                   "#, fuzzy\n"
+                   "#| msgid \"Print the document\"\n"
+                   "msgid \"Print the documents\"\n"
+                   "msgstr \"Imprimer le document\"\n"
+                   "\n"
+                   "#~ msgid \"Quit\"\n"
+                   "#~ msgstr \"Quitter\"\n",
+                   &stats);
+}
+
+NAOS_TEST(merge_fuzzy_disabled_makes_unmatched_new)
+{
+    static const mnd_merge_options_t options = { false };
+    static const mnd_merge_stats_t stats = { 0, 0, 3, 1 };
+
+    /*
+     * あいまい一致が無効なら、完全一致しないエントリはすべて新規になり、候補になり得た
+     * 廃止エントリも廃止エントリのまま残る（msgmerge --no-fuzzy-matching と同じ）
+     */
+    merge_test_run_options(&options, merge_test_shared_template_po, merge_test_shared_old_po,
+                           "msgid \"\"\n"
+                           "msgstr \"Content-Type: text/plain; charset=UTF-8\\n\"\n"
+                           "\n"
+                           "msgid \"Print the document.\"\n"
+                           "msgstr \"\"\n"
+                           "\n"
+                           "msgid \"Zebra\"\n"
+                           "msgstr \"\"\n"
+                           "\n"
+                           "msgid \"Print the documents\"\n"
+                           "msgstr \"\"\n"
+                           "\n"
+                           "#~ msgid \"Quit\"\n"
+                           "#~ msgstr \"Quitter\"\n"
+                           "\n"
+                           "#~ msgid \"Print the document\"\n"
+                           "#~ msgstr \"Imprimer le document\"\n",
+                           &stats);
+}
+
 NAOS_TEST(merge_stats_with_null_options_and_null_stats)
 {
     static const char template_po[] =
@@ -1113,6 +1293,9 @@ NAOS_SUITE(merge,
     NAOS_ADD_TEST(merge_unused_entries_become_obsolete),
     NAOS_ADD_TEST(merge_obsolete_keeps_previous_of_untranslated_fuzzy),
     NAOS_ADD_TEST(merge_plural_cases_use_nplurals_of_old_header),
+    NAOS_ADD_TEST(merge_fuzzy_match_elements_and_previous),
+    NAOS_ADD_TEST(merge_fuzzy_candidate_shared_and_obsolete_used),
+    NAOS_ADD_TEST(merge_fuzzy_disabled_makes_unmatched_new),
     NAOS_ADD_TEST(merge_stats_with_null_options_and_null_stats),
     NAOS_ADD_TEST(merge_scaffold_test_util_round_trips_po)
 )

@@ -17,6 +17,9 @@ typedef struct merge_state
     mnd_diag_list_t *diags;
     mnd_merge_key_index_t old_index;  /* O のキー → O の添字（通常のエントリが優先） */
     bool has_old_index;               /* old_index を初期化した（解放が必要） */
+    bool fuzzy_matching;              /* あいまい一致を行う */
+    mnd_merge_fuzzy_t fuzzy;          /* O のあいまい一致の候補（fuzzy_matching のときだけ作る） */
+    bool has_fuzzy;                   /* fuzzy を初期化した（解放が必要） */
     bool *used;                       /* O の添字ごとの「使われた」（O が空なら NULL） */
     size_t nplurals;                  /* O のヘッダの Plural-Forms から求めた nplurals */
     mnd_merge_stats_t stats;          /* 成功時に呼び出し側へ返す統計 */
@@ -197,7 +200,8 @@ static bool merge_check_duplicates(const mnd_po_catalog_t *catalog, const char *
 
 /*
  * 手順 2: O の索引に、ヘッダ以外の廃止エントリでないエントリを先に、廃止エントリを後に登録する。
- * 登録済みのキーは上書きしない。「使われた」の配列を用意し、nplurals を求める。false はメモリ不足
+ * 登録済みのキーは上書きしない。あいまい一致が有効なら O の候補の索引を作る。
+ * 「使われた」の配列を用意し、nplurals を求める。false はメモリ不足
  */
 static bool merge_index_old(merge_state_t *state)
 {
@@ -260,6 +264,17 @@ static bool merge_index_old(merge_state_t *state)
         }
     }
 
+    /* 無効なら候補の索引を作らない。init は失敗時に自身を解放する */
+    if (state->fuzzy_matching)
+    {
+        if (!mnd_merge_fuzzy_init(&state->fuzzy, old_catalog))
+        {
+            return false;
+        }
+
+        state->has_fuzzy = true;
+    }
+
     return true;
 }
 
@@ -303,8 +318,9 @@ static bool merge_place_header(merge_state_t *state)
 
 /*
  * 手順 4: T のエントリを順に、廃止エントリと T のヘッダを飛ばして組み立て、出力に加える。
- * O に同じキーのエントリがあれば完全一致（combine）、なければ新規（fresh）とする。
- * false はメモリ不足
+ * O に同じキーのエントリがあれば完全一致（combine）、なければ、あいまい一致が有効で候補が
+ * あればあいまい一致（fuzzy を付けた combine）、どちらでもなければ新規（fresh）とする。
+ * 候補は使われた後も、ほかのテンプレートのエントリの候補であり続ける。false はメモリ不足
  */
 static bool merge_template_entries(merge_state_t *state)
 {
@@ -318,6 +334,7 @@ static bool merge_template_entries(merge_state_t *state)
         const mnd_po_entry_t *template_entry = &template_catalog->entries[j];
         mnd_po_entry_t *dst;
         size_t old_index = 0;
+        bool has_candidate = false;
 
         if (template_entry->obsolete || (has_header && (j == header_index)))
         {
@@ -343,7 +360,27 @@ static bool merge_template_entries(merge_state_t *state)
             continue;
         }
 
-        /* 完全一致がなければ新規とする */
+        if (state->has_fuzzy
+            && (!mnd_merge_fuzzy_search(&state->fuzzy, template_entry, &has_candidate,
+                                        &old_index)))
+        {
+            return false;
+        }
+
+        if (has_candidate)
+        {
+            if (!mnd_merge_combine(dst, &state->old_catalog->entries[old_index], template_entry,
+                                   true, state->nplurals))
+            {
+                return false;
+            }
+
+            state->used[old_index] = true;
+            state->stats.fuzzy++;
+            continue;
+        }
+
+        /* 完全一致もあいまい一致もなければ新規とする */
         if (!mnd_merge_fresh(dst, template_entry, state->nplurals))
         {
             return false;
@@ -454,13 +491,13 @@ bool mnd_merge_catalogs(const mnd_po_catalog_t *template_catalog, const char *te
     bool found = false;
     bool ok;
 
-    (void)options;
-
     state.template_catalog = template_catalog;
     state.old_catalog = old_catalog;
     state.out = out;
     state.diags = diags;
     state.has_old_index = false;
+    state.fuzzy_matching = (options == NULL) || options->fuzzy_matching;
+    state.has_fuzzy = false;
     state.used = NULL;
     state.nplurals = MND_MERGE_NPLURALS_DEFAULT;
     merge_stats_clear(&state.stats);
@@ -481,6 +518,11 @@ bool mnd_merge_catalogs(const mnd_po_catalog_t *template_catalog, const char *te
     if (state.has_old_index)
     {
         mnd_merge_key_index_free(&state.old_index);
+    }
+
+    if (state.has_fuzzy)
+    {
+        mnd_merge_fuzzy_free(&state.fuzzy);
     }
 
     free(state.used);
