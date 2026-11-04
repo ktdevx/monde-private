@@ -1,0 +1,32 @@
+# spec.txt は tests/data/commonmark/ に置き、テストは MND_MD_SPEC_FILE のパスから読む
+monde_add_module_tests(markdown
+  SOURCES
+    main.c
+    test_alloc.c
+    tree_check.c
+    html_render.c
+    html_normalize.c
+    spec_reader.c
+    model_test.c
+    lines_index_test.c
+    scan_test.c
+    html_test.c
+    unicode_test.c
+    entity_test.c
+    text_test.c
+    tree_check_test.c
+    normalize_test.c
+    render_test.c
+    spec_reader_test.c
+    parse_test.c
+    block_test.c
+    range_test.c
+    lines_test.c
+    inline_test.c
+    linkref_test.c
+    dialect_test.c
+    error_test.c
+    spec_test.c
+  DEFINITIONS
+    "MND_MD_SPEC_FILE=\"${PROJECT_SOURCE_DIR}/tests/data/commonmark/spec.txt\""
+)

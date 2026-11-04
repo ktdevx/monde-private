@@ -1,0 +1,21 @@
+monde_add_module(markdown
+  SOURCES
+    md_arena.c
+    md_node.c
+    md_lines.c
+    md_scan.c
+    md_html.c
+    md_parse.c
+    md_block.c
+    md_linkref.c
+    md_inline.c
+    md_delim.c
+    md_text.c
+    md_dialect.c
+    md_entity.c
+    md_entity_table.c
+    md_unicode.c
+    md_unicode_tables.c
+  DEPENDS
+    foundation
+)
