@@ -11,7 +11,7 @@
   - 完了時: 標準の 3 行の手順が成功し、CTest に `markdown_tests.<suite>.<test>` 形式のテストが 20 スイート分表示され、`ctest -L markdown` で実行できる。`BUILD_TESTING=OFF` でも `monde_markdown` がビルドできる
   - _Requirements: 8.4, 9.6_
 
-- [ ] 1.2 (P) Unicode の表を生成するスクリプトを作り、文字の分類と大文字小文字の畳み込みを実装する
+- [x] 1.2 (P) Unicode の表を生成するスクリプトを作り、文字の分類と大文字小文字の畳み込みを実装する
   - UCD 15.0.0 の `extracted/DerivedGeneralCategory.txt` と `CaseFolding.txt` を一度手で取得し、リポジトリの外の一時ディレクトリに置く。データファイル自体はリポジトリに含めない
   - データファイルのパスを引数で受け取り、句読点（P、S）、空白（Zs）の範囲の表と、畳み込み（C と F）の表を C のソースとして生成するスクリプトを `tools/` に置く。Python 3 の標準ライブラリだけを使い、ネットワークから取得しない。生成物の先頭に Unicode のバージョン、生成元、Unicode License v3 の表記、手で編集しない旨を書く
   - 表を二分探索して、句読点か、空白か、畳み込んだ UTF-8 の列を返す機能を実装する
@@ -208,3 +208,6 @@
   - `src/markdown/` に、ファイルの入出力・標準出力への書き込み・プロセスの終了と、翻訳・PO・サブコマンドの語が現れず、テスト用の HTML 出力・正規化・spec の読み込みを参照していないことを確かめる。spec.txt がインストールの対象でないことを確かめる
   - 完了時: `ctest -L markdown` がすべて合格し、上の確認の結果（検索のコマンドと結果）を作業の記録に残す
   - _Requirements: 3.1, 3.7, 8.4, 9.5, 9.6_
+
+## Implementation Notes
+- 1.2: `mnd_md_unicode_is_space` は Zs だけを判定する。CommonMark の Unicode whitespace（タブ、LF、FF、CR を含む）は、使う側（Delims、LinkRef）でこの 4 文字を別に判定する。`mnd_md_unicode_fold` の出力は NUL 終端しない（最大 `MND_MD_UNICODE_FOLD_MAX` バイト）。
