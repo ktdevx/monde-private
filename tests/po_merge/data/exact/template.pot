@@ -1,0 +1,86 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the sample package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: sample 2.0\n"
+"Report-Msgid-Bugs-To: https://example.com/sample/issues\n"
+"POT-Creation-Date: 2026-11-01 10:00+0900\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. TRANSLATORS: shown on the start screen
+#: src/main.c:12 src/main.c:40
+msgid "Hello, world!"
+msgstr ""
+
+#: src/file.c:20
+#, c-format
+msgid "Cannot open file %s"
+msgstr ""
+
+#: src/usage.c:5
+#, no-wrap
+msgid ""
+"Usage: sample [OPTIONS] FILE...\n"
+"  -o FILE    write the result to FILE instead of the standard output of the program\n"
+msgstr ""
+
+#: src/usage.c:30
+msgid ""
+"This long sentence used to be marked as no-wrap in the old translation file, "
+"but the template no longer has the flag."
+msgstr ""
+
+#: src/doc.c:3
+msgid "Save the document"
+msgstr ""
+
+#: src/app.c:99
+msgid "Quit"
+msgstr ""
+
+#: src/dialog.c:7
+msgid "Open..."
+msgstr ""
+
+#: src/help.c:1
+msgid "Help"
+msgstr ""
+
+#: src/menu.c:10
+msgctxt "menu"
+msgid "File"
+msgstr ""
+
+#: src/dialog.c:11
+msgctxt "dialog"
+msgid "File"
+msgstr ""
+
+#: src/dialog.c:12
+msgctxt ""
+msgid "File"
+msgstr ""
+
+#: src/status.c:4
+msgid "File"
+msgstr ""
+
+#: src/status.c:8
+msgid ""
+"Line 1\n"
+"Line 2\twith a \"tab\" and a \\ backslash\n"
+msgstr ""
+
+#: src/zebra.c:1
+msgid "Zebra crossing ahead"
+msgstr ""

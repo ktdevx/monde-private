@@ -1,0 +1,11 @@
+msgid "Red"
+msgstr "Rouge"
+
+msgid "Green"
+msgstr ""
+
+msgid "Blue colour"
+msgstr "Bleu"
+
+msgid "Purple"
+msgstr "Violet"

@@ -1,0 +1,3 @@
+# 正解ファイルは msgcat と msgmerge の出力そのもので、バイト単位で比べる。改行の変換をさせない
+*.po -text
+*.pot -text

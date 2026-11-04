@@ -103,7 +103,7 @@
   - _Requirements: 3.6, 3.7, 3.8, 3.10, 3.11, 4.6, 7.1, 7.3_
 
 - [ ] 5. msgmerge との一致と性能の検証
-- [ ] 5.1 msgmerge 0.21 の出力である正解ファイルを作り、正解ファイルとの比較のテストを書く
+- [x] 5.1 msgmerge 0.21 の出力である正解ファイルを作り、正解ファイルとの比較のテストを書く
   - 最初の手順として、正解ファイルを作る環境を用意する: Ubuntu 24.04 の `gettext` パッケージ（0.21）を導入し、`msgmerge --version` と `msgcat --version` の 1 行目が `(GNU gettext-tools) 0.21` であることを確かめる。作業環境に導入できない場合は、導入できる環境（Ubuntu 24.04 のコンテナや CI のジョブなど）で正解ファイルを作ってコミットし、その環境を README に書く。製品のコードとテストの実行には gettext を必要としない
   - 設計の 7 ケース（exact、fuzzy、obsolete、header、no_header、plural、nofuzzy）の `old.po` と `template.pot` を、msgcat 0.21 で整形したものとして作る。各ケースの `expected.po` を `msgmerge --previous`（nofuzzy は `--no-fuzzy-matching` も）で作る。msgmerge と意図して異なる入力（設計の Open Questions）は含めない
   - 正解ファイルの作り方（作った環境、gettext と libunistring の版、各ケースのコマンドと内容）をデータのディレクトリの README に書く
@@ -148,3 +148,4 @@
 - 3.2: 調べる順序を返す内部関数 `mnd_merge_fuzzy_order` を Fuzzy の節に追加した（テストで順序を確かめるため）。類似度 0.6 ちょうどでも bonus が付けば選ばれる（msgmerge と同じ）
 - 4.1: merge.c は手順ごとの static 関数と `merge_state_t`（O の索引、used、nplurals、統計）で構成する。4.2・4.3 は `merge_run` の `merge_place_header` の後に手順を加える。表示する値の 40 バイトは置き換えた後のバイト数（po の reader と writer と同じ）
 - 4.2: po-format のライターは msgstr が空のエントリにも `#, fuzzy` を書くが、gettext 0.21（msgcat、msgmerge）は msgstr[0] が空なら fuzzy を書かない（po-format の課題で、po-merge では直さない）。5.1 の正解ファイルには「未翻訳のまま fuzzy になるエントリ」（訳のない既存との複数形の食い違いなど）を含めない
+- 5.1: 正解ファイルは作業環境（Ubuntu 24.04、apt の gettext 0.21-14ubuntu2）で作った。nofuzzy の入力は fuzzy の写し。単数形 → 複数形の食い違いでは msgmerge は現在の msgid を `#|` に書く。data/.gitattributes で改行の変換を止めている

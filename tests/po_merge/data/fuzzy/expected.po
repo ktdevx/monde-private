@@ -1,0 +1,86 @@
+# Japanese translation for sample.
+# Copyright (C) 2026 THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the sample package.
+# 山田太郎 <taro@example.com>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: sample 1.0\n"
+"Report-Msgid-Bugs-To: https://example.com/sample/issues\n"
+"POT-Creation-Date: 2026-11-01 10:00+0900\n"
+"PO-Revision-Date: 2026-10-05 12:30+0900\n"
+"Last-Translator: 山田太郎 <taro@example.com>\n"
+"Language-Team: Japanese <ja@example.com>\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+# 訳注: ファイル一覧の操作
+#: src/browser.c:10
+#, fuzzy
+#| msgid "Open the selected file"
+msgid "Open the selected files"
+msgstr "選択したファイルを開く"
+
+#: src/list.c:22
+#, fuzzy
+#| msgid "Delete all items in the list"
+msgid "Delete all items in the lists"
+msgstr "リスト内のすべての項目を削除"
+
+#: src/view.c:5
+#, fuzzy
+#| msgid "Show hidden files"
+msgid "Show all the hidden files"
+msgstr "隠しファイルを表示"
+
+#: src/menu.c:30
+#, fuzzy
+#| msgctxt "toolbar"
+#| msgid "Print the current page"
+msgctxt "menu"
+msgid "Print the current page"
+msgstr "現在のページを印刷"
+
+#: src/copy.c:3
+#, fuzzy
+#| msgid "Copy file A"
+msgid "Copy file C"
+msgstr "ファイル A をコピー"
+
+#: src/edit.c:1
+#, fuzzy
+#| msgid "Cut:"
+msgid "Cut"
+msgstr "切り取り:"
+
+#: src/close.c:2
+#, fuzzy
+#| msgid "閉じる。"
+msgid "閉じる"
+msgstr "Close."
+
+#: src/settings.c:40
+#, fuzzy
+#| msgid "設定を保存しました"
+msgid "設定を保存しました。"
+msgstr "Settings saved"
+
+#: src/folder.c:8
+#, fuzzy
+#| msgid "Rename the selected folder"
+msgid "Rename the selected folders"
+msgstr "選択したフォルダーの名前を変更"
+
+#: src/net.c:77
+msgid "Connection to the server was lost"
+msgstr ""
+
+#: src/misc.c:1
+msgid "Completely unrelated message"
+msgstr ""
+
+#~ msgid "Copy file B"
+#~ msgstr "ファイル B をコピー"

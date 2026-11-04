@@ -1,0 +1,59 @@
+# Japanese translation for sample.
+# Copyright (C) 2026 THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the sample package.
+# 山田太郎 <taro@example.com>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: sample 1.0\n"
+"Report-Msgid-Bugs-To: https://example.com/sample/issues\n"
+"POT-Creation-Date: 2026-10-01 09:00+0900\n"
+"PO-Revision-Date: 2026-10-05 12:30+0900\n"
+"Last-Translator: 山田太郎 <taro@example.com>\n"
+"Language-Team: Japanese <ja@example.com>\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Keep this message"
+msgstr "このメッセージを保つ"
+
+# 訳注: 廃止される
+#. extracted comment to be removed
+#: src/old.c:10
+msgid "Old message one"
+msgstr "古いメッセージ 1"
+
+#: src/old.c:11
+msgid "Old untranslated message"
+msgstr ""
+
+#, fuzzy
+#| msgid "Old fuzzy msg"
+msgid "Old fuzzy message"
+msgstr "古いあいまいなメッセージ"
+
+#: src/old.c:12
+msgctxt "label"
+msgid "Old context message"
+msgstr "文脈つきの古いメッセージ"
+
+#~ msgid "Ancient text"
+#~ msgstr "とても古い文"
+
+#~ msgid "Revived message"
+#~ msgstr "復活したメッセージ"
+
+#~ msgctxt "button"
+#~ msgid "Undo"
+#~ msgstr "元に戻す"
+
+#~ msgid "Revive this entry, please"
+#~ msgstr "このエントリを復活させてください"
+
+#, fuzzy
+#~| msgid "Ancient fuzzy"
+#~ msgid "Ancient fuzzy text"
+#~ msgstr "とても古いあいまいな文"

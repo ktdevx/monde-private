@@ -1,0 +1,66 @@
+# Japanese translation for sample.
+# Copyright (C) 2026 THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the sample package.
+# 山田太郎 <taro@example.com>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: sample 1.0\n"
+"Report-Msgid-Bugs-To: https://example.com/sample/issues\n"
+"POT-Creation-Date: 2026-11-01 10:00+0900\n"
+"PO-Revision-Date: 2026-10-05 12:30+0900\n"
+"Last-Translator: 山田太郎 <taro@example.com>\n"
+"Language-Team: Japanese <ja@example.com>\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: src/a.c:1
+msgid "Keep this message"
+msgstr "このメッセージを保つ"
+
+#: src/b.c:2
+msgid "Brand new entry"
+msgstr ""
+
+#: src/c.c:3
+msgid "Revived message"
+msgstr "復活したメッセージ"
+
+#: src/d.c:4
+msgctxt "button"
+msgid "Undo"
+msgstr "元に戻す"
+
+#: src/e.c:5
+#, fuzzy
+#| msgid "Revive this entry, please"
+msgid "Revive these entries, please"
+msgstr "このエントリを復活させてください"
+
+#: src/f.c:6
+msgid "Another new line of text"
+msgstr ""
+
+# 訳注: 廃止される
+#~ msgid "Old message one"
+#~ msgstr "古いメッセージ 1"
+
+#, fuzzy
+#~| msgid "Old fuzzy msg"
+#~ msgid "Old fuzzy message"
+#~ msgstr "古いあいまいなメッセージ"
+
+#~ msgctxt "label"
+#~ msgid "Old context message"
+#~ msgstr "文脈つきの古いメッセージ"
+
+#~ msgid "Ancient text"
+#~ msgstr "とても古い文"
+
+#, fuzzy
+#~| msgid "Ancient fuzzy"
+#~ msgid "Ancient fuzzy text"
+#~ msgstr "とても古いあいまいな文"

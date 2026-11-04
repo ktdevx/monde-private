@@ -1,0 +1,63 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the sample package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: sample 2.0\n"
+"Report-Msgid-Bugs-To: https://example.com/sample/issues\n"
+"POT-Creation-Date: 2026-11-01 10:00+0900\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: src/browser.c:10
+msgid "Open the selected files"
+msgstr ""
+
+#: src/list.c:22
+msgid "Delete all items in the lists"
+msgstr ""
+
+#: src/view.c:5
+msgid "Show all the hidden files"
+msgstr ""
+
+#: src/menu.c:30
+msgctxt "menu"
+msgid "Print the current page"
+msgstr ""
+
+#: src/copy.c:3
+msgid "Copy file C"
+msgstr ""
+
+#: src/edit.c:1
+msgid "Cut"
+msgstr ""
+
+#: src/close.c:2
+msgid "閉じる"
+msgstr ""
+
+#: src/settings.c:40
+msgid "設定を保存しました。"
+msgstr ""
+
+#: src/folder.c:8
+msgid "Rename the selected folders"
+msgstr ""
+
+#: src/net.c:77
+msgid "Connection to the server was lost"
+msgstr ""
+
+#: src/misc.c:1
+msgid "Completely unrelated message"
+msgstr ""

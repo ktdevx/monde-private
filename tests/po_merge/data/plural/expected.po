@@ -1,0 +1,67 @@
+# German translation for sample.
+# Copyright (C) 2026 THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the sample package.
+# Max Mustermann <max@example.com>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: sample 1.0\n"
+"Report-Msgid-Bugs-To: https://example.com/sample/issues\n"
+"POT-Creation-Date: 2026-11-01 10:00+0900\n"
+"PO-Revision-Date: 2026-10-05 12:30+0900\n"
+"Last-Translator: Max Mustermann <max@example.com>\n"
+"Language-Team: German <de@example.com>\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: src/files.c:10
+#, fuzzy
+#| msgid "a file was deleted"
+msgid "a file was deleted"
+msgid_plural "files were deleted"
+msgstr[0] "eine Datei wurde gelöscht"
+msgstr[1] "eine Datei wurde gelöscht"
+
+#: src/files.c:20
+#, fuzzy
+#| msgid "a folder"
+#| msgid_plural "folders"
+msgid "a folder"
+msgstr "ein Ordner"
+
+#: src/files.c:30
+#, fuzzy
+#| msgid "one item"
+#| msgid_plural "many items"
+msgid "one item"
+msgid_plural "several items"
+msgstr[0] "ein Element"
+msgstr[1] "viele Elemente"
+
+#: src/files.c:40
+msgid "one window"
+msgid_plural "many windows"
+msgstr[0] "ein Fenster"
+msgstr[1] "viele Fenster"
+
+#: src/files.c:50
+msgid "a bookmark was imported"
+msgid_plural "bookmarks were imported"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/files.c:60
+#, fuzzy
+#| msgid "Remove the selected track"
+msgid "Remove the chosen track"
+msgid_plural "Remove the chosen tracks"
+msgstr[0] "Den ausgewählten Titel entfernen"
+msgstr[1] "Den ausgewählten Titel entfernen"
+
+#~ msgid "an old plural entry"
+#~ msgid_plural "old plural entries"
+#~ msgstr[0] "ein alter Eintrag"
+#~ msgstr[1] "alte Einträge"
