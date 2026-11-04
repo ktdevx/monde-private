@@ -5,6 +5,7 @@
 #include "foundation/diag.h"
 #include "po/po.h"
 #include "po_merge/merge.h"
+#include "test_util.h"
 
 NAOS_TEST(merge_scaffold_failure_leaves_output_empty_and_stats_zero)
 {
@@ -39,6 +40,37 @@ NAOS_TEST(merge_scaffold_failure_leaves_output_empty_and_stats_zero)
     mnd_po_catalog_free(&template_catalog);
 }
 
+NAOS_TEST(merge_scaffold_test_util_round_trips_po)
+{
+    static const char po[] =
+        "msgid \"\"\n"
+        "msgstr \"\"\n"
+        "\"Content-Type: text/plain; charset=UTF-8\\n\"\n"
+        "\"Plural-Forms: nplurals=1; plural=0;\\n\"\n"
+        "\n"
+        "#. TRANSLATORS: greeting\n"
+        "#: src/a.c:10\n"
+        "#, c-format\n"
+        "msgid \"Hello, %s\"\n"
+        "msgstr \"こんにちは、%s\"\n"
+        "\n"
+        "msgctxt \"menu\"\n"
+        "msgid \"File\"\n"
+        "msgstr \"\"\n"
+        "\n"
+        "#~ msgid \"Old\"\n"
+        "#~ msgstr \"古い\"\n";
+    mnd_po_catalog_t catalog;
+
+    /* 補助関数で読み込んで書き出すと元に戻る */
+    TEST_READ_PO(po, &catalog);
+    NAOS_CHECK_UINT_EQ(catalog.count, 4);
+    TEST_CHECK_WRITTEN(&catalog, po);
+
+    mnd_po_catalog_free(&catalog);
+}
+
 NAOS_SUITE(merge,
-    NAOS_ADD_TEST(merge_scaffold_failure_leaves_output_empty_and_stats_zero)
+    NAOS_ADD_TEST(merge_scaffold_failure_leaves_output_empty_and_stats_zero),
+    NAOS_ADD_TEST(merge_scaffold_test_util_round_trips_po)
 )

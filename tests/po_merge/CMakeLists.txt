@@ -8,6 +8,7 @@ monde_add_module_tests(po_merge
     header_test.c
     merge_test.c
     golden_test.c
+    test_util.c
   DEFINITIONS
     "MND_MERGE_TEST_DATA_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/data\""
 )

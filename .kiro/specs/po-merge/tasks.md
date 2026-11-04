@@ -12,7 +12,7 @@
   - 完了時: 標準の 3 行の手順が成功し、CTest に `po_merge_tests.<suite>.<test>` 形式のテストが 7 スイート分表示され、`ctest -L po_merge` で実行できる。`BUILD_TESTING=OFF` でも `monde_po_merge` がビルドできる
   - _Requirements: 11.1, 11.2_
 
-- [ ] 1.2 テスト用の補助関数を作る
+- [x] 1.2 テスト用の補助関数を作る
   - PO の文字列からカタログを作る（読み込みに失敗したらテストを失敗させる）、カタログを既定の設定で書き出して期待する文字列とバイト単位で比べる（差があれば両方を表示する）、テストデータのディレクトリのファイルを読み込む、の 3 つを用意する
   - 補助関数はテストのソースとしてテスト実行ファイルに登録し、製品のライブラリには含めない
   - 完了時: 補助関数を使った雛形のテスト（短い PO を読み込んで書き出すと元に戻る）が merge スイートで合格する
@@ -138,3 +138,4 @@
 
 ## Implementation Notes
 - 1.1: merge_internal.h の節の順は依存順（Hash、Similarity、KeyIndex、Fuzzy、Builder、Header）。KeyIndex はエントリごとの mnd_buf_t で連結キーを所有する。const の `mnd_merge_key_index_find` は連結キーの作り方（作業領域か、ハッシュと比較を部分ごとに行うか）とメモリ不足の扱いを 2.2 で決める。Pattern のマスクは `masks[b * words + w]`、`vector` は LCS の作業領域
+- 1.2: テストの入力は `TEST_READ_PO`、結果の比較は `TEST_CHECK_WRITTEN`、データは `TEST_READ_DATA_FILE`（tests/po_merge/test_util.h）を使う。`TEST_READ_PO` は警告でも失敗させる。ヘッダは msgcat の正規形（複数行）で書かないと書き出しが一致しない
