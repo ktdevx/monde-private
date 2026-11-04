@@ -264,13 +264,22 @@ mnd_po_entry_t *mnd_po_catalog_insert(mnd_po_catalog_t *catalog, size_t index)
     return &catalog->entries[index];
 }
 
+/*
+ * 最初の msgstr が空でないか（1.5）。fuzzy のエントリはこれが真のときだけ FUZZY とする。
+ * ライターの fuzzy を書く条件（5.7）と同じ条件
+ */
+static bool first_msgstr_is_nonempty(const mnd_po_entry_t *entry)
+{
+    return entry->msgstr.count > 0 && entry->msgstr.items[0].len > 0;
+}
+
 mnd_po_state_t mnd_po_entry_state(const mnd_po_entry_t *entry)
 {
     size_t i;
 
     if (mnd_po_flag_has(entry, "fuzzy"))
     {
-        return MND_PO_STATE_FUZZY;
+        return first_msgstr_is_nonempty(entry) ? MND_PO_STATE_FUZZY : MND_PO_STATE_UNTRANSLATED;
     }
 
     if (entry->msgstr.count == 0)

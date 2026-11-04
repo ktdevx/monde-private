@@ -412,15 +412,16 @@ NAOS_TEST(entry_state_three_way)
     NAOS_REQUIRE_TRUE(push_str(&entry.msgstr, "x"));
     NAOS_CHECK_INT_EQ(MND_PO_STATE_TRANSLATED, mnd_po_entry_state(&entry));
 
-    /* fuzzy は msgstr にかかわらず fuzzy */
+    /* 最初の msgstr が空でない fuzzy は fuzzy */
     NAOS_REQUIRE_TRUE(mnd_po_flag_add(&entry, "c-format"));
     NAOS_REQUIRE_TRUE(mnd_po_flag_add(&entry, "fuzzy"));
     NAOS_CHECK_INT_EQ(MND_PO_STATE_FUZZY, mnd_po_entry_state(&entry));
     mnd_po_entry_free(&entry);
 
+    /* msgstr がない fuzzy は未翻訳（1.5） */
     mnd_po_entry_init(&entry);
     NAOS_REQUIRE_TRUE(mnd_po_flag_add(&entry, "fuzzy"));
-    NAOS_CHECK_INT_EQ(MND_PO_STATE_FUZZY, mnd_po_entry_state(&entry));
+    NAOS_CHECK_INT_EQ(MND_PO_STATE_UNTRANSLATED, mnd_po_entry_state(&entry));
     mnd_po_entry_free(&entry);
 
     /* 複数形: すべて空でなければ翻訳済み、1 つだけ空なら未翻訳 */
@@ -447,6 +448,47 @@ NAOS_TEST(entry_state_three_way)
     NAOS_REQUIRE_TRUE(mnd_po_flag_add(&entry, "Fuzzy"));
     NAOS_REQUIRE_TRUE(mnd_po_flag_add(&entry, "fuzzy "));
     NAOS_CHECK_INT_EQ(MND_PO_STATE_TRANSLATED, mnd_po_entry_state(&entry));
+    mnd_po_entry_free(&entry);
+}
+
+NAOS_TEST(entry_state_fuzzy_requires_first_msgstr)
+{
+    mnd_po_entry_t entry;
+
+    /* 単数形: fuzzy で msgstr が空なら未翻訳 */
+    mnd_po_entry_init(&entry);
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&entry.msgid, "id"));
+    NAOS_REQUIRE_TRUE(mnd_po_strings_push(&entry.msgstr, "", 0));
+    NAOS_REQUIRE_TRUE(mnd_po_flag_add(&entry, "fuzzy"));
+    NAOS_CHECK_INT_EQ(MND_PO_STATE_UNTRANSLATED, mnd_po_entry_state(&entry));
+    mnd_po_entry_free(&entry);
+
+    /* fuzzy で msgstr が 0 個なら未翻訳 */
+    mnd_po_entry_init(&entry);
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&entry.msgid, "id"));
+    NAOS_REQUIRE_TRUE(mnd_po_flag_add(&entry, "c-format"));
+    NAOS_REQUIRE_TRUE(mnd_po_flag_add(&entry, "fuzzy"));
+    NAOS_CHECK_INT_EQ(MND_PO_STATE_UNTRANSLATED, mnd_po_entry_state(&entry));
+    mnd_po_entry_free(&entry);
+
+    /* 複数形: msgstr[0] が空でなければ msgstr[1] が空でも fuzzy */
+    mnd_po_entry_init(&entry);
+    entry.has_msgid_plural = true;
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&entry.msgid_plural, "ids"));
+    NAOS_REQUIRE_TRUE(push_str(&entry.msgstr, "one"));
+    NAOS_REQUIRE_TRUE(push_str(&entry.msgstr, ""));
+    NAOS_REQUIRE_TRUE(mnd_po_flag_add(&entry, "fuzzy"));
+    NAOS_CHECK_INT_EQ(MND_PO_STATE_FUZZY, mnd_po_entry_state(&entry));
+    mnd_po_entry_free(&entry);
+
+    /* 複数形: msgstr[0] が空なら msgstr[1] が空でなくても未翻訳 */
+    mnd_po_entry_init(&entry);
+    entry.has_msgid_plural = true;
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&entry.msgid_plural, "ids"));
+    NAOS_REQUIRE_TRUE(push_str(&entry.msgstr, ""));
+    NAOS_REQUIRE_TRUE(push_str(&entry.msgstr, "two"));
+    NAOS_REQUIRE_TRUE(mnd_po_flag_add(&entry, "fuzzy"));
+    NAOS_CHECK_INT_EQ(MND_PO_STATE_UNTRANSLATED, mnd_po_entry_state(&entry));
     mnd_po_entry_free(&entry);
 }
 
@@ -725,6 +767,7 @@ NAOS_SUITE(entry,
     NAOS_ADD_TEST(entry_header_skips_msgctxt_and_obsolete),
     NAOS_ADD_TEST(entry_header_is_first_entry),
     NAOS_ADD_TEST(entry_state_three_way),
+    NAOS_ADD_TEST(entry_state_fuzzy_requires_first_msgstr),
     NAOS_ADD_TEST(entry_state_applies_to_header_and_obsolete),
     NAOS_ADD_TEST(entry_flag_add_does_not_duplicate),
     NAOS_ADD_TEST(entry_flag_remove_keeps_other_order),

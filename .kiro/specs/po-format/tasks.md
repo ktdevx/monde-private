@@ -140,7 +140,7 @@
   - _Requirements: 10.1, 10.2, 10.3_
 
 - [ ] 7. 最初の msgstr が空のエントリの fuzzy を gettext に合わせる
-- [ ] 7.1 エントリの状態の判定を、最初の msgstr が空の fuzzy のエントリを未翻訳とするように変え、単体テストを書く
+- [x] 7.1 エントリの状態の判定を、最初の msgstr が空の fuzzy のエントリを未翻訳とするように変え、単体テストを書く
   - 設計の Model の「状態（1.5）」のとおり、`fuzzy` フラグがあり msgstr が 1 個以上で最初の msgstr が空でなければ FUZZY、`fuzzy` があっても msgstr がないか最初の msgstr が空なら UNTRANSLATED とする。TRANSLATED の条件は変えない
   - リーダーの改行の不一致の警告（翻訳済みのエントリだけを調べる）の結果が変わらないことを、既存の read_error スイートで確かめる
   - 完了時: entry スイートで、fuzzy で最初の msgstr が空・msgstr が 0 個のエントリが UNTRANSLATED、複数形の fuzzy で msgstr[0] が空でなく msgstr[1] が空のエントリが FUZZY、msgstr[0] が空で msgstr[1] が空でないエントリが UNTRANSLATED になるテストが合格する。既存の `entry_state_three_way` の「fuzzy は msgstr にかかわらず fuzzy」（msgstr が 0 個の fuzzy のエントリ）の期待値は、改めた 1.5 のとおり UNTRANSLATED に直す。ほかの既存のテストは変えずに合格する
