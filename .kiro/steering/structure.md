@@ -27,6 +27,11 @@
 **Location**: テスト用の独立したディレクトリ（名前は monde-cli の設計で決める）  
 **Purpose**: CommonMark spec.txt などの外部テストデータ。ライセンス表記を添えて無改変で置くか、テスト時に取得する。リリース成果物には含めない。
 
+### 開発用スクリプト
+**Location**: `tools/`  
+**Purpose**: Unicode のデータからの表の生成など、開発者が手で実行するスクリプト。ビルドとテストからは呼ばず、生成物をリポジトリに含める。  
+**Example**: `tools/gen_po_ucd.py`（UCD から `src/po/po_ucd_tables.c` を生成する）
+
 ### ドキュメント
 **Location**: `docs/`、`README.md`  
 **Purpose**: 日本語の利用マニュアルと README。  
@@ -45,7 +50,7 @@
   - 関数: `mnd_<短縮名>_<動作>`（例: `mnd_buf_append`、`mnd_diag_list_at`）。型名の `_t` は関数名に含めない（`mnd_buf_t_append` としない）。
   - 型: `typedef` で定義し、型名の末尾に `_t` を付ける。構造体・列挙のタグ名は `_t` を除いた同じ名前にする（例: `typedef struct mnd_buf { ... } mnd_buf_t;`、`typedef enum mnd_severity { ... } mnd_severity_t;`）。
   - マクロ・列挙値: `MND_<短縮名>_`（例: `MND_BUF_INIT`、`MND_SEVERITY_ERROR`）。`_T` は含めない。
-  - 短縮名は各モジュールの設計で決め、既存のものと重複させない。foundation が予約済み: `buf`、`diag`、`severity`、`utf8`、`eol`、`span`、`slice`、`source`、`file`、`wide`（ほかにマクロ `MND_PRINTF_LIKE` も foundation が使用している）。cli_args が予約済み: `args`
+  - 短縮名は各モジュールの設計で決め、既存のものと重複させない。foundation が予約済み: `buf`、`diag`、`severity`、`utf8`、`eol`、`span`、`slice`、`source`、`file`、`wide`（ほかにマクロ `MND_PRINTF_LIKE` も foundation が使用している）。cli_args が予約済み: `args`、po-format が予約済み: `po`
 - **ヘッダガード**: `MONDE_<MODULE>_<FILE>_H`（例: `MONDE_FOUNDATION_BUF_H`）。
 - **モジュール内部の関数**: `static` にしてファイル外に公開しない。
 

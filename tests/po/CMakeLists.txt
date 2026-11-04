@@ -1,0 +1,15 @@
+monde_add_module_tests(po
+  SOURCES
+    main.c
+    entry_test.c
+    header_test.c
+    escape_test.c
+    read_test.c
+    read_error_test.c
+    linebreak_test.c
+    write_test.c
+    roundtrip_test.c
+    init_test.c
+  DEFINITIONS
+    "MND_PO_TEST_DATA_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/data\""
+)

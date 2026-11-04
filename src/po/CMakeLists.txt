@@ -1,0 +1,15 @@
+monde_add_module(po
+  SOURCES
+    po_entry.c
+    po_header.c
+    po_read.c
+    po_write.c
+    po_init.c
+    po_escape.c
+    po_wrap.c
+    po_linebreak.c
+    po_ucd.c
+    po_ucd_tables.c
+  DEPENDS
+    foundation
+)
