@@ -1,0 +1,13 @@
+monde_add_module(po_merge
+  SOURCES
+    merge.c
+    merge_entry.c
+    merge_header.c
+    merge_index.c
+    merge_fuzzy.c
+    merge_similarity.c
+    merge_hash.c
+  DEPENDS
+    po
+    foundation
+)

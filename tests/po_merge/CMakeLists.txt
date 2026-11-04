@@ -1,0 +1,14 @@
+monde_add_module_tests(po_merge
+  SOURCES
+    main.c
+    similarity_test.c
+    index_test.c
+    entry_test.c
+    fuzzy_test.c
+    header_test.c
+    merge_test.c
+    golden_test.c
+    test_util.c
+  DEFINITIONS
+    "MND_MERGE_TEST_DATA_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/data\""
+)
