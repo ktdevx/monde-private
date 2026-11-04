@@ -11,17 +11,18 @@
 
 /*
  * roundtrip: data/ の正解ファイル（Ubuntu 24.04 の msgcat 0.21 の出力。作り方は data/README.md）を
- * 読み込んで書き出し、バイト単位で比べる。正解ファイルはバイト列のまま読み、全環境で同じ結果を求める
+ * 読み込んで書き出し、バイト単位で比べる。正解ファイルはバイト列のまま読み、全環境で同じ結果を求める。
+ * fuzzy_empty_in.po だけは手で書いた入力で、書き出した結果を msgcat の出力 fuzzy_empty.po と比べる
  */
 
 /* 既定の設定でバイト単位の往復を確かめる正解ファイル（nowrap_option.po は折り返しなしで確かめる） */
 static const char *const golden_files[] = {
-    "basic.po", "wrap_latin.po", "wrap_cjk.po", "refs.po", "nowrap_flag.po",
+    "basic.po", "wrap_latin.po", "wrap_cjk.po", "refs.po", "nowrap_flag.po", "fuzzy_empty.po",
 };
 
 #define GOLDEN_FILE_COUNT (sizeof(golden_files) / sizeof(golden_files[0]))
 
-/* テスト用: data/<name> をバイト列のまま content に読む。BOM がなく、空でないことも確かめる */
+/* テスト用: data/<name>（正解ファイルか fuzzy_empty_in.po）をバイト列のまま content に読む。BOM がなく、空でないことも確かめる */
 static void load_golden(const char *name, mnd_buf_t *content)
 {
     mnd_buf_t path = MND_BUF_INIT;
@@ -378,6 +379,61 @@ NAOS_TEST(roundtrip_irregular_input_is_reformatted_by_the_rules)
     mnd_po_catalog_free(&catalog);
 }
 
+NAOS_TEST(roundtrip_fuzzy_with_empty_msgstr_is_written_like_msgcat)
+{
+    mnd_buf_t input = MND_BUF_INIT;
+    mnd_buf_t expected = MND_BUF_INIT;
+    mnd_buf_t out = MND_BUF_INIT;
+    mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+    mnd_po_catalog_t again = MND_PO_CATALOG_INIT;
+    size_t dropped = 0;
+    size_t kept = 0;
+    size_t i;
+
+    /*
+     * 5.7、7.1、7.2: 手で書いた fuzzy_empty_in.po（fuzzy で最初の msgstr が空のエントリを含む）を既定の設定で
+     * 書き出すと、msgcat 0.21 の出力 fuzzy_empty.po と一致する。読み直したカタログは、5.7 で書かなかった
+     * fuzzy（最初の msgstr が空のエントリのもの）を除いて最初のカタログと一致する
+     */
+    load_golden("fuzzy_empty_in.po", &input);
+    load_golden("fuzzy_empty.po", &expected);
+    read_clean(input.data, input.len, "fuzzy_empty_in.po", &catalog);
+    write_clean(&catalog, false, MND_EOL_LF, &out);
+    check_same_text(&out, &expected);
+    read_clean(out.data, out.len, "written.po", &again);
+
+    /* 最初のカタログから、ライターが書かない fuzzy を除く（fuzzy を書くのは状態が FUZZY のときだけ） */
+    for (i = 0; i < catalog.count; i++)
+    {
+        mnd_po_entry_t *entry = &catalog.entries[i];
+
+        if (!mnd_po_flag_has(entry, "fuzzy"))
+        {
+            continue;
+        }
+
+        if (mnd_po_entry_state(entry) == MND_PO_STATE_FUZZY)
+        {
+            kept++;
+        }
+        else
+        {
+            mnd_po_flag_remove(entry, "fuzzy");
+            dropped++;
+        }
+    }
+
+    /* 入力は、書かない fuzzy（4 件以上）と書く fuzzy（1 件以上）の両方を含む */
+    NAOS_CHECK_UINT_GE(dropped, 4);
+    NAOS_CHECK_UINT_GE(kept, 1);
+    check_same_catalog(&again, &catalog);
+    mnd_buf_free(&input);
+    mnd_buf_free(&expected);
+    mnd_buf_free(&out);
+    mnd_po_catalog_free(&catalog);
+    mnd_po_catalog_free(&again);
+}
+
 NAOS_TEST(roundtrip_refs_outside_golden_files_read_back)
 {
     /*
@@ -420,5 +476,6 @@ NAOS_SUITE(roundtrip,
     NAOS_ADD_TEST(roundtrip_written_content_reads_back_as_same_catalog),
     NAOS_ADD_TEST(roundtrip_other_line_splitting_is_reformatted_by_the_rules),
     NAOS_ADD_TEST(roundtrip_irregular_input_is_reformatted_by_the_rules),
+    NAOS_ADD_TEST(roundtrip_fuzzy_with_empty_msgstr_is_written_like_msgcat),
     NAOS_ADD_TEST(roundtrip_refs_outside_golden_files_read_back)
 )

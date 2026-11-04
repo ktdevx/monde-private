@@ -155,7 +155,7 @@
   - _Boundary: Writer（po-merge の単体テストの期待値の修正を含む）_
   - _Requirements: 5.7, 7.1, 7.2_
 
-- [ ] 7.3 msgcat で作った正解ファイルを加え、往復のテストと互換性テストで gettext と一致することを確かめる
+- [x] 7.3 msgcat で作った正解ファイルを加え、往復のテストと互換性テストで gettext と一致することを確かめる
   - 統合タスクとする。テストデータ、roundtrip のテスト、比較用の CMake スクリプト、テストのビルドファイルを編集する
   - fuzzy で最初の msgstr が空のエントリ（単数形、`c-format` 付き、複数形で msgstr[0] だけが空と msgstr[1] だけが空）と、通常の fuzzy・翻訳済みのエントリを含む入力 `fuzzy_empty_in.po` を手で書き、Ubuntu 24.04 の msgcat 0.21 で書き出した `fuzzy_empty.po` を作る。入力に msgstr が空の廃止エントリは含めない（msgcat が書き出さないため。research.md の未決）。作り方と内容をテストデータの README に書く
   - roundtrip スイートで、`fuzzy_empty.po` を既存の正解ファイルと同じ比較の対象に加え、`fuzzy_empty_in.po` を読み込んで書き出した結果が `fuzzy_empty.po` と一致すること、それを読み直したカタログが 5.7 で書かなかった `fuzzy` を除いて最初のカタログと一致することを確かめる
