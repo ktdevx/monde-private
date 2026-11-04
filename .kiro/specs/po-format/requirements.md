@@ -25,9 +25,10 @@ po-format は、GNU gettext の翻訳テンプレート（`.pot`）と翻訳フ�
 
 ### 要件確認で決めた挙動
 - 書き出しでは、既定で GNU gettext と同じく 79 桁で文字列を折り返す。呼び出し側は「折り返しなし」（`\n` の後ろでだけ改行する）も指定できる。
-- ラウンドトリップでは、エントリ・コメント・フラグの内容と順序を常に保持する（最初の msgstr が空のエントリの `fuzzy` は除く。下記）。さらに、gettext のツールが既定の設定で書き出したファイルを読み込んで書き直した場合は、バイト単位で同じ出力にする。
+- ラウンドトリップでは、エントリ・コメント・フラグの内容と順序を常に保持する（最初の msgstr が空のエントリの `fuzzy` と、最初の msgstr が空の廃止エントリは除く。下記）。さらに、gettext のツールが既定の設定で書き出したファイルを読み込んで書き直した場合は、バイト単位で同じ出力にする。
 - 初期化処理は最小限とし、Language の設定、ヘッダの fuzzy の解除、PO-Revision-Date の設定（および文字コードを UTF-8 にすること）だけを行う。Last-Translator などのほかの項目はテンプレートの値のまま残し、Plural-Forms は設定しない。
 - fuzzy フラグを持つエントリの最初の msgstr が空のときは、GNU gettext のツールと同じく、書き出しで `fuzzy` を書かず、状態を未翻訳とする。エントリの fuzzy フラグ自体はデータモデルに残す。
+- 廃止エントリの最初の msgstr が空のときは、GNU gettext のツールと同じく、そのエントリを書き出さない（データモデルからは消さない）。
 - 解析エラーがあると、読み込みは失敗になる。ただし最初のエラーで止めずに、次のエントリから解析を再開して、見つかったエラーをすべて行番号付きで報告する。
 
 ## Boundary Context
@@ -111,13 +112,14 @@ po-format は、GNU gettext の翻訳テンプレート（`.pot`）と翻訳フ�
 **Objective:** As a Monde の開発者, I want エントリの列を gettext の慣例どおりの PO として書き出したい, so that 既存の翻訳ツールで使え、差分も読みやすい
 
 #### Acceptance Criteria
-1. When 呼び出し側がエントリの列を渡す, the PO ライター shall エントリを渡された順に、空行で区切って書き出す。
+1. When 呼び出し側がエントリの列を渡す, the PO ライター shall エントリを渡された順に、空行で区切って書き出す（受け入れ基準 8 で書き出さないエントリは飛ばす）。
 2. The PO ライター shall 各エントリのコメントを、翻訳者コメント、抽出コメント、参照、フラグ、前回の msgctxt・msgid・msgid_plural の順に書き出し、その後に msgctxt、msgid、msgid_plural、msgstr（複数形では添字の順の msgstr[n]）を書き出す。
 3. When 廃止エントリを書き出す, the PO ライター shall GNU gettext と同じく、msgctxt・msgid・msgid_plural・msgstr の行の先頭に `#~ ` を、前回の msgctxt・msgid・msgid_plural の行の先頭に `#~| ` を付け、翻訳者コメント・抽出コメント・参照・フラグの行は通常のエントリと同じ形で書き出す。
 4. The PO ライター shall 各行の改行コードを、呼び出し側が指定した LF または CRLF とし、指定がなければ LF とする。
 5. If 同じ msgctxt と msgid の組を持つ廃止エントリでないエントリが複数ある, then the PO ライター shall 何も書き出さずに、重複した msgctxt と msgid を示すエラーを報告する。
 6. When 呼び出し側が渡したエントリの列に、UTF-8 の charset を宣言するヘッダエントリがあり、重複がなく、翻訳済みのエントリの改行の始まりと終わりが msgid と msgstr で一致しており、複数形エントリがない（または Plural-Forms がヘッダにある）, the PO ライター shall GNU gettext の `msgfmt --check` がエラーなしで受け付ける内容を書き出す。
-7. When fuzzy フラグを持つエントリの msgstr がないか最初の msgstr が空である, the PO ライター shall GNU gettext と同じく、フラグの行に `fuzzy` を書かずにほかのフラグだけを書き、ほかのフラグがなければフラグの行を書かない。この規則は廃止エントリとヘッダエントリにも当てはめる。
+7. When fuzzy フラグを持つエントリの msgstr がないか最初の msgstr が空である, the PO ライター shall GNU gettext と同じく、フラグの行に `fuzzy` を書かずにほかのフラグだけを書き、ほかのフラグがなければフラグの行を書かない。この規則はヘッダエントリにも当てはめる（廃止エントリは受け入れ基準 8 により書き出さない）。
+8. When 廃止エントリの msgstr がないか最初の msgstr が空である, the PO ライター shall GNU gettext と同じく、そのエントリを、コメント・フラグ・前回の msgctxt・msgid・msgid_plural を含めて書き出さない。
 
 ### Requirement 6: 文字列の折り返し
 **Objective:** As a 翻訳ファイルを差分レビューする開発者, I want 長い文字列が gettext と同じ位置で折り返されてほしい, so that Monde と gettext のツールのどちらで書き出しても不要な差分が出ない
@@ -135,8 +137,8 @@ po-format は、GNU gettext の翻訳テンプレート（`.pot`）と翻訳フ�
 **Objective:** As a Monde の開発者, I want 既存の PO ファイルを読み込んで書き直しても内容が変わらないようにしたい, so that 翻訳者の作業結果を失わずに Monde で更新できる
 
 #### Acceptance Criteria
-1. When エラーなく読み込めた PO の内容を書き出す, the PO リーダー and PO ライター shall エントリの数と順序、各エントリの msgctxt・msgid・msgid_plural・msgstr、コメント、参照、フラグ、前回の msgid、廃止エントリかどうかを保持する。ただし、Requirement 5 の受け入れ基準 7 で書き出さない `fuzzy` は保持しない。
-2. When 書き出した内容をもう一度読み込む, the PO リーダー shall 書き出す前と同じエントリの列を返す。ただし、Requirement 5 の受け入れ基準 7 で書き出さなかった `fuzzy` は、読み込んだエントリにない。
+1. When エラーなく読み込めた PO の内容を書き出す, the PO リーダー and PO ライター shall エントリの数と順序、各エントリの msgctxt・msgid・msgid_plural・msgstr、コメント、参照、フラグ、前回の msgid、廃止エントリかどうかを保持する。ただし、Requirement 5 の受け入れ基準 7 で書き出さない `fuzzy` と、受け入れ基準 8 で書き出さない廃止エントリは保持しない。
+2. When 書き出した内容をもう一度読み込む, the PO リーダー shall 書き出す前と同じエントリの列を返す。ただし、Requirement 5 の受け入れ基準 7 で書き出さなかった `fuzzy` と、受け入れ基準 8 で書き出さなかった廃止エントリは、読み込んだ列にない。
 3. When GNU gettext のツール（既定の設定の msgcat または msgmerge）が書き出した LF の PO ファイルを読み込み、既定の設定で書き出す, the PO リーダー and PO ライター shall 入力とバイト単位で同じ内容を出力する。
 4. When 受け入れ基準 3 に該当しない入力を読み込んで書き出す, the PO ライター shall 空行の数や文字列の分け方といった整形を、入力ではなく本要件と Requirement 6 の規則に従って決める。
 
