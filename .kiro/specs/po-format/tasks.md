@@ -147,7 +147,7 @@
   - _Boundary: Model_
   - _Requirements: 1.5_
 
-- [ ] 7.2 ライターが最初の msgstr が空のエントリに `fuzzy` を書かないようにし、単体テストを書く
+- [x] 7.2 ライターが最初の msgstr が空のエントリに `fuzzy` を書かないようにし、単体テストを書く
   - 設計の「書き出しの規則」の行 4 と「`fuzzy` を書く条件（5.7）」のとおり、`fuzzy` フラグがあっても msgstr がないか最初の msgstr が空なら `fuzzy` を飛ばし、ほかのフラグがなければフラグの行を書かない。「最初の msgstr が空でない」の判定は 7.1 の状態の判定と同じ条件にする
   - エントリの `flags` は変更しない
   - 書き出しの変更で期待値が変わる po-merge の単体テスト（merge スイートの、fuzzy で訳のない既存のエントリが完全一致する場合の出力。`#, fuzzy` の行がなくなる）の期待値とコメントを、同じタスクで直す。po-merge の製品のコードは変えない（全体のテストが赤い期間を作らないため）
@@ -187,3 +187,4 @@
 - 6.1: 空白を含むファイル名は msgcat 0.21 が囲まず読むときに分けるため、正解ファイルに入れず write の単体テストと roundtrip の往復のテストで確かめる。正解ファイルに文字幅の異なる文字は出てこなかったので Ucd の表は変えていない。正解ファイルは tests/po/data/.gitattributes の `*.po -text` で改行を変換させない。
 - 6.2: 互換性テストは msgcat と msgfmt を別々に探して登録する。po_msgcat_golden は `msgcat --version` の 1 行目が 0.21 系のときだけ登録し（正解ファイルは 0.21 の出力。macOS の Homebrew などほかのバージョンでは構成時に表示して登録しない）、tests/po/msgcat_compare.cmake（cmake -P、`msgcat -o` と `cmake -E compare_files`）で比べる。po_msgfmt_gen は build の tests/po/gettext/msgfmt/ に template.pot・init_ja.po・basic.po を書く（出力先はコンパイル定義 MND_PO_MSGFMT_OUT_DIR）。
 - 6.3: `printf` の検索を部分一致で該当なしにするため、po_header.c と po_write.c の snprintf を po_entry.c の `mnd_po_format_decimal(value, min_digits, out, size)`（0 埋めの 10 進数、収まらなければ 0）に置き換えた。検索の `monde` は include guard の `MONDE_PO_` と CMake の `monde_add_module`、サブコマンド名の部分一致は PO の用語（extracted_comments、TRANSLATED）と Init の名前だけである。
+- 7.2: ライターは `mnd_po_entry_state(entry) == MND_PO_STATE_FUZZY` のときだけ `fuzzy` を書く（7.1 と同じ条件）。po-merge の merge_test は、`#, fuzzy` で msgstr が空の既存の入力が書き戻しで変わるため、`merge_test_run_written` の `old_written` で期待する書き戻しを渡す。この場合のマージ結果の fuzzy の有無は書き出しに現れないので、必要なら 7.4 で出力のカタログのフラグを直接確かめる

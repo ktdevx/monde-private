@@ -277,14 +277,36 @@ static bool mnd_po_write_refs(mnd_po_writer_t *writer, const mnd_po_refs_t *refs
     return mnd_buf_append_str(out, writer->eol);
 }
 
-/* フラグの行を書く。fuzzy があれば先頭に書き、ほかはエントリの順に書く */
+/* fuzzy 以外のフラグを 1 つ以上持つか */
+static bool mnd_po_has_non_fuzzy_flag(const mnd_po_entry_t *entry)
+{
+    size_t i;
+
+    for (i = 0; i < entry->flags.count; i++)
+    {
+        if (strcmp(mnd_buf_cstr(&entry->flags.items[i]), "fuzzy") != 0)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/*
+ * フラグの行を書く。fuzzy は書く条件（5.7）を満たせば先頭に書き、ほかはエントリの順に書く。
+ * fuzzy を書く条件は状態の判定（1.5）が FUZZY になることと同じにする（fuzzy フラグがあり、
+ * msgstr が 1 個以上で最初の msgstr が空でない）。書くフラグがなければ行を書かない。
+ * エントリの flags は変更しない
+ */
 static bool mnd_po_write_flags(mnd_po_writer_t *writer, const mnd_po_entry_t *entry)
 {
     mnd_buf_t *out = writer->out;
     const char *separator = " ";
+    bool write_fuzzy = mnd_po_entry_state(entry) == MND_PO_STATE_FUZZY;
     size_t i;
 
-    if (entry->flags.count == 0)
+    if (!write_fuzzy && !mnd_po_has_non_fuzzy_flag(entry))
     {
         return true;
     }
@@ -294,7 +316,7 @@ static bool mnd_po_write_flags(mnd_po_writer_t *writer, const mnd_po_entry_t *en
         return false;
     }
 
-    if (mnd_po_flag_has(entry, "fuzzy"))
+    if (write_fuzzy)
     {
         if (!mnd_buf_append_str(out, " fuzzy"))
         {

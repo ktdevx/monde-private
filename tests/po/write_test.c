@@ -1100,6 +1100,222 @@ NAOS_TEST(write_zero_msgstr_entries)
     mnd_po_catalog_free(&catalog);
 }
 
+/* テスト用: エントリのフラグが names（count 個）と同じ順で同じ内容であることを確かめる */
+static void check_flags(const mnd_po_entry_t *entry, const char *const *names, size_t count)
+{
+    size_t i;
+
+    NAOS_REQUIRE_UINT_EQ(entry->flags.count, count);
+    for (i = 0; i < count; i++)
+    {
+        NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->flags.items[i]), names[i]);
+    }
+}
+
+NAOS_TEST(write_fuzzy_skipped_when_singular_msgstr_empty)
+{
+    mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+    mnd_buf_t out = MND_BUF_INIT;
+    mnd_po_entry_t *entry;
+
+    /* 5.7: fuzzy だけで msgstr が空ならフラグの行を書かない（fuzzy が重複していても同じ） */
+    entry = add_msg(&catalog, NULL, "a", "");
+    NAOS_REQUIRE_NOT_NULL(entry);
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "fuzzy"));
+    entry = add_msg(&catalog, NULL, "b", "");
+    NAOS_REQUIRE_NOT_NULL(entry);
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "fuzzy"));
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "fuzzy"));
+
+    write_ok(&catalog, NULL, &out);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&out),
+                      "msgid \"a\"\n"
+                      "msgstr \"\"\n"
+                      "\n"
+                      "msgid \"b\"\n"
+                      "msgstr \"\"\n");
+    mnd_buf_free(&out);
+    mnd_po_catalog_free(&catalog);
+}
+
+NAOS_TEST(write_fuzzy_skipped_keeps_other_flags)
+{
+    mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+    mnd_buf_t out = MND_BUF_INIT;
+    mnd_po_entry_t *entry;
+
+    /* 5.7: fuzzy を飛ばし、ほかのフラグはエントリの順に書く */
+    entry = add_msg(&catalog, NULL, "a", "");
+    NAOS_REQUIRE_NOT_NULL(entry);
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "fuzzy"));
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "c-format"));
+    entry = add_msg(&catalog, NULL, "b", "");
+    NAOS_REQUIRE_NOT_NULL(entry);
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "python-format"));
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "fuzzy"));
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "range: 0..10"));
+
+    write_ok(&catalog, NULL, &out);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&out),
+                      "#, c-format\n"
+                      "msgid \"a\"\n"
+                      "msgstr \"\"\n"
+                      "\n"
+                      "#, python-format, range: 0..10\n"
+                      "msgid \"b\"\n"
+                      "msgstr \"\"\n");
+    mnd_buf_free(&out);
+    mnd_po_catalog_free(&catalog);
+}
+
+NAOS_TEST(write_fuzzy_skipped_when_no_msgstr)
+{
+    mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+    mnd_buf_t out = MND_BUF_INIT;
+    mnd_po_entry_t *entry;
+
+    /* 5.7: msgstr が 0 個（単数形と複数形）なら fuzzy を書かない */
+    entry = add_msg(&catalog, NULL, "one", NULL);
+    NAOS_REQUIRE_NOT_NULL(entry);
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "fuzzy"));
+    entry = add_msg(&catalog, NULL, "file", NULL);
+    NAOS_REQUIRE_NOT_NULL(entry);
+    entry->has_msgid_plural = true;
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&entry->msgid_plural, "files"));
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "fuzzy"));
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "c-format"));
+
+    write_ok(&catalog, NULL, &out);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&out),
+                      "msgid \"one\"\n"
+                      "msgstr \"\"\n"
+                      "\n"
+                      "#, c-format\n"
+                      "msgid \"file\"\n"
+                      "msgid_plural \"files\"\n"
+                      "msgstr[0] \"\"\n"
+                      "msgstr[1] \"\"\n");
+    mnd_buf_free(&out);
+    mnd_po_catalog_free(&catalog);
+}
+
+NAOS_TEST(write_fuzzy_plural_depends_on_first_msgstr)
+{
+    mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+    mnd_buf_t out = MND_BUF_INIT;
+    mnd_po_entry_t *entry;
+
+    /* 5.7: 複数形は msgstr[0] だけで決める。msgstr[0] が空なら書かない */
+    entry = add_msg(&catalog, NULL, "x", "");
+    NAOS_REQUIRE_NOT_NULL(entry);
+    entry->has_msgid_plural = true;
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&entry->msgid_plural, "xs"));
+    NAOS_REQUIRE_TRUE(push_str(&entry->msgstr, "ys"));
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "fuzzy"));
+    /* msgstr[1] だけが空なら書く */
+    entry = add_msg(&catalog, NULL, "z", "w");
+    NAOS_REQUIRE_NOT_NULL(entry);
+    entry->has_msgid_plural = true;
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&entry->msgid_plural, "zs"));
+    NAOS_REQUIRE_TRUE(push_str(&entry->msgstr, ""));
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "fuzzy"));
+
+    write_ok(&catalog, NULL, &out);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&out),
+                      "msgid \"x\"\n"
+                      "msgid_plural \"xs\"\n"
+                      "msgstr[0] \"\"\n"
+                      "msgstr[1] \"ys\"\n"
+                      "\n"
+                      "#, fuzzy\n"
+                      "msgid \"z\"\n"
+                      "msgid_plural \"zs\"\n"
+                      "msgstr[0] \"w\"\n"
+                      "msgstr[1] \"\"\n");
+    mnd_buf_free(&out);
+    mnd_po_catalog_free(&catalog);
+}
+
+NAOS_TEST(write_fuzzy_skipped_for_obsolete_and_header)
+{
+    mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+    mnd_buf_t out = MND_BUF_INIT;
+    mnd_po_entry_t *entry;
+
+    /* 5.7: ヘッダと廃止エントリにも同じ規則を当てはめる */
+    entry = add_msg(&catalog, NULL, "", "");
+    NAOS_REQUIRE_NOT_NULL(entry);
+    NAOS_REQUIRE_TRUE(push_str(&entry->translator_comments, "h"));
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "fuzzy"));
+    entry = add_msg(&catalog, NULL, "o", "");
+    NAOS_REQUIRE_NOT_NULL(entry);
+    entry->obsolete = true;
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "fuzzy"));
+    entry = add_msg(&catalog, NULL, "p", "");
+    NAOS_REQUIRE_NOT_NULL(entry);
+    entry->obsolete = true;
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "fuzzy"));
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "c-format"));
+    entry = add_msg(&catalog, NULL, "q", "r");
+    NAOS_REQUIRE_NOT_NULL(entry);
+    entry->obsolete = true;
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "fuzzy"));
+
+    write_ok(&catalog, NULL, &out);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&out),
+                      "# h\n"
+                      "msgid \"\"\n"
+                      "msgstr \"\"\n"
+                      "\n"
+                      "#~ msgid \"o\"\n"
+                      "#~ msgstr \"\"\n"
+                      "\n"
+                      "#, c-format\n"
+                      "#~ msgid \"p\"\n"
+                      "#~ msgstr \"\"\n"
+                      "\n"
+                      "#, fuzzy\n"
+                      "#~ msgid \"q\"\n"
+                      "#~ msgstr \"r\"\n");
+    mnd_buf_free(&out);
+    mnd_po_catalog_free(&catalog);
+}
+
+NAOS_TEST(write_fuzzy_skip_leaves_entry_flags_unchanged)
+{
+    static const char *const only_fuzzy[] = {"fuzzy"};
+    static const char *const mixed[] = {"c-format", "fuzzy", "fuzzy", "no-wrap"};
+    mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+    mnd_buf_t out = MND_BUF_INIT;
+    mnd_po_entry_t *entry;
+
+    /* 5.7: 書き出しはエントリの flags を変更しない（書かなかった fuzzy も残る） */
+    entry = add_msg(&catalog, NULL, "a", "");
+    NAOS_REQUIRE_NOT_NULL(entry);
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "fuzzy"));
+    entry = add_msg(&catalog, NULL, "b", NULL);
+    NAOS_REQUIRE_NOT_NULL(entry);
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "c-format"));
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "fuzzy"));
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "fuzzy"));
+    NAOS_REQUIRE_TRUE(push_str(&entry->flags, "no-wrap"));
+
+    write_ok(&catalog, NULL, &out);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&out),
+                      "msgid \"a\"\n"
+                      "msgstr \"\"\n"
+                      "\n"
+                      "#, c-format, no-wrap\n"
+                      "msgid \"b\"\n"
+                      "msgstr \"\"\n");
+    NAOS_REQUIRE_UINT_EQ(catalog.count, (size_t)2);
+    check_flags(&catalog.entries[0], only_fuzzy, 1);
+    check_flags(&catalog.entries[1], mixed, 4);
+    NAOS_CHECK_INT_EQ((int)mnd_po_entry_state(&catalog.entries[0]), (int)MND_PO_STATE_UNTRANSLATED);
+    mnd_buf_free(&out);
+    mnd_po_catalog_free(&catalog);
+}
+
 NAOS_SUITE(write,
     NAOS_ADD_TEST(write_options_init_is_wrap_and_lf),
     NAOS_ADD_TEST(write_wrap_79_columns_fits_on_keyword_line),
@@ -1131,5 +1347,11 @@ NAOS_SUITE(write,
     NAOS_ADD_TEST(write_refs_with_empty_file_name),
     NAOS_ADD_TEST(write_no_wrap_option_still_wraps_refs),
     NAOS_ADD_TEST(write_no_wrap_flag_and_option),
-    NAOS_ADD_TEST(write_zero_msgstr_entries)
+    NAOS_ADD_TEST(write_zero_msgstr_entries),
+    NAOS_ADD_TEST(write_fuzzy_skipped_when_singular_msgstr_empty),
+    NAOS_ADD_TEST(write_fuzzy_skipped_keeps_other_flags),
+    NAOS_ADD_TEST(write_fuzzy_skipped_when_no_msgstr),
+    NAOS_ADD_TEST(write_fuzzy_plural_depends_on_first_msgstr),
+    NAOS_ADD_TEST(write_fuzzy_skipped_for_obsolete_and_header),
+    NAOS_ADD_TEST(write_fuzzy_skip_leaves_entry_flags_unchanged)
 )
