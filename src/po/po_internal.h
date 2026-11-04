@@ -16,6 +16,14 @@
 bool mnd_po_find_duplicate(const mnd_po_catalog_t *catalog, size_t from, size_t *first,
                            size_t *second);
 
+/* 10 進数の整形（po_entry.c。書式付き出力の関数を使わずに数値を文字列にする） */
+
+/*
+ * value を 10 進数で、min_digits 桁に満たなければ先頭を 0 で埋めて out に書き、NUL で終える。
+ * 書いた桁数を返す。NUL を含めて size に収まらなければ 0 を返す（out の内容は不定）
+ */
+size_t mnd_po_format_decimal(size_t value, size_t min_digits, char *out, size_t size);
+
 /* Escape（po_escape.c） */
 
 typedef enum mnd_po_unescape_status

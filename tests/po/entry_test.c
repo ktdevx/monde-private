@@ -5,6 +5,7 @@
 #include "po/po_internal.h"
 
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 /* テスト用: 末尾にエントリを加え、msgctxt（NULL ならなし）と msgid を設定する */
@@ -650,6 +651,63 @@ NAOS_TEST(entry_find_duplicate_ignores_has_false_msgctxt_content)
     mnd_po_catalog_free(&catalog);
 }
 
+NAOS_TEST(entry_format_decimal_writes_digits)
+{
+    char out[32];
+
+    NAOS_CHECK_UINT_EQ(1, mnd_po_format_decimal(0, 0, out, sizeof(out)));
+    NAOS_CHECK_STR_EQ("0", out);
+    NAOS_CHECK_UINT_EQ(1, mnd_po_format_decimal(0, 1, out, sizeof(out)));
+    NAOS_CHECK_STR_EQ("0", out);
+    NAOS_CHECK_UINT_EQ(5, mnd_po_format_decimal(12345, 0, out, sizeof(out)));
+    NAOS_CHECK_STR_EQ("12345", out);
+    NAOS_CHECK_UINT_EQ(2, mnd_po_format_decimal(10, 0, out, sizeof(out)));
+    NAOS_CHECK_STR_EQ("10", out);
+}
+
+NAOS_TEST(entry_format_decimal_writes_size_max)
+{
+    char out[32];
+    char expected[32];
+    int expected_len = snprintf(expected, sizeof(expected), "%zu", (size_t)SIZE_MAX);
+
+    NAOS_REQUIRE_TRUE(expected_len > 0);
+    NAOS_CHECK_UINT_EQ((size_t)expected_len,
+                       mnd_po_format_decimal((size_t)SIZE_MAX, 0, out, sizeof(out)));
+    NAOS_CHECK_STR_EQ(expected, out);
+}
+
+NAOS_TEST(entry_format_decimal_pads_with_zeros)
+{
+    char out[32];
+
+    NAOS_CHECK_UINT_EQ(4, mnd_po_format_decimal(7, 4, out, sizeof(out)));
+    NAOS_CHECK_STR_EQ("0007", out);
+    NAOS_CHECK_UINT_EQ(2, mnd_po_format_decimal(0, 2, out, sizeof(out)));
+    NAOS_CHECK_STR_EQ("00", out);
+    NAOS_CHECK_UINT_EQ(2, mnd_po_format_decimal(59, 2, out, sizeof(out)));
+    NAOS_CHECK_STR_EQ("59", out);
+    NAOS_CHECK_UINT_EQ(5, mnd_po_format_decimal(12345, 2, out, sizeof(out)));
+    NAOS_CHECK_STR_EQ("12345", out);
+}
+
+NAOS_TEST(entry_format_decimal_rejects_small_buffer)
+{
+    char out[8];
+
+    NAOS_CHECK_UINT_EQ(0, mnd_po_format_decimal(1, 0, out, 0));
+    NAOS_CHECK_UINT_EQ(0, mnd_po_format_decimal(1, 0, out, 1));
+    NAOS_CHECK_UINT_EQ(1, mnd_po_format_decimal(1, 0, out, 2));
+    NAOS_CHECK_STR_EQ("1", out);
+    NAOS_CHECK_UINT_EQ(0, mnd_po_format_decimal(123, 0, out, 3));
+    NAOS_CHECK_UINT_EQ(3, mnd_po_format_decimal(123, 0, out, 4));
+    NAOS_CHECK_STR_EQ("123", out);
+    NAOS_CHECK_UINT_EQ(0, mnd_po_format_decimal(7, 4, out, 4));
+    NAOS_CHECK_UINT_EQ(4, mnd_po_format_decimal(7, 4, out, 5));
+    NAOS_CHECK_STR_EQ("0007", out);
+    NAOS_CHECK_UINT_EQ(0, mnd_po_format_decimal(7, (size_t)SIZE_MAX, out, sizeof(out)));
+}
+
 NAOS_SUITE(entry,
     NAOS_ADD_TEST(entry_catalog_init_macro_is_empty),
     NAOS_ADD_TEST(entry_init_sets_empty_state),
@@ -674,5 +732,9 @@ NAOS_SUITE(entry,
     NAOS_ADD_TEST(entry_find_duplicate_none),
     NAOS_ADD_TEST(entry_find_duplicate_ignores_preceding_obsolete),
     NAOS_ADD_TEST(entry_find_duplicate_enumerates_pairs_from_index),
-    NAOS_ADD_TEST(entry_find_duplicate_ignores_has_false_msgctxt_content)
+    NAOS_ADD_TEST(entry_find_duplicate_ignores_has_false_msgctxt_content),
+    NAOS_ADD_TEST(entry_format_decimal_writes_digits),
+    NAOS_ADD_TEST(entry_format_decimal_writes_size_max),
+    NAOS_ADD_TEST(entry_format_decimal_pads_with_zeros),
+    NAOS_ADD_TEST(entry_format_decimal_rejects_small_buffer)
 )

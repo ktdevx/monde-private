@@ -1,8 +1,8 @@
 /* Model: ヘッダの項目の取得と設定、テンプレート用ヘッダ、日時の書式 */
 
 #include "po/po.h"
+#include "po/po_internal.h"
 
-#include <stdio.h>
 #include <string.h>
 
 /* オフセットの絶対値の上限（時と分を 2 桁ずつで表せる範囲） */
@@ -204,9 +204,16 @@ bool mnd_po_header_template(mnd_po_entry_t *out, const char *project_id_version,
 bool mnd_po_date_format(const struct tm *local_time, long utc_offset_minutes,
                         char out[MND_PO_DATE_SIZE])
 {
+    /* "YYYY-MM-DD HH:MM+HHMM" の各欄（値と桁数）と、その直後に書く区切り（最後は符号） */
+    struct
+    {
+        size_t value;
+        size_t digits;
+        char after;
+    } fields[7];
     long offset;
-    char sign;
-    int written;
+    size_t pos = 0;
+    size_t i;
 
     /* 書式の桁数に収まらない値は扱わない（tm_year + 1900 の桁あふれも防ぐ） */
     if ((local_time->tm_year < -1900) || (local_time->tm_year > (9999 - 1900))
@@ -220,11 +227,52 @@ bool mnd_po_date_format(const struct tm *local_time, long utc_offset_minutes,
         return false;
     }
 
-    sign = (utc_offset_minutes < 0) ? '-' : '+';
     offset = (utc_offset_minutes < 0) ? -utc_offset_minutes : utc_offset_minutes;
-    written = snprintf(out, MND_PO_DATE_SIZE, "%04d-%02d-%02d %02d:%02d%c%02ld%02ld",
-                       local_time->tm_year + 1900, local_time->tm_mon + 1, local_time->tm_mday,
-                       local_time->tm_hour, local_time->tm_min, sign, offset / 60, offset % 60);
+    fields[0].value = (size_t)(local_time->tm_year + 1900);
+    fields[0].digits = 4;
+    fields[0].after = '-';
+    fields[1].value = (size_t)(local_time->tm_mon + 1);
+    fields[1].digits = 2;
+    fields[1].after = '-';
+    fields[2].value = (size_t)local_time->tm_mday;
+    fields[2].digits = 2;
+    fields[2].after = ' ';
+    fields[3].value = (size_t)local_time->tm_hour;
+    fields[3].digits = 2;
+    fields[3].after = ':';
+    fields[4].value = (size_t)local_time->tm_min;
+    fields[4].digits = 2;
+    fields[4].after = (utc_offset_minutes < 0) ? '-' : '+';
+    fields[5].value = (size_t)(offset / 60);
+    fields[5].digits = 2;
+    fields[5].after = '\0';
+    fields[6].value = (size_t)(offset % 60);
+    fields[6].digits = 2;
+    fields[6].after = '\0';
 
-    return ((written >= 0) && (written < MND_PO_DATE_SIZE));
+    for (i = 0; i < (sizeof(fields) / sizeof(fields[0])); i++)
+    {
+        size_t digits = mnd_po_format_decimal(fields[i].value, fields[i].digits, out + pos,
+                                              MND_PO_DATE_SIZE - pos);
+
+        if (digits == 0)
+        {
+            return false;
+        }
+
+        pos += digits;
+        if (fields[i].after != '\0')
+        {
+            if (pos + 1 >= MND_PO_DATE_SIZE)
+            {
+                return false;
+            }
+
+            out[pos] = fields[i].after;
+            pos++;
+            out[pos] = '\0';
+        }
+    }
+
+    return true;
 }

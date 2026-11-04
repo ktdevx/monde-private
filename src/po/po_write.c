@@ -6,7 +6,6 @@
 #include "po/po_internal.h"
 #include "po/po_write.h"
 
-#include <stdio.h>
 #include <string.h>
 
 /* 参照の行の最大のバイト数 */
@@ -238,14 +237,15 @@ static bool mnd_po_write_refs(mnd_po_writer_t *writer, const mnd_po_refs_t *refs
 
         if (ref->line > 0)
         {
-            int written = snprintf(number, sizeof(number), ":%zu", ref->line);
+            size_t digits = mnd_po_format_decimal(ref->line, 0, number + 1, sizeof(number) - 1);
 
-            if ((written < 0) || ((size_t)written >= sizeof(number)))
+            if (digits == 0)
             {
                 return false;
             }
 
-            number_len = (size_t)written;
+            number[0] = ':';
+            number_len = 1 + digits;
         }
 
         piece_len = 1 + ref->file.len + (isolate ? 6 : 0) + number_len;
@@ -384,11 +384,20 @@ static bool mnd_po_write_entry(mnd_po_writer_t *writer, const mnd_po_entry_t *en
 
         for (i = 0; i < entry->msgstr.count; i++)
         {
-            char keyword[48];
-            int written = snprintf(keyword, sizeof(keyword), "msgstr[%zu]", i);
+            /* "msgstr[" + 数字 + "]" + NUL */
+            char keyword[48] = "msgstr[";
+            size_t prefix_len = strlen(keyword);
+            size_t digits = mnd_po_format_decimal(i, 0, keyword + prefix_len,
+                                                  sizeof(keyword) - prefix_len - 1);
 
-            if ((written < 0) || ((size_t)written >= sizeof(keyword))
-                || !mnd_po_write_string(writer, p, keyword, &entry->msgstr.items[i], wrap))
+            if (digits == 0)
+            {
+                return false;
+            }
+
+            keyword[prefix_len + digits] = ']';
+            keyword[prefix_len + digits + 1] = '\0';
+            if (!mnd_po_write_string(writer, p, keyword, &entry->msgstr.items[i], wrap))
             {
                 return false;
             }
