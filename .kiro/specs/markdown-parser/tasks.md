@@ -38,7 +38,7 @@
   - _Requirements: 9.2, 9.6_
 
 - [ ] 2. 構文木と下位の部品
-- [ ] 2.1 (P) アリーナ、ノードの作成と連結、走査、文書の解放と、テスト用の確保関数を実装する
+- [x] 2.1 (P) アリーナ、ノードの作成と連結、走査、文書の解放と、テスト用の確保関数を実装する
   - 確保関数（既定は `malloc` と `free`）から塊を確保するアリーナと、作業用の配列の確保・伸長・解放を実装する。容量の計算は確保の前にオーバーフローを検査する
   - ノードの作成、子の末尾への追加、兄弟の前への挿入、前順の走査（再帰なし）、文書の根・内容・長さの取得、文書の解放を実装する
   - テスト用に、n 回目で失敗する確保関数と、確保と解放の回数を数える確保関数を作る
@@ -213,3 +213,4 @@
 - 1.2: `mnd_md_unicode_is_space` は Zs だけを判定する。CommonMark の Unicode whitespace（タブ、LF、FF、CR を含む）は、使う側（Delims、LinkRef）でこの 4 文字を別に判定する。`mnd_md_unicode_fold` の出力は NUL 終端しない（最大 `MND_MD_UNICODE_FOLD_MAX` バイト）。
 - 1.3: `mnd_md_entity_lookup(name, len, &utf8, &utf8_len)` の名前は `&` と `;` を含まない（呼び出し側が `;` が続くことを確かめる）。名前の最大長は `MND_MD_ENTITY_NAME_MAX`（31）。
 - 1.4: spec_reader の API は `mnd_md_spec_load(path, &spec, diags)` / `mnd_md_spec_free`。例は `spec.examples[i]` の `number`、`section`、`markdown`、`html`（`mnd_buf_t`、NUL 終端）。
+- 2.1: 共有の内部 API（`md_internal.h`）: アリーナ `mnd_md_arena_*`（ゼロ初期化）、作業用の配列 `mnd_md_array_*`（伸長は確保＋複製＋解放）、`mnd_md_size_mul`、`mnd_md_doc_create`、`mnd_md_node_new/append_child/insert_before/insert_after/unlink`。テスト用の確保関数は `tests/markdown/test_alloc.h` の `mnd_md_test_alloc_t`（n 回目で失敗、0 は失敗しない）。

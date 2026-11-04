@@ -66,3 +66,12 @@ Monde の開発で Naos（テストフレームワーク）を使っていて気
 - 背景: テスト用の補助関数（PO を読み込む、書き出して期待する文字列と比べる、など）の中で `NAOS_CHECK_*` / `NAOS_REQUIRE_*` を使うと、失敗の位置は補助関数の中（`test_util.c:66` など）と表示され、どのテストのどの呼び出しで失敗したかがわからない。マクロが呼ぶ記録用の関数（`naos_check_str` など）は file と line を受け取るが、`naos/control.h` に「直接呼ぶことを意図していない」とあるため、呼び出し元の位置を渡して使うことは避けた。
 - 要望: 位置を引数で受け取る形のアサーション（例: `NAOS_CHECK_STR_EQ_AT(file, line, a, b)`）か、補助関数であることを宣言して失敗の位置を呼び出し元にする仕組みを、公開の API として用意してほしい。
 - 現在の回避策: `test_util.h` に、補助関数の呼び出しを `NAOS_TRACE_PUSH` / `NAOS_TRACE_POP` で囲むマクロ（`TEST_READ_PO` など）を用意した。失敗の表示は補助関数の中の位置になるが、続く trace の行に呼び出し元のファイルと行が出る。
+
+### NAOS_REQUIRE_NOT_NULL に関数ポインタを渡せない
+- 状態: 未登録
+- 重要度: 低（`NAOS_REQUIRE_TRUE(p != NULL)` で代わりにできる）
+- 対象: Naos v0.4.0
+- 確度: 再現済み（`tests/markdown/model_test.c`、GCC の `-Wpedantic`）
+- 背景: `NAOS_REQUIRE_NOT_NULL` はポインタを `const void *` に変換して記録用の関数に渡すため、関数ポインタ（確保関数の `alloc` など）を渡すと、ISO C が禁じる関数ポインタからオブジェクトポインタへの変換として `-Wpedantic` の警告になり、`-Werror` 環境ではビルドが止まる。
+- 要望: NULL 判定をマクロ側で `(ptr) != NULL` として評価し、関数ポインタでも使えるようにしてほしい。
+- 現在の回避策: `NAOS_REQUIRE_TRUE(p != NULL)` に置き換えた。
