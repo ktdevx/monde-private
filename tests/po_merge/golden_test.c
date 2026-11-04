@@ -104,6 +104,16 @@ NAOS_TEST(golden_plural)
     golden_run("plural", true);
 }
 
+/*
+ * 訳のない（最初の msgstr が空の）まま fuzzy になるエントリ（訳のない既存のエントリとの
+ * 単数形・複数形の食い違い、msgid_plural の変更）。po-format 5.7 のとおり `#, fuzzy` と
+ * 前回の msgid を書かない
+ */
+NAOS_TEST(golden_untranslated_fuzzy)
+{
+    golden_run("untranslated_fuzzy", true);
+}
+
 /* fuzzy と同じ入力を、あいまい一致なしで（msgmerge --no-fuzzy-matching）（9.3） */
 NAOS_TEST(golden_nofuzzy)
 {
@@ -117,5 +127,6 @@ NAOS_SUITE(golden,
     NAOS_ADD_TEST(golden_header),
     NAOS_ADD_TEST(golden_no_header),
     NAOS_ADD_TEST(golden_plural),
+    NAOS_ADD_TEST(golden_untranslated_fuzzy),
     NAOS_ADD_TEST(golden_nofuzzy)
 )

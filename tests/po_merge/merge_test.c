@@ -62,10 +62,15 @@ static size_t merge_test_count_messages(const mnd_po_catalog_t *catalog)
  * template_po と old_po（NULL なら空のカタログ）を読み込んで options（NULL なら既定）でマージし、
  * 書き出した結果が expected と一致すること、統計が expected_stats と一致し matched + fuzzy + added がテンプレートの
  * メッセージの数に等しいこと、診断がないこと、入力のカタログがマージの前後で変わらないこと
- * （書き出しが入力の文字列と一致すること）を確かめる。入力の文字列は書き出しの正規形で書く
+ * （書き出しが入力の文字列と一致すること）を確かめる。入力の文字列は書き出しの正規形で書く。
+ * template_written と old_written はテンプレートと既存のカタログの書き出しの期待値で、NULL なら
+ * template_po と old_po とする（入力が正規形でないとき、たとえば最初の msgstr が空の fuzzy の
+ * エントリ（po-format 5.7）や、最初の msgstr が空の廃止エントリ（po-format 5.8。書き出さない）を
+ * 含むときに渡す）
  */
-static void merge_test_run_options(const mnd_merge_options_t *options, const char *template_po,
-                                   const char *old_po, const char *expected,
+static void merge_test_run_written(const mnd_merge_options_t *options, const char *template_po,
+                                   const char *template_written, const char *old_po,
+                                   const char *old_written, const char *expected,
                                    const mnd_merge_stats_t *expected_stats)
 {
     mnd_po_catalog_t template_catalog;
@@ -84,12 +89,22 @@ static void merge_test_run_options(const mnd_merge_options_t *options, const cha
         mnd_po_catalog_init(&old_catalog);
     }
 
+    if (template_written == NULL)
+    {
+        template_written = template_po;
+    }
+
+    if (old_written == NULL)
+    {
+        old_written = (old_po != NULL) ? old_po : "";
+    }
+
     mnd_po_catalog_init(&out);
     mnd_diag_list_init(&diags);
 
     /* マージの前の入力の書き出し */
-    TEST_CHECK_WRITTEN(&template_catalog, template_po);
-    TEST_CHECK_WRITTEN(&old_catalog, (old_po != NULL) ? old_po : "");
+    TEST_CHECK_WRITTEN(&template_catalog, template_written);
+    TEST_CHECK_WRITTEN(&old_catalog, old_written);
 
     NAOS_REQUIRE_TRUE(mnd_merge_catalogs(&template_catalog, "t.pot", &old_catalog, "o.po",
                                          options, &out, &stats, &diags));
@@ -105,13 +120,21 @@ static void merge_test_run_options(const mnd_merge_options_t *options, const cha
                        merge_test_count_messages(&template_catalog));
 
     /* 入力のカタログはマージの後も変わらない */
-    TEST_CHECK_WRITTEN(&template_catalog, template_po);
-    TEST_CHECK_WRITTEN(&old_catalog, (old_po != NULL) ? old_po : "");
+    TEST_CHECK_WRITTEN(&template_catalog, template_written);
+    TEST_CHECK_WRITTEN(&old_catalog, old_written);
 
     mnd_diag_list_free(&diags);
     mnd_po_catalog_free(&out);
     mnd_po_catalog_free(&old_catalog);
     mnd_po_catalog_free(&template_catalog);
+}
+
+/* template_written と old_written を NULL として merge_test_run_written を行う */
+static void merge_test_run_options(const mnd_merge_options_t *options, const char *template_po,
+                                   const char *old_po, const char *expected,
+                                   const mnd_merge_stats_t *expected_stats)
+{
+    merge_test_run_written(options, template_po, NULL, old_po, NULL, expected, expected_stats);
 }
 
 /* 既定の設定（options が NULL）で merge_test_run_options を行う */
@@ -547,6 +570,19 @@ NAOS_TEST(merge_output_order_and_template_obsolete_ignored)
         "\n"
         "#~ msgid \"q\"\n"
         "#~ msgstr \"\"\n";
+    /* template_po の書き出し。msgstr が空の廃止エントリ x と q は書かない（po-format 5.8） */
+    static const char template_written[] =
+        "msgid \"\"\n"
+        "msgstr \"Content-Type: text/plain; charset=UTF-8\\n\"\n"
+        "\n"
+        "msgid \"c\"\n"
+        "msgstr \"\"\n"
+        "\n"
+        "msgid \"a\"\n"
+        "msgstr \"\"\n"
+        "\n"
+        "msgid \"b\"\n"
+        "msgstr \"\"\n";
     static const char old_po[] =
         "msgid \"x\"\n"
         "msgstr \"X\"\n"
@@ -572,28 +608,28 @@ NAOS_TEST(merge_output_order_and_template_obsolete_ignored)
      * テンプレートの廃止エントリ x は既存の x を使わないので、x は廃止エントリになる。
      * 訳のない y は出力しない。元からの廃止エントリ z と w は obsoleted に数えない
      */
-    merge_test_run(template_po, old_po,
-                   "msgid \"\"\n"
-                   "msgstr \"Content-Type: text/plain; charset=UTF-8\\n\"\n"
-                   "\n"
-                   "msgid \"c\"\n"
-                   "msgstr \"\"\n"
-                   "\n"
-                   "msgid \"a\"\n"
-                   "msgstr \"A\"\n"
-                   "\n"
-                   "msgid \"b\"\n"
-                   "msgstr \"\"\n"
-                   "\n"
-                   "#~ msgid \"x\"\n"
-                   "#~ msgstr \"X\"\n"
-                   "\n"
-                   "#~ msgid \"z\"\n"
-                   "#~ msgstr \"Z\"\n"
-                   "\n"
-                   "#~ msgid \"w\"\n"
-                   "#~ msgstr \"W\"\n",
-                   &stats);
+    merge_test_run_written(NULL, template_po, template_written, old_po, NULL,
+                           "msgid \"\"\n"
+                           "msgstr \"Content-Type: text/plain; charset=UTF-8\\n\"\n"
+                           "\n"
+                           "msgid \"c\"\n"
+                           "msgstr \"\"\n"
+                           "\n"
+                           "msgid \"a\"\n"
+                           "msgstr \"A\"\n"
+                           "\n"
+                           "msgid \"b\"\n"
+                           "msgstr \"\"\n"
+                           "\n"
+                           "#~ msgid \"x\"\n"
+                           "#~ msgstr \"X\"\n"
+                           "\n"
+                           "#~ msgid \"z\"\n"
+                           "#~ msgstr \"Z\"\n"
+                           "\n"
+                           "#~ msgid \"w\"\n"
+                           "#~ msgstr \"W\"\n",
+                           &stats);
 }
 
 NAOS_TEST(merge_output_is_one_to_one_with_template)
@@ -677,21 +713,39 @@ NAOS_TEST(merge_empty_old_makes_all_new)
         "\n"
         "#~ msgid \"gone\"\n"
         "#~ msgstr \"\"\n";
+    /* template_po の書き出し。msgstr が空の廃止エントリ gone は書かない（po-format 5.8） */
+    static const char template_written[] =
+        "msgid \"\"\n"
+        "msgstr \"Content-Type: text/plain; charset=UTF-8\\n\"\n"
+        "\n"
+        "#. note\n"
+        "#: a.c:1\n"
+        "#, c-format\n"
+        "msgid \"one %d\"\n"
+        "msgstr \"\"\n"
+        "\n"
+        "msgid \"file\"\n"
+        "msgid_plural \"files\"\n"
+        "msgstr[0] \"\"\n"
+        "msgstr[1] \"\"\n";
     static const mnd_merge_stats_t stats = { 0, 0, 2, 0 };
 
-    /* 既存が空なら、ヘッダを出力せず、テンプレートのメッセージをすべて新規として複製する */
-    merge_test_run(template_po, NULL,
-                   "#. note\n"
-                   "#: a.c:1\n"
-                   "#, c-format\n"
-                   "msgid \"one %d\"\n"
-                   "msgstr \"\"\n"
-                   "\n"
-                   "msgid \"file\"\n"
-                   "msgid_plural \"files\"\n"
-                   "msgstr[0] \"\"\n"
-                   "msgstr[1] \"\"\n",
-                   &stats);
+    /*
+     * 既存が空なら、ヘッダを出力せず、テンプレートのメッセージをすべて新規として複製する。
+     * テンプレートの廃止エントリ gone は複製しない
+     */
+    merge_test_run_written(NULL, template_po, template_written, NULL, NULL,
+                           "#. note\n"
+                           "#: a.c:1\n"
+                           "#, c-format\n"
+                           "msgid \"one %d\"\n"
+                           "msgstr \"\"\n"
+                           "\n"
+                           "msgid \"file\"\n"
+                           "msgid_plural \"files\"\n"
+                           "msgstr[0] \"\"\n"
+                           "msgstr[1] \"\"\n",
+                           &stats);
 }
 
 NAOS_TEST(merge_exact_match_elements_and_previous)
@@ -734,37 +788,124 @@ NAOS_TEST(merge_exact_match_elements_and_previous)
         "\n"
         "msgid \"d\"\n"
         "msgstr \"\"\n";
+    /* old_po の書き出し。c は最初の msgstr が空なので `#, fuzzy` を書かない（po-format 5.7） */
+    static const char old_written[] =
+        "# old translator\n"
+        "#. old extracted\n"
+        "#: old.c:1\n"
+        "#, c-format, x-old\n"
+        "#| msgid \"a old\"\n"
+        "msgid \"a %d\"\n"
+        "msgstr \"A %d\"\n"
+        "\n"
+        "# t2\n"
+        "#, fuzzy\n"
+        "#| msgid \"b old\"\n"
+        "msgid \"b\"\n"
+        "msgstr \"B\"\n"
+        "\n"
+        "#| msgid \"c old\"\n"
+        "msgid \"c\"\n"
+        "msgstr \"\"\n"
+        "\n"
+        "msgid \"d\"\n"
+        "msgstr \"\"\n";
     static const mnd_merge_stats_t stats = { 4, 0, 0, 0 };
 
     /*
      * a: 翻訳者コメントと msgstr は既存から、抽出コメント・参照・フラグ（未知のフラグを含む）は
      *    テンプレートから。fuzzy でないので前回の msgid は消す。
      * b: fuzzy の既存で訳があるので、fuzzy と既存の前回の msgid を保つ。
-     * c: fuzzy の既存でも訳がなければ前回の msgid を消す。
+     * c: fuzzy の既存でも訳がなければ前回の msgid を消す。エントリは fuzzy を保つが、最初の
+     *    msgstr が空なので、ライターは gettext と同じく `#, fuzzy` を書かない（po-format 5.7）。
      * d: 未翻訳の完全一致
      */
-    merge_test_run(template_po, old_po,
-                   "# old translator\n"
-                   "#. new extracted\n"
-                   "#: new.c:2\n"
-                   "#, c-format, x-custom\n"
-                   "msgid \"a %d\"\n"
-                   "msgstr \"A %d\"\n"
-                   "\n"
-                   "# t2\n"
-                   "#: new.c:3\n"
-                   "#, fuzzy\n"
-                   "#| msgid \"b old\"\n"
-                   "msgid \"b\"\n"
-                   "msgstr \"B\"\n"
-                   "\n"
-                   "#, fuzzy\n"
-                   "msgid \"c\"\n"
-                   "msgstr \"\"\n"
-                   "\n"
-                   "msgid \"d\"\n"
-                   "msgstr \"\"\n",
-                   &stats);
+    merge_test_run_written(NULL, template_po, NULL, old_po, old_written,
+                           "# old translator\n"
+                           "#. new extracted\n"
+                           "#: new.c:2\n"
+                           "#, c-format, x-custom\n"
+                           "msgid \"a %d\"\n"
+                           "msgstr \"A %d\"\n"
+                           "\n"
+                           "# t2\n"
+                           "#: new.c:3\n"
+                           "#, fuzzy\n"
+                           "#| msgid \"b old\"\n"
+                           "msgid \"b\"\n"
+                           "msgstr \"B\"\n"
+                           "\n"
+                           "msgid \"c\"\n"
+                           "msgstr \"\"\n"
+                           "\n"
+                           "msgid \"d\"\n"
+                           "msgstr \"\"\n",
+                           &stats);
+}
+
+/*
+ * 訳のない fuzzy の結果は、出力のカタログでは fuzzy のフラグを持ち、状態は UNTRANSLATED になる
+ * （書き出しには `#, fuzzy` が現れないので、カタログを直接確かめる。po-format 1.5、5.7）。
+ * c: fuzzy で訳のない既存との完全一致。e: 訳のない単数形の既存と複数形のテンプレート。
+ * どちらも前回の msgid を持たない（訳がないため）
+ */
+NAOS_TEST(merge_untranslated_fuzzy_keeps_flag_in_catalog)
+{
+    static const char template_po[] =
+        "msgid \"c\"\n"
+        "msgstr \"\"\n"
+        "\n"
+        "msgid \"e\"\n"
+        "msgid_plural \"es\"\n"
+        "msgstr[0] \"\"\n"
+        "msgstr[1] \"\"\n";
+    static const char old_po[] =
+        "#, fuzzy\n"
+        "#| msgid \"c old\"\n"
+        "msgid \"c\"\n"
+        "msgstr \"\"\n"
+        "\n"
+        "msgid \"e\"\n"
+        "msgstr \"\"\n";
+    static const char *const msgids[] = { "c", "e" };
+    mnd_po_catalog_t template_catalog;
+    mnd_po_catalog_t old_catalog;
+    mnd_po_catalog_t out;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    size_t i;
+
+    TEST_READ_PO(template_po, &template_catalog);
+    TEST_READ_PO(old_po, &old_catalog);
+    mnd_po_catalog_init(&out);
+
+    NAOS_REQUIRE_TRUE(mnd_merge_catalogs(&template_catalog, "t.pot", &old_catalog, "o.po", NULL,
+                                         &out, NULL, &diags));
+    NAOS_CHECK_UINT_EQ(mnd_diag_list_count(&diags), 0);
+
+    for (i = 0; i < sizeof(msgids) / sizeof(msgids[0]); i++)
+    {
+        size_t index = 0;
+
+        NAOS_REQUIRE_TRUE(mnd_po_catalog_find(&out, NULL, msgids[i], &index));
+        NAOS_CHECK_TRUE(mnd_po_flag_has(&out.entries[index], "fuzzy"));
+        NAOS_CHECK_INT_EQ(mnd_po_entry_state(&out.entries[index]), MND_PO_STATE_UNTRANSLATED);
+        NAOS_CHECK_FALSE(out.entries[index].has_prev_msgid);
+    }
+
+    /* 書き出しには `#, fuzzy` も前回の msgid も現れない（gettext 0.21 と同じ） */
+    TEST_CHECK_WRITTEN(&out,
+                       "msgid \"c\"\n"
+                       "msgstr \"\"\n"
+                       "\n"
+                       "msgid \"e\"\n"
+                       "msgid_plural \"es\"\n"
+                       "msgstr[0] \"\"\n"
+                       "msgstr[1] \"\"\n");
+
+    mnd_diag_list_free(&diags);
+    mnd_po_catalog_free(&out);
+    mnd_po_catalog_free(&old_catalog);
+    mnd_po_catalog_free(&template_catalog);
 }
 
 NAOS_TEST(merge_obsolete_revival_and_normal_precedence)
@@ -863,6 +1004,35 @@ NAOS_TEST(merge_unused_entries_become_obsolete)
         "msgid_plural \"es\"\n"
         "msgstr[0] \"\"\n"
         "msgstr[1] \"E1\"\n";
+    /* old_po の書き出し。msgstr が空の廃止エントリ u は書かない（po-format 5.8） */
+    static const char old_written[] =
+        "msgid \"\"\n"
+        "msgstr \"Content-Type: text/plain; charset=UTF-8\\n\"\n"
+        "\n"
+        "# tc\n"
+        "#. ext\n"
+        "#: x.c:1\n"
+        "#, fuzzy, c-format\n"
+        "#| msgid \"x old\"\n"
+        "msgid \"x\"\n"
+        "msgstr \"X\"\n"
+        "\n"
+        "msgid \"y\"\n"
+        "msgstr \"\"\n"
+        "\n"
+        "#~ msgid \"z\"\n"
+        "#~ msgstr \"Z\"\n"
+        "\n"
+        "msgctxt \"k\"\n"
+        "msgid \"p\"\n"
+        "msgid_plural \"ps\"\n"
+        "msgstr[0] \"P0\"\n"
+        "msgstr[1] \"\"\n"
+        "\n"
+        "msgid \"e\"\n"
+        "msgid_plural \"es\"\n"
+        "msgstr[0] \"\"\n"
+        "msgstr[1] \"E1\"\n";
     static const mnd_merge_stats_t stats = { 0, 0, 1, 2 };
 
     /*
@@ -870,28 +1040,28 @@ NAOS_TEST(merge_unused_entries_become_obsolete)
      * 前回の msgid・msgctxt・msgid_plural・msgstr を保つ（手順 6 の整理は行わない）。
      * 訳のない y、u、最初の msgstr が空の e は出力しない。元からの廃止エントリ z は数えない
      */
-    merge_test_run(template_po, old_po,
-                   "msgid \"\"\n"
-                   "msgstr \"Content-Type: text/plain; charset=UTF-8\\n\"\n"
-                   "\n"
-                   "msgid \"keep\"\n"
-                   "msgstr \"\"\n"
-                   "\n"
-                   "# tc\n"
-                   "#, fuzzy, c-format\n"
-                   "#~| msgid \"x old\"\n"
-                   "#~ msgid \"x\"\n"
-                   "#~ msgstr \"X\"\n"
-                   "\n"
-                   "#~ msgid \"z\"\n"
-                   "#~ msgstr \"Z\"\n"
-                   "\n"
-                   "#~ msgctxt \"k\"\n"
-                   "#~ msgid \"p\"\n"
-                   "#~ msgid_plural \"ps\"\n"
-                   "#~ msgstr[0] \"P0\"\n"
-                   "#~ msgstr[1] \"\"\n",
-                   &stats);
+    merge_test_run_written(NULL, template_po, NULL, old_po, old_written,
+                           "msgid \"\"\n"
+                           "msgstr \"Content-Type: text/plain; charset=UTF-8\\n\"\n"
+                           "\n"
+                           "msgid \"keep\"\n"
+                           "msgstr \"\"\n"
+                           "\n"
+                           "# tc\n"
+                           "#, fuzzy, c-format\n"
+                           "#~| msgid \"x old\"\n"
+                           "#~ msgid \"x\"\n"
+                           "#~ msgstr \"X\"\n"
+                           "\n"
+                           "#~ msgid \"z\"\n"
+                           "#~ msgstr \"Z\"\n"
+                           "\n"
+                           "#~ msgctxt \"k\"\n"
+                           "#~ msgid \"p\"\n"
+                           "#~ msgid_plural \"ps\"\n"
+                           "#~ msgstr[0] \"P0\"\n"
+                           "#~ msgstr[1] \"\"\n",
+                           &stats);
 }
 
 NAOS_TEST(merge_obsolete_keeps_previous_of_untranslated_fuzzy)
@@ -1289,6 +1459,7 @@ NAOS_SUITE(merge,
     NAOS_ADD_TEST(merge_output_is_one_to_one_with_template),
     NAOS_ADD_TEST(merge_empty_old_makes_all_new),
     NAOS_ADD_TEST(merge_exact_match_elements_and_previous),
+    NAOS_ADD_TEST(merge_untranslated_fuzzy_keeps_flag_in_catalog),
     NAOS_ADD_TEST(merge_obsolete_revival_and_normal_precedence),
     NAOS_ADD_TEST(merge_unused_entries_become_obsolete),
     NAOS_ADD_TEST(merge_obsolete_keeps_previous_of_untranslated_fuzzy),

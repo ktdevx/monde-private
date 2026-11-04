@@ -16,6 +16,14 @@
 bool mnd_po_find_duplicate(const mnd_po_catalog_t *catalog, size_t from, size_t *first,
                            size_t *second);
 
+/* 最初の msgstr（po_entry.c） */
+
+/*
+ * msgstr が 1 個以上あって最初の msgstr が空でないか。状態（1.5）で fuzzy のエントリを FUZZY とする
+ * 条件、ライターが fuzzy を書く条件（5.7）、廃止エントリを書き出す条件（5.8）は、すべてこの関数で判定する
+ */
+bool mnd_po_entry_first_msgstr_is_nonempty(const mnd_po_entry_t *entry);
+
 /* 10 進数の整形（po_entry.c。書式付き出力の関数を使わずに数値を文字列にする） */
 
 /*

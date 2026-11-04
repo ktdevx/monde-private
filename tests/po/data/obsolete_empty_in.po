@@ -1,0 +1,81 @@
+# 最初の msgstr が空の廃止エントリの書き出しを確かめる PO（obsolete_empty_in.po と、それを msgcat で書き出した obsolete_empty.po）
+msgid ""
+msgstr ""
+"Project-Id-Version: monde-test 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-01-01 00:00+0900\n"
+"PO-Revision-Date: 2026-01-02 00:00+0900\n"
+"Last-Translator: Test <test@example.com>\n"
+"Language-Team: Japanese\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#~ msgid "Obsolete empty first"
+#~ msgstr ""
+
+#: src/a.c:10
+msgid "Open"
+msgstr "開く"
+
+# 廃止エントリの翻訳者コメント
+#. 廃止エントリの抽出コメント
+#: src/old.c:10 src/old.c:20
+#, c-format
+#~ msgid "Obsolete empty with comments %s"
+#~ msgstr ""
+
+#, fuzzy
+#~| msgid "Obsolete old"
+#~ msgid "Obsolete empty with previous msgid"
+#~ msgstr ""
+
+#: src/a.c:20
+#, c-format
+msgid "Saved %s"
+msgstr "%s を保存しました"
+
+#~ msgctxt "menu"
+#~ msgid "Obsolete empty with context"
+#~ msgstr ""
+
+#: src/a.c:30
+msgid "Untranslated"
+msgstr ""
+
+#: src/b.c:10
+msgid "%d file"
+msgid_plural "%d files"
+msgstr[0] "%d 個のファイル"
+msgstr[1] "%d 個のファイル"
+
+# 廃止された訳のあるエントリ
+#: src/old.c:30
+#~ msgid "Obsolete translated"
+#~ msgstr "廃止された訳"
+
+#, c-format
+#~ msgid "%d obsolete item"
+#~ msgid_plural "%d obsolete items"
+#~ msgstr[0] ""
+#~ msgstr[1] ""
+
+#~ msgid "%d obsolete folder"
+#~ msgid_plural "%d obsolete folders"
+#~ msgstr[0] "%d 個の廃止されたフォルダー"
+#~ msgstr[1] ""
+
+#, fuzzy
+#~| msgid "Obsolete fuzzy old"
+#~ msgid "Obsolete fuzzy"
+#~ msgstr "廃止された fuzzy"
+
+#~ msgid "%d obsolete user"
+#~ msgid_plural "%d obsolete users"
+#~ msgstr[0] ""
+#~ msgstr[1] "%d 人の廃止されたユーザー"
+
+#~ msgid "Obsolete empty last"
+#~ msgstr ""

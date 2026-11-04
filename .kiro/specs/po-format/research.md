@@ -101,6 +101,33 @@
 - **Context**: 1.6 で、フラグを追加すると末尾に付く。po-merge が `c-format` のあるエントリに `fuzzy` を付けると、gettext と異なる順序（`c-format, fuzzy`）になる。
 - **Selected Approach**: ライターは `fuzzy` を先頭に書き、ほかのフラグは保持している順に書く。gettext の出力（`fuzzy` が先頭）を読んで書き直した結果は変わらない（7.3）。
 
+### Decision: 最初の msgstr が空のエントリでは `fuzzy` を書き出さず、未翻訳とする
+- **Context**: po-merge の検証（2026-11-04）で、訳のない fuzzy のエントリについて、po-merge の出力が msgmerge 0.21 と異なることがわかった。原因は本部品のライターにある。gettext 0.21 で実測した結果は次のとおり。
+  - msgcat は、`#, fuzzy` で `msgstr ""` のエントリから `fuzzy` だけを除いて書く（`#, fuzzy, c-format` は `#, c-format` になる）。
+  - 複数形では、`msgstr[0]` が空なら `fuzzy` を書かず、`msgstr[0]` が空でなければ（`msgstr[1]` が空でも）書く。gettext の判定は最初の msgstr だけを見る。
+  - `msgfmt --statistics` は、fuzzy で最初の msgstr が空のエントリを未翻訳として数える。
+- **Alternatives Considered**:
+  1. po-merge で、訳のないエントリから `fuzzy` を外す — po-format 単体の書き出しと状態の判定は gettext と異なったまま残る。
+  2. 本部品のライターと状態の判定を gettext に合わせる — 7.1・7.2 のラウンドトリップに例外ができる。
+- **Selected Approach**: 2。データモデルには fuzzy フラグを残し（gettext のメモリ上の表現と同じ）、ライターが書かないことと状態の判定で gettext に合わせる（1.5、5.7、7.1、7.2）。
+- **Rationale**: gettext の書き出しの規則そのものであり、持ち主の部品で直せば po-merge・init・monde-cli のすべての出力と翻訳率が gettext と一致する。7.3（gettext の出力のラウンドトリップ）は、gettext がこの形を書かないので影響を受けない。
+- **Follow-up**: po-merge の正解ファイルに、訳のない fuzzy のエントリになる入力のケースを加え、po-merge の research.md の「msgmerge と意図して異なる点」からこの差異を消す。
+- **未決（解消済み。下記の Decision、po-format 5.8、タスク 8.1・8.2）**: msgcat は msgstr が空の廃止エントリを書き出さない（実測）。本部品のライターは書き出していた。本件とは別に扱い、ライターも書き出さないようにした（`obsolete_empty_in.po` と `obsolete_empty.po` で msgcat と一致することを確かめる）。
+- **設計への反映（2026-11-04、既存の設計への追加のため発見は最小限）**: ライターの `fuzzy` を書く条件と状態の判定で「最初の msgstr が空でない」を同じ条件にする。gettext が書き換える入力（fuzzy_empty_in.po）と msgcat の出力（fuzzy_empty.po）を正解ファイルに加え、`msgcat_compare.cmake` に入力の指定を足して、msgcat と同じ結果になることを互換性テストで確かめる。公開の型と関数は変えない。
+
+### Decision: 最初の msgstr が空の廃止エントリは書き出さない
+- **Context**: 上の Decision の未決。gettext 0.21 で実測した（2026-11-04）。msgcat、msgattrib、`msgmerge --previous` は、次の廃止エントリを、コメント・フラグ・`#~|` を含めてエントリごと書き出さない。
+  - 単数形で `msgstr ""`（翻訳者コメント・抽出コメント・`c-format` を持つもの、`fuzzy` と `#~|` を持つもの、msgctxt を持つものも同じ）
+  - 複数形で、すべての msgstr が空のもの、`msgstr[0]` だけが空のもの（`msgstr[1]` に訳があっても書かない）
+  - 書き出すのは、最初の msgstr が空でないもの（複数形で `msgstr[1]` だけが空のものを含む）
+  - 判定の条件は、`fuzzy` を書く条件（5.7）と同じ「最初の msgstr が空でない」である。
+- **Alternatives Considered**:
+  1. 書き出す（現状） — 手で編集した PO などを読み直して書くと、msgcat と出力が異なる。
+  2. gettext と同じく書き出さない — 7.1・7.2 のラウンドトリップに例外ができる。
+- **Selected Approach**: 2。データモデル（読み込んだカタログ）からは消さず、ライターが飛ばす（5.1、5.8、7.1、7.2）。5.7 の対象から廃止エントリを外す（5.8 が先に当てはまるため）。
+- **Rationale**: 5.7 と同じく gettext の書き出しの規則であり、po-merge の出力（訳のない既存のエントリは廃止エントリにしない）は変わらない。7.3 は、gettext がこの形を書かないので影響を受けない。
+- **Follow-up**: msgcat の正解ファイル（入力と msgcat の出力の組）にこの形を加える。po-merge は、出力にこの形がないので、全体のテストで確かめれば足りる。
+
 ### Decision: 互換性テストは 3 種類に分ける
 - **Selected Approach**:
   1. **正解ファイルとの比較（全環境）**: `tests/po/data/` の、msgcat が書き出した PO を読み込んで書き出し、バイト単位で比較する（Naos）。

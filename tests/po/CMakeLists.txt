@@ -29,11 +29,12 @@ if(MONDE_MSGCAT)
   if(msgcat_version_line MATCHES "\\(GNU gettext-tools\\) 0\\.21([^0-9.]|\\.[0-9]|$)")
     set(msgcat_version_ok TRUE)
   else()
-    message(STATUS "po: msgcat \"${msgcat_version_line}\" is not 0.21 (the golden files are msgcat 0.21 output); the po_msgcat_golden tests are not registered")
+    message(STATUS "po: msgcat \"${msgcat_version_line}\" is not 0.21 (the golden files are msgcat 0.21 output); the po_msgcat_golden and po_msgcat_normalize tests are not registered")
   endif()
 endif()
 if(msgcat_version_ok)
-  foreach(golden IN ITEMS basic wrap_latin wrap_cjk refs nowrap_flag nowrap_option)
+  foreach(golden IN ITEMS basic wrap_latin wrap_cjk refs nowrap_flag nowrap_option fuzzy_empty
+      obsolete_empty)
     set(msgcat_args "")
     if(golden STREQUAL "nowrap_option")
       set(msgcat_args "--no-wrap")
@@ -47,8 +48,21 @@ if(msgcat_version_ok)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/msgcat_compare.cmake")
     set_tests_properties(po_msgcat_golden.${golden} PROPERTIES LABELS po)
   endforeach()
+
+  # 手で書いた入力 <name>_in.po に msgcat をかけた出力が正解ファイル <name>.po と一致することを確かめる
+  # （ライターの規則が gettext と同じ。fuzzy_empty は 5.7、obsolete_empty は 5.8）
+  foreach(normalize IN ITEMS fuzzy_empty obsolete_empty)
+    add_test(NAME po_msgcat_normalize.${normalize}
+      COMMAND ${CMAKE_COMMAND}
+        "-DMSGCAT=${MONDE_MSGCAT}"
+        "-DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/data/${normalize}_in.po"
+        "-DGOLDEN=${CMAKE_CURRENT_SOURCE_DIR}/data/${normalize}.po"
+        "-DOUTPUT=${MONDE_PO_GETTEXT_DIR}/msgcat_normalize_${normalize}.po"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/msgcat_compare.cmake")
+    set_tests_properties(po_msgcat_normalize.${normalize} PROPERTIES LABELS po)
+  endforeach()
 elseif(NOT MONDE_MSGCAT)
-  message(STATUS "po: msgcat not found; the po_msgcat_golden tests are not registered")
+  message(STATUS "po: msgcat not found; the po_msgcat_golden and po_msgcat_normalize tests are not registered")
 endif()
 
 # ライターと初期化の出力が msgfmt --check を通ることを確かめる（5.6、9.6）

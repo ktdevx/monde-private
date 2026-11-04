@@ -147,6 +147,6 @@
 - 3.1: Fuzzy の列（gram_lists、by_length）は候補の番号（candidates の添字、昇順 = カタログの添字の昇順）を持つ。候補が 0 件なら counts と touched は NULL なので、検索は先に「なし」を返す
 - 3.2: 調べる順序を返す内部関数 `mnd_merge_fuzzy_order` を Fuzzy の節に追加した（テストで順序を確かめるため）。類似度 0.6 ちょうどでも bonus が付けば選ばれる（msgmerge と同じ）
 - 4.1: merge.c は手順ごとの static 関数と `merge_state_t`（O の索引、used、nplurals、統計）で構成する。4.2・4.3 は `merge_run` の `merge_place_header` の後に手順を加える。表示する値の 40 バイトは置き換えた後のバイト数（po の reader と writer と同じ）
-- 4.2: po-format のライターは msgstr が空のエントリにも `#, fuzzy` を書くが、gettext 0.21（msgcat、msgmerge）は msgstr[0] が空なら fuzzy を書かない（po-format の課題で、po-merge では直さない）。5.1 の正解ファイルには「未翻訳のまま fuzzy になるエントリ」（訳のない既存との複数形の食い違いなど）を含めない
-- 5.1: 正解ファイルは作業環境（Ubuntu 24.04、apt の gettext 0.21-14ubuntu2）で作った。nofuzzy の入力は fuzzy の写し。単数形 → 複数形の食い違いでは msgmerge は現在の msgid を `#|` に書く。data/.gitattributes で改行の変換を止めている
+- 4.2: po-format のライターは msgstr が空のエントリにも `#, fuzzy` を書くが、gettext 0.21（msgcat、msgmerge）は msgstr[0] が空なら fuzzy を書かない（po-format の課題で、po-merge では直さない）。5.1 の正解ファイルには「未翻訳のまま fuzzy になるエントリ」（訳のない既存との複数形の食い違いなど）を含めない（→ po-format 5.7（タスク 7.2）でライターが gettext と同じく `#, fuzzy` を書かなくなり解消。po-format 7.4 で正解ファイルの `untranslated_fuzzy` ケースに加えた）
+- 5.1: 正解ファイルは作業環境（Ubuntu 24.04、apt の gettext 0.21-14ubuntu2）で作った。nofuzzy の入力は fuzzy の写し。単数形 → 複数形の食い違いでは msgmerge は現在の msgid を `#|` に書く。data/.gitattributes で改行の変換を止めている。4.2 の「未翻訳のまま fuzzy になるエントリ」の除外は po-format 7.2 で解消し、po-format 7.4 で `untranslated_fuzzy` ケースを追加した（`#, fuzzy` で訳のない既存との完全一致は msgcat の正規形の入力で表せないため、merge スイートで確かめる）
 - 5.3: 性能テストは Release で基準 約 0.3 秒、最悪（全 2,000 変更）約 2.5 秒。Debug では基準 約 1 秒・最悪 約 9 秒（判定なし）で、既定の ctest でも実行される

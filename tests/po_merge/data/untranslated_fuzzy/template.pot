@@ -1,0 +1,56 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the sample package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: sample 2.0\n"
+"Report-Msgid-Bugs-To: https://example.com/sample/issues\n"
+"POT-Creation-Date: 2026-11-01 10:00+0900\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
+
+#: src/music.c:10
+msgid "a song was added"
+msgid_plural "songs were added"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/music.c:20
+msgid "one album"
+msgstr ""
+
+#: src/music.c:30
+msgid "one playlist"
+msgid_plural "several playlists"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/music.c:40
+msgid "one artist"
+msgstr ""
+
+#: src/music.c:50
+msgctxt "menu"
+msgid "a track"
+msgid_plural "tracks"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/music.c:60
+msgid "Shuffle"
+msgstr ""
+
+#: src/music.c:70
+msgid "a genre"
+msgid_plural "genres"
+msgstr[0] ""
+msgstr[1] ""

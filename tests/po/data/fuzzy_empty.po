@@ -1,0 +1,84 @@
+# fuzzy で最初の msgstr が空のエントリの書き出しを確かめる PO（fuzzy_empty_in.po と、それを msgcat で書き出した fuzzy_empty.po）
+msgid ""
+msgstr ""
+"Project-Id-Version: monde-test 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-01-01 00:00+0900\n"
+"PO-Revision-Date: 2026-01-02 00:00+0900\n"
+"Last-Translator: Test <test@example.com>\n"
+"Language-Team: Japanese\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: src/a.c:10
+msgid "Empty singular"
+msgstr ""
+
+# 翻訳者コメント
+#. 抽出コメント
+#: src/a.c:20
+#, c-format
+msgid "Empty with %s"
+msgstr ""
+
+#: src/a.c:30
+#| msgid "Old empty"
+msgid "Empty with previous msgid"
+msgstr ""
+
+#: src/b.c:10
+msgctxt "menu"
+msgid "Empty with context"
+msgstr ""
+
+#: src/b.c:20
+#, c-format
+msgid "%d file"
+msgid_plural "%d files"
+msgstr[0] ""
+msgstr[1] "%d 個のファイル"
+
+#: src/b.c:30
+#, fuzzy
+msgid "%d folder"
+msgid_plural "%d folders"
+msgstr[0] "%d 個のフォルダー"
+msgstr[1] ""
+
+#: src/b.c:40
+msgid "%d item"
+msgid_plural "%d items"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/c.c:10
+#, fuzzy, c-format
+#| msgid "Hello, %s"
+msgid "Hello, %s!"
+msgstr "こんにちは、%s"
+
+#: src/c.c:20
+#, fuzzy
+msgid "%d user"
+msgid_plural "%d users"
+msgstr[0] "%d 人のユーザー"
+msgstr[1] "%d 人のユーザー"
+
+#: src/c.c:30
+#, c-format
+msgid "Saved %s"
+msgstr "%s を保存しました"
+
+#: src/c.c:40
+msgid "Untranslated"
+msgstr ""
+
+#, fuzzy
+#~ msgid "Obsolete fuzzy"
+#~ msgstr "廃止された fuzzy"
+
+#~ msgid "Obsolete translated"
+#~ msgstr "廃止された訳"
