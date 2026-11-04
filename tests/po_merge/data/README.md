@@ -37,13 +37,13 @@ golden スイートは、`old.po` と `template.pot` を読み込み、`nofuzzy`
 3. 各ケースのディレクトリで `msgmerge` を実行する。
 
    ```sh
-   # exact、fuzzy、obsolete、header、no_header、plural
+   # exact、fuzzy、obsolete、header、no_header、plural、untranslated_fuzzy
    msgmerge --previous -o expected.po old.po template.pot
    # nofuzzy
    msgmerge --previous --no-fuzzy-matching -o expected.po old.po template.pot
    ```
 
-4. 確認として、`old.po`、`template.pot`、`expected.po` が `msgcat` をもう一度かけても変わらないことを確かめる。`msgfmt --check -o /dev/null` は、`header/old.po`（小文字の項目名を使うため `Last-Translator` と `Language` がないという警告）と `no_header/` の `old.po`・`expected.po`（ヘッダがないためのエラー）を除いて、エラーも警告も出さない。これらは意図した入力である。
+4. 確認として、`old.po`、`template.pot`、`expected.po` が `msgcat` をもう一度かけても変わらないことを確かめる。`msgfmt --check -o /dev/null` は、`header/old.po`（小文字の項目名を使うため `Last-Translator` と `Language` がないという警告）、`no_header/` の `old.po`・`expected.po`（ヘッダがないためのエラー）、`template.pot`（xgettext の形の既定値のヘッダのため `still has the initial default value` の警告。`plural/` と `untranslated_fuzzy/` は `Plural-Forms: nplurals=INTEGER; ...` のため `invalid nplurals value` のエラーも出す）を除いて、エラーも警告も出さない。これらは意図した入力である。
 
 正解ファイルを変えるときは、`expected.po` を直接編集しない。入力（`old.po`、`template.pot`）を編集して `msgcat` で自分自身を書き直し（例: `msgcat old.po -o old.po`）、手順 3 の `msgmerge` で `expected.po` を作り直す。`fuzzy/` の入力を変えたら、`nofuzzy/` の入力も複製し直す。
 
@@ -57,7 +57,8 @@ golden スイートは、`old.po` と `template.pot` を読み込み、`nofuzzy`
 - Language の推測が起こるヘッダ（既存の翻訳ファイルのヘッダは、常に Language を持つ）
 - 壊れた Plural-Forms の式、空の msgid で msgctxt を持つテンプレートのエントリ
 - 長さの和が数万バイトを超える、大きく異なる msgid
-- 未翻訳のまま fuzzy になるエントリ（訳のない既存のエントリとの複数形の食い違いなど）。po-format のライターは msgstr が空でも `#, fuzzy` を書くが、gettext 0.21 は書かない
+
+未翻訳のまま fuzzy になるエントリ（最初の msgstr が空）は、以前は po-format のライターが `#, fuzzy` を書いていたため除いていたが、po-format 5.7（タスク 7.2）でライターが gettext 0.21 と同じく書かなくなったので、`untranslated_fuzzy` ケースで比べる。ただし「`#, fuzzy` で訳のない既存のエントリとの完全一致」は、入力の `old.po` を `msgcat` の正規形にすると `#, fuzzy` が消えてしまう（`msgcat` も最初の msgstr が空なら fuzzy を書かない）ため、正解ファイルでは表せない。この場合は merge スイートの `merge_exact_match_elements_and_previous`（書き出し）と `merge_untranslated_fuzzy_keeps_flag_in_catalog`（出力のカタログの fuzzy のフラグと状態）で確かめる。
 
 ## 各ケースの内容
 
@@ -71,6 +72,7 @@ golden スイートは、`old.po` と `template.pot` を読み込み、`nofuzzy`
 | `header` | ヘッダの更新。既存のヘッダは項目の順が異なり、未知の項目（`X-Generator`、`X-Poedit-SourceCharset`）と Plural-Forms を持ち、項目名の大文字・小文字が異なるもの（`language:`、`last-translator:`）を含み、Report-Msgid-Bugs-To を持たない。結果は既知の項目を決まった順と綴りに並べ、ほかの行を元の順に続ける。Report-Msgid-Bugs-To と POT-Creation-Date をテンプレートの値にし、テンプレートだけの未知の項目（`X-Template-Only`）は加えない。ヘッダの fuzzy と翻訳者コメントは既存から保つ |
 | `no_header` | テンプレートにだけヘッダがある。結果はヘッダを持たない。完全一致、訳のない完全一致、あいまい一致、新規、廃止エントリ化を含む（ASCII だけの内容） |
 | `plural` | ドイツ語（`nplurals=2`）の翻訳ファイル。単数形 → 複数形（訳を `msgstr[0]` と `msgstr[1]` に複製して fuzzy）、複数形 → 単数形（`msgstr[0]` を msgstr にして fuzzy。前回の msgid_plural を持つ）、msgid_plural の変更（fuzzy。前回の msgid_plural を持つ）、複数形の完全一致、新規の複数形エントリ（`msgstr[0]` と `msgstr[1]`）、単数形の既存エントリとの複数形のあいまい一致、複数形の廃止エントリ化 |
+| `untranslated_fuzzy` | ドイツ語（`nplurals=2`）の翻訳ファイル。訳のない既存のエントリが fuzzy になる場合: 単数形 → 複数形（`msgstr[0]` と `msgstr[1]` が空。翻訳者コメントがなく抽出コメントを持つ既存）、複数形 → 単数形（翻訳者コメントを保つ）、msgid_plural の変更、`msgstr[0]` だけが空の複数形 → 単数形（msgstr は空）、msgctxt を持つ単数形 → 複数形。どれも `#, fuzzy` と前回の msgid（`#|`）を書かない。比較のため、訳のない単数形の完全一致（fuzzy にならない）と、訳のある単数形 → 複数形（`#, fuzzy` と `#|` を書く）を含む |
 | `nofuzzy` | `fuzzy` と同じ入力を、`--no-fuzzy-matching` で処理した結果。あいまい一致したエントリは新規になり、使われなかった訳のある既存エントリは廃止エントリになる（9.3） |
 
 ## チェックアウトの設定

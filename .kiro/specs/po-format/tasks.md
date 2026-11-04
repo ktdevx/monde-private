@@ -139,7 +139,7 @@
   - 完了時: 上の検索で該当がなく、全体のテスト（foundation、cli_args、po、toolchain）が合格する
   - _Requirements: 10.1, 10.2, 10.3_
 
-- [ ] 7. 最初の msgstr が空のエントリの fuzzy を gettext に合わせる
+- [x] 7. 最初の msgstr が空のエントリの fuzzy を gettext に合わせる
 - [x] 7.1 エントリの状態の判定を、最初の msgstr が空の fuzzy のエントリを未翻訳とするように変え、単体テストを書く
   - 設計の Model の「状態（1.5）」のとおり、`fuzzy` フラグがあり msgstr が 1 個以上で最初の msgstr が空でなければ FUZZY、`fuzzy` があっても msgstr がないか最初の msgstr が空なら UNTRANSLATED とする。TRANSLATED の条件は変えない
   - リーダーの改行の不一致の警告（翻訳済みのエントリだけを調べる）の結果が変わらないことを、既存の read_error スイートで確かめる
@@ -163,7 +163,7 @@
   - 完了時: roundtrip スイートが全環境で合格し、msgcat 0.21 のある環境で `ctest -L po` に `po_msgcat_golden.fuzzy_empty` と `po_msgcat_normalize.fuzzy_empty` が表示されて合格する
   - _Requirements: 5.7, 7.1, 7.2, 7.3_
 
-- [ ] 7.4 po-merge の正解ファイルに訳のない fuzzy のエントリのケースを加え、po-merge を検証し直す
+- [x] 7.4 po-merge の正解ファイルに訳のない fuzzy のエントリのケースを加え、po-merge を検証し直す
   - 統合タスクとする（設計の Revalidation Triggers の「書き出しの形式の変更 → po-merge の正解ファイル」）。po-merge のテストデータ、golden スイート、テストのビルドファイルのケースの一覧、po-merge の research.md と tasks.md の Implementation Notes を編集する。po-merge の製品のコードは変えない
   - 訳のない fuzzy のエントリになる入力（fuzzy で訳のない既存のエントリとの完全一致、訳のない単数形の既存のエントリと複数形のテンプレートなど）を含むケースを、po-merge の正解ファイルの作り方（data/README.md）のとおり msgcat 0.21 と `msgmerge --previous` で作り、golden スイートと msgmerge の互換性テストに加える
   - po-merge の research.md の「msgmerge と意図して異なる点」と、tasks.md の Implementation Notes 4.2・5.1 の、この差異についての記述を、解消したことがわかるように直す
@@ -188,3 +188,4 @@
 - 6.2: 互換性テストは msgcat と msgfmt を別々に探して登録する。po_msgcat_golden は `msgcat --version` の 1 行目が 0.21 系のときだけ登録し（正解ファイルは 0.21 の出力。macOS の Homebrew などほかのバージョンでは構成時に表示して登録しない）、tests/po/msgcat_compare.cmake（cmake -P、`msgcat -o` と `cmake -E compare_files`）で比べる。po_msgfmt_gen は build の tests/po/gettext/msgfmt/ に template.pot・init_ja.po・basic.po を書く（出力先はコンパイル定義 MND_PO_MSGFMT_OUT_DIR）。
 - 6.3: `printf` の検索を部分一致で該当なしにするため、po_header.c と po_write.c の snprintf を po_entry.c の `mnd_po_format_decimal(value, min_digits, out, size)`（0 埋めの 10 進数、収まらなければ 0）に置き換えた。検索の `monde` は include guard の `MONDE_PO_` と CMake の `monde_add_module`、サブコマンド名の部分一致は PO の用語（extracted_comments、TRANSLATED）と Init の名前だけである。
 - 7.2: ライターは `mnd_po_entry_state(entry) == MND_PO_STATE_FUZZY` のときだけ `fuzzy` を書く（7.1 と同じ条件）。po-merge の merge_test は、`#, fuzzy` で msgstr が空の既存の入力が書き戻しで変わるため、`merge_test_run_written` の `old_written` で期待する書き戻しを渡す。この場合のマージ結果の fuzzy の有無は書き出しに現れないので、必要なら 7.4 で出力のカタログのフラグを直接確かめる
+- 7.4: msgcat は最初の msgstr が空のエントリから `fuzzy` を除くので、「fuzzy で訳のない既存のエントリとの完全一致」は msgcat で整形した old.po に入れられない。正解ファイル（po-merge の untranslated_fuzzy）は単数形と複数形の食い違いで扱い、完全一致の場合は po-merge の merge_test の `merge_untranslated_fuzzy_keeps_flag_in_catalog` で出力のカタログを直接確かめる

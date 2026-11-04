@@ -109,7 +109,7 @@
   - Language の推測（Language-Team の英語名の表）はせず、値が空の Language を加える。Monde の `init` は常に Language を設定する。
   - Plural-Forms は `nplurals` の値だけを読む（msgmerge は plural の式も解釈し、式が壊れていると 2 にする）。
   - 空の msgid で msgctxt を持つテンプレートのエントリは、ヘッダとはあいまい一致しない（要件 3.9）。
-  - 訳のない（最初の msgstr が空の）エントリが fuzzy になる場合（fuzzy で訳のない既存との完全一致、訳のない単数形の既存と複数形のテンプレートなど）、po-format のライターは `#, fuzzy` を書く。gettext 0.21 は msgstr[0] が空なら fuzzy を書かない。原因は po-format のライター（上流）にあり、po-merge では直さない（実装時の検証で確認。tasks.md の Implementation Notes 4.2）。
+  - （解消済み）訳のない（最初の msgstr が空の）エントリが fuzzy になる場合（fuzzy で訳のない既存との完全一致、訳のない単数形の既存と複数形のテンプレートなど）に、po-format のライターが `#, fuzzy` を書き、gettext 0.21（msgstr[0] が空なら fuzzy を書かない）と異なっていた（実装時の検証で確認。tasks.md の Implementation Notes 4.2）。po-format 5.7（po-format のタスク 7.2）でライターが gettext と同じく書かなくなり、差異はなくなった。po-merge の製品のコードは変えていない（出力のカタログでは fuzzy のフラグを保ち、書き出しで省かれる）。正解ファイルの `untranslated_fuzzy` ケースで msgmerge 0.21 との一致を確かめる（po-format のタスク 7.4）。
 - **Rationale**: いずれも Monde の通常の使い方では出力が msgmerge と変わらない。
 - **Trade-offs**: 上記の入力では msgmerge と出力が異なる。比較のケースに含めない。
 

@@ -804,6 +804,71 @@ NAOS_TEST(merge_exact_match_elements_and_previous)
                            &stats);
 }
 
+/*
+ * 訳のない fuzzy の結果は、出力のカタログでは fuzzy のフラグを持ち、状態は UNTRANSLATED になる
+ * （書き出しには `#, fuzzy` が現れないので、カタログを直接確かめる。po-format 1.5、5.7）。
+ * c: fuzzy で訳のない既存との完全一致。e: 訳のない単数形の既存と複数形のテンプレート。
+ * どちらも前回の msgid を持たない（訳がないため）
+ */
+NAOS_TEST(merge_untranslated_fuzzy_keeps_flag_in_catalog)
+{
+    static const char template_po[] =
+        "msgid \"c\"\n"
+        "msgstr \"\"\n"
+        "\n"
+        "msgid \"e\"\n"
+        "msgid_plural \"es\"\n"
+        "msgstr[0] \"\"\n"
+        "msgstr[1] \"\"\n";
+    static const char old_po[] =
+        "#, fuzzy\n"
+        "#| msgid \"c old\"\n"
+        "msgid \"c\"\n"
+        "msgstr \"\"\n"
+        "\n"
+        "msgid \"e\"\n"
+        "msgstr \"\"\n";
+    static const char *const msgids[] = { "c", "e" };
+    mnd_po_catalog_t template_catalog;
+    mnd_po_catalog_t old_catalog;
+    mnd_po_catalog_t out;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    size_t i;
+
+    TEST_READ_PO(template_po, &template_catalog);
+    TEST_READ_PO(old_po, &old_catalog);
+    mnd_po_catalog_init(&out);
+
+    NAOS_REQUIRE_TRUE(mnd_merge_catalogs(&template_catalog, "t.pot", &old_catalog, "o.po", NULL,
+                                         &out, NULL, &diags));
+    NAOS_CHECK_UINT_EQ(mnd_diag_list_count(&diags), 0);
+
+    for (i = 0; i < sizeof(msgids) / sizeof(msgids[0]); i++)
+    {
+        size_t index = 0;
+
+        NAOS_REQUIRE_TRUE(mnd_po_catalog_find(&out, NULL, msgids[i], &index));
+        NAOS_CHECK_TRUE(mnd_po_flag_has(&out.entries[index], "fuzzy"));
+        NAOS_CHECK_INT_EQ(mnd_po_entry_state(&out.entries[index]), MND_PO_STATE_UNTRANSLATED);
+        NAOS_CHECK_FALSE(out.entries[index].has_prev_msgid);
+    }
+
+    /* 書き出しには `#, fuzzy` も前回の msgid も現れない（gettext 0.21 と同じ） */
+    TEST_CHECK_WRITTEN(&out,
+                       "msgid \"c\"\n"
+                       "msgstr \"\"\n"
+                       "\n"
+                       "msgid \"e\"\n"
+                       "msgid_plural \"es\"\n"
+                       "msgstr[0] \"\"\n"
+                       "msgstr[1] \"\"\n");
+
+    mnd_diag_list_free(&diags);
+    mnd_po_catalog_free(&out);
+    mnd_po_catalog_free(&old_catalog);
+    mnd_po_catalog_free(&template_catalog);
+}
+
 NAOS_TEST(merge_obsolete_revival_and_normal_precedence)
 {
     static const char template_po[] =
@@ -1326,6 +1391,7 @@ NAOS_SUITE(merge,
     NAOS_ADD_TEST(merge_output_is_one_to_one_with_template),
     NAOS_ADD_TEST(merge_empty_old_makes_all_new),
     NAOS_ADD_TEST(merge_exact_match_elements_and_previous),
+    NAOS_ADD_TEST(merge_untranslated_fuzzy_keeps_flag_in_catalog),
     NAOS_ADD_TEST(merge_obsolete_revival_and_normal_precedence),
     NAOS_ADD_TEST(merge_unused_entries_become_obsolete),
     NAOS_ADD_TEST(merge_obsolete_keeps_previous_of_untranslated_fuzzy),
