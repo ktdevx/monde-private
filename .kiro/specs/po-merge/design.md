@@ -227,7 +227,7 @@ T のエントリを順に処理する。廃止エントリと T のヘッダは
 - r が単数形で d が複数形: msgstr を d の最初の msgstr 1 個（msgstr がなければ空文字列 1 個）にし、fuzzy にする。
 - 両方が複数形: msgstr[n] をそのまま保つ（6.1、6.4。msgid_plural が異なれば上の規則ですでに fuzzy）。
 
-`fresh(r)` は r を複製する（3.10、3.11）。r が複数形で、msgstr がすべて空なら、msgstr を空文字列 nplurals 個にする（6.6）。
+`fresh(r)` は r を複製する（3.10）。r が複数形で、msgstr がすべて空なら、msgstr を空文字列 nplurals 個にする（6.6）。
 
 ### 6. 前回の msgid の整理（2.4、2.5）
 手順 3 と 4 で加えたエントリのうち、fuzzy でないもの、または訳がない（最初の msgstr が空、または msgstr がない）ものから、前回の msgctxt・msgid・msgid_plural をすべて消す。
@@ -280,7 +280,7 @@ Header は、O のヘッダ `d` と T のヘッダ `r`（NULL 可）から結果
 
 ## あいまい一致の規則
 
-Fuzzy と Similarity は、msgmerge 0.21 と同じ候補を選ぶため、次の規則に従う（3.1〜3.4、3.8、3.11）。
+Fuzzy と Similarity は、msgmerge 0.21 と同じ候補を選ぶため、次の規則に従う（3.1〜3.5、3.9）。
 
 **類似度**: 2 つのバイト列 `a`、`b` について、`s(a, b) = 2 × LCS(a, b) / (|a| + |b|)`。LCS はバイト単位の最長共通部分列の長さ。両方が空なら 1、片方だけが空なら 0。
 
