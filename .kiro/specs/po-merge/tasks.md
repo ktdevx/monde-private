@@ -37,6 +37,7 @@
   - 登録済みのキーは上書きせず、先に登録された添字を返す。登録の順で、通常のエントリの優先と、先の廃止エントリの優先を表せるようにする
   - 完了時: index スイートで、msgctxt のないキーと空の msgctxt のキーの区別、同じキーの 2 回目の登録で先の添字が返ること、存在しないキーの検索、のテストが合格する
   - _Boundary: KeyIndex_
+  - _Depends: 1.3_
   - _Requirements: 2.1, 2.6, 2.7, 8.1, 8.2_
 
 - [ ] 2.3 (P) ヘッダのマージと nplurals の読み取りを実装し、単体テストを書く
@@ -131,6 +132,6 @@
 - [ ] 5.4 モジュールの独立性を確かめ、全体のテストを通す
   - 製品のソース（`src/po_merge/`）を大文字と小文字を区別して検索し、該当がないことを確かめる（設計のコードレビューの確認を、検索できる形にしたもの）。コメントの中の一致も該当として扱い、表現を変えて取り除く
     - 単語単位（`grep -w`。`fputs` は `puts` に一致しない）: `fopen`、`printf`、`fprintf`、`puts`、`stdout`、`stderr`、`exit`、`abort`、`system`、`popen`
-    - 部分文字列: `po_internal.h`、`po_read.h`、`po_write.h`、`file_io.h`、`markdown`、`"extract"`、`"translate"`、`"update"`（`extracted_comments` や `MND_PO_STATE_TRANSLATED` に一致しないよう、サブコマンド名は文字列リテラルとして探す）
+    - 部分文字列: `po_internal.h`、`po_read.h`、`po_write.h`、`file_io.h`、`markdown`（この語だけは大文字と小文字を区別せずに `grep -i` で探す）、`"extract"`、`"translate"`、`"update"`（`extracted_comments` や `MND_PO_STATE_TRANSLATED` に一致しないよう、サブコマンド名は文字列リテラルとして探す）
   - 完了時: 上記の検索で該当がなく、標準の 3 行の手順で全モジュールのテストが合格する
   - _Requirements: 10.2, 11.1, 11.2, 11.3_
