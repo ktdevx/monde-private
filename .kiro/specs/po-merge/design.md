@@ -88,7 +88,7 @@ graph TB
 - **Selected pattern**: 段階ごとの部品と、それを順に呼ぶ手続き（Merge）。各部品は msgmerge の規則の 1 つの段階に対応する。選定の理由は `research.md` に記録した。
 - **Dependency direction**: `Hash → KeyIndex / Fuzzy`、`Similarity → Fuzzy`、`Builder / Header / KeyIndex / Fuzzy → Merge`。矢印の左側が下位で、上位は下位だけを使う。Builder、Header、KeyIndex、Fuzzy は互いに依存しない。すべての部品は po の Model（`po/po.h`）と foundation を使ってよい。
 - **Existing patterns preserved**: 1 モジュール = 1 静的ライブラリ（`monde_add_module`）。エラーは `mnd_diag_list_t` に追加して返す。I/O をしない。モジュール内で共有する宣言は `merge_internal.h` に置く（po の `po_internal.h` と同じ扱い）。
-- **New components rationale**: Fuzzy と Similarity は msgmerge と同じ候補を選ぶため（3.2、3.11）、Hash は完全一致と 4-gram の索引を線形探索なしで引くため（10.1）、Header はヘッダだけの特別な規則（5.x）のために必要である。
+- **New components rationale**: Fuzzy と Similarity は msgmerge と同じ候補を選ぶため（3.2、3.5）、Hash は完全一致と 4-gram の索引を線形探索なしで引くため（10.1）、Header はヘッダだけの特別な規則（5.x）のために必要である。
 
 ### Technology Stack
 
@@ -122,10 +122,10 @@ tests/po_merge/
 ├── test_util.c           # PO の文字列からカタログを作る、結果を書き出して比べる、正解ファイルの読み込み
 ├── similarity_test.c      # Similarity（3.2、10.2）
 ├── index_test.c           # Hash と KeyIndex（2.6、2.7、8.1、8.2）
-├── entry_test.c           # Builder（2.x、3.5、3.6、4.2、6.x）
-├── fuzzy_test.c           # Fuzzy（3.1〜3.4、3.8、3.11）
+├── entry_test.c           # Builder（2.x、3.6、3.7、4.2、6.x）
+├── fuzzy_test.c           # Fuzzy（3.1〜3.5、3.9）
 ├── header_test.c          # Header（5.x、6.2 の nplurals）
-├── merge_test.c           # Merge（1.x、2.x、3.7、3.9、3.10、4.x、5.7、5.8、6.x、7.x、8.x）
+├── merge_test.c           # Merge（1.x、2.x、3.8、3.10、3.11、4.x、5.7、5.8、6.x、7.x、8.x）
 ├── golden_test.c          # 正解ファイルとの比較（9.x）
 ├── perf_main.c            # 性能テストの実行ファイル（Naos を使わない。10.1）
 ├── msgmerge_compare.cmake # msgmerge の出力と正解ファイルを比べる（cmake -P）
@@ -192,7 +192,7 @@ graph TB
 
 ### 2. O の索引（2.1、2.6、2.7）
 - KeyIndex に、O のヘッダ以外の廃止エントリでないエントリを先に登録し、次に廃止エントリを登録する。登録済みのキーは上書きしない（通常のエントリが優先し、同じキーの廃止エントリが複数あれば先のものが勝つ）。
-- Fuzzy に、O の訳のあるエントリ（廃止エントリを含み、ヘッダを除く）を、O での添字とともに登録する（3.3、3.8）。あいまい一致が無効なら Fuzzy を作らない（3.10）。
+- Fuzzy に、O の訳のあるエントリ（廃止エントリを含み、ヘッダを除く）を、O での添字とともに登録する（3.3、3.9）。あいまい一致が無効なら Fuzzy を作らない（3.11）。
 - Header で、O のヘッダから nplurals を求める（ヘッダがなければ 2）。
 
 ### 3. ヘッダ（5.x）
@@ -200,7 +200,7 @@ graph TB
 - O にヘッダがなければ、ヘッダを出力しない（5.7、5.8）。T のヘッダは無視する。
 
 ### 4. テンプレートの各エントリ（1.2〜1.4、2.x、3.x）
-T のエントリを順に処理する。廃止エントリと T のヘッダは飛ばす（1.4）。各エントリについて、次のどれか 1 つの組み立てで出力のエントリを 1 つ加える（1.3）。どの候補も、ほかのテンプレートのエントリの処理の結果に影響されない（3.7）。
+T のエントリを順に処理する。廃止エントリと T のヘッダは飛ばす（1.4）。各エントリについて、次のどれか 1 つの組み立てで出力のエントリを 1 つ加える（1.3）。どの候補も、ほかのテンプレートのエントリの処理の結果に影響されない（3.8）。
 
 | 場合 | 条件 | 組み立て | 使われた | 統計 |
 |------|------|----------|----------|------|
@@ -209,7 +209,7 @@ T のエントリを順に処理する。廃止エントリと T のヘッダは
 | 新規 | それ以外 | `fresh(T[j])` | — | added |
 
 ### 5. エントリの組み立て（Builder）
-`combine(d, r, force_fuzzy)`（d は O のエントリ、r は T のエントリ）は次の規則で新しいエントリを作る（2.1〜2.8、3.5、3.6、6.1〜6.5）。
+`combine(d, r, force_fuzzy)`（d は O のエントリ、r は T のエントリ）は次の規則で新しいエントリを作る（2.1〜2.8、3.6、3.7、6.1〜6.5）。
 
 | 要素 | 取り方 |
 |------|--------|
@@ -227,7 +227,7 @@ T のエントリを順に処理する。廃止エントリと T のヘッダは
 - r が単数形で d が複数形: msgstr を d の最初の msgstr 1 個（msgstr がなければ空文字列 1 個）にし、fuzzy にする。
 - 両方が複数形: msgstr[n] をそのまま保つ（6.1、6.4。msgid_plural が異なれば上の規則ですでに fuzzy）。
 
-`fresh(r)` は r を複製する（3.9、3.10）。r が複数形で、msgstr がすべて空なら、msgstr を空文字列 nplurals 個にする（6.6）。
+`fresh(r)` は r を複製する（3.10）。r が複数形で、msgstr がすべて空なら、msgstr を空文字列 nplurals 個にする（6.6）。
 
 ### 6. 前回の msgid の整理（2.4、2.5）
 手順 3 と 4 で加えたエントリのうち、fuzzy でないもの、または訳がない（最初の msgstr が空、または msgstr がない）ものから、前回の msgctxt・msgid・msgid_plural をすべて消す。
@@ -280,7 +280,7 @@ Header は、O のヘッダ `d` と T のヘッダ `r`（NULL 可）から結果
 
 ## あいまい一致の規則
 
-Fuzzy と Similarity は、msgmerge 0.21 と同じ候補を選ぶため、次の規則に従う（3.1〜3.4、3.8、3.11）。
+Fuzzy と Similarity は、msgmerge 0.21 と同じ候補を選ぶため、次の規則に従う（3.1〜3.5、3.9）。
 
 **類似度**: 2 つのバイト列 `a`、`b` について、`s(a, b) = 2 × LCS(a, b) / (|a| + |b|)`。LCS はバイト単位の最長共通部分列の長さ。両方が空なら 1、片方だけが空なら 0。
 
@@ -329,10 +329,10 @@ Fuzzy と Similarity は、msgmerge 0.21 と同じ候補を選ぶため、次の
 | 2.4、2.5 | 前回の msgid | Builder、Merge | `mnd_merge_combine` | 手順 5、6 |
 | 2.6、2.7 | 廃止エントリの復活、通常の優先 | KeyIndex | `mnd_merge_key_index_add` | 手順 2 |
 | 2.8 | 未翻訳の完全一致 | Builder | `mnd_merge_combine` | 手順 5 |
-| 3.1〜3.4、3.8、3.11 | 候補の集合、類似度、bonus、同点 | Fuzzy、Similarity | `mnd_merge_fuzzy_search`、`mnd_merge_similarity_*` | あいまい一致の規則 |
-| 3.5、3.6 | あいまい一致の組み立て | Builder | `mnd_merge_combine` | 手順 5 |
-| 3.7 | 候補の再利用 | Merge、Fuzzy | `mnd_merge_fuzzy_search`（状態を持たない検索） | 手順 4 |
-| 3.9、3.10 | 候補なし、無効の指定 | Merge、Builder | `mnd_merge_options_t.fuzzy_matching`、`mnd_merge_fresh` | 手順 4 |
+| 3.1〜3.5、3.9 | 候補の集合、類似度、bonus、同点 | Fuzzy、Similarity | `mnd_merge_fuzzy_search`、`mnd_merge_similarity_*` | あいまい一致の規則 |
+| 3.6、3.7 | あいまい一致の組み立て | Builder | `mnd_merge_combine` | 手順 5 |
+| 3.8 | 候補の再利用 | Merge、Fuzzy | `mnd_merge_fuzzy_search`（状態を持たない検索） | 手順 4 |
+| 3.10、3.11 | 候補なし、無効の指定 | Merge、Builder | `mnd_merge_options_t.fuzzy_matching`、`mnd_merge_fresh` | 手順 4 |
 | 4.1〜4.6 | 廃止エントリ | Merge、Builder | `mnd_merge_obsolete` | 手順 7 |
 | 5.1〜5.6 | ヘッダの更新 | Header | `mnd_merge_header` | ヘッダの規則 |
 | 5.7、5.8 | ヘッダのない場合 | Merge | — | 手順 3 |
@@ -350,11 +350,11 @@ Fuzzy と Similarity は、msgmerge 0.21 と同じ候補を選ぶため、次の
 
 | Component | Domain/Layer | Intent | Req Coverage | Key Dependencies | Contracts |
 |-----------|--------------|--------|--------------|------------------|-----------|
-| Merge | 公開 | 手順の実行、出力の順序、統計、エラー | 1.x, 3.7, 3.9, 3.10, 4.x, 5.7, 5.8, 7.x, 8.x | Builder、Header、KeyIndex、Fuzzy（P0） | Service |
-| Builder | 内部 | エントリの複製と組み立て | 2.x, 3.5, 3.6, 4.2, 6.x | po Model（P0） | Service（内部） |
+| Merge | 公開 | 手順の実行、出力の順序、統計、エラー | 1.x, 3.8, 3.10, 3.11, 4.x, 5.7, 5.8, 7.x, 8.x | Builder、Header、KeyIndex、Fuzzy（P0） | Service |
+| Builder | 内部 | エントリの複製と組み立て | 2.x, 3.6, 3.7, 4.2, 6.x | po Model（P0） | Service（内部） |
 | Header | 内部 | ヘッダのマージ、nplurals | 5.1〜5.6, 6.2, 6.6 | po Model（P0） | Service（内部） |
 | KeyIndex | 内部 | キーによる索引と重複の検出 | 2.1, 2.6, 2.7, 8.1, 8.2 | Hash（P0） | Service（内部） |
-| Fuzzy | 内部 | 候補の索引と最良の候補の選択 | 3.1〜3.4, 3.8, 3.11, 10.x | Similarity（P0）、Hash（P0） | Service（内部） |
+| Fuzzy | 内部 | 候補の索引と最良の候補の選択 | 3.1〜3.5, 3.9, 10.x | Similarity（P0）、Hash（P0） | Service（内部） |
 | Similarity | 内部 | LCS、上限、比較値 | 3.2, 10.x | なし | Service（内部） |
 | Hash | 内部 | バイト列キーのハッシュ表 | 10.1 | foundation buf（P2） | Service（内部） |
 
@@ -365,7 +365,7 @@ Fuzzy と Similarity は、msgmerge 0.21 と同じ候補を選ぶため、次の
 | Field | Detail |
 |-------|--------|
 | Intent | テンプレートと既存の翻訳ファイルのカタログから、更新後のカタログと統計を作る |
-| Requirements | 1.1〜1.6, 3.7, 3.9, 3.10, 4.1〜4.6, 5.7, 5.8, 7.1〜7.5, 8.1〜8.4, 11.1〜11.3 |
+| Requirements | 1.1〜1.6, 3.8, 3.10, 3.11, 4.1〜4.6, 5.7, 5.8, 7.1〜7.5, 8.1〜8.4, 11.1〜11.3 |
 
 **Responsibilities & Constraints**
 - 「マージの規則」の手順 1〜8 を実行する。各部品を呼ぶ順序と、出力のカタログへの追加は Merge だけが行う。
@@ -421,7 +421,7 @@ bool mnd_merge_catalogs(const mnd_po_catalog_t *template_catalog, const char *te
 **Implementation Notes**
 - Integration: monde-cli は、`mnd_po_read` で読んだ 2 つのカタログを渡し、`out` を `mnd_po_write`（既存の `.po` の改行コード）で書き出す。
 - Validation: `golden_test` が全ケースを msgmerge の出力と比べる。
-- Risks: 手順 4 の「使われた」の記録は O の添字の真偽値の配列で持ち、Fuzzy の検索結果に影響させない（3.7）。
+- Risks: 手順 4 の「使われた」の記録は O の添字の真偽値の配列で持ち、Fuzzy の検索結果に影響させない（3.8）。
 
 ### 内部
 
@@ -432,7 +432,7 @@ bool mnd_merge_catalogs(const mnd_po_catalog_t *template_catalog, const char *te
 | Field | Detail |
 |-------|--------|
 | Intent | 「マージの規則」の手順 5 と 7 のエントリの組み立て |
-| Requirements | 2.1〜2.5, 2.8, 3.5, 3.6, 3.9, 4.2, 6.1〜6.7 |
+| Requirements | 2.1〜2.5, 2.8, 3.6, 3.7, 3.10, 4.2, 6.1〜6.7 |
 
 ```c
 /* src を dst（初期化済み）に複製する。失敗時は dst を初期状態に戻して false */
@@ -491,7 +491,7 @@ bool mnd_merge_key_index_find(const mnd_merge_key_index_t *index, const mnd_po_e
 | Field | Detail |
 |-------|--------|
 | Intent | 「あいまい一致の規則」の候補の登録と、最良の候補の選択 |
-| Requirements | 3.1〜3.4, 3.8, 3.11, 10.1, 10.2 |
+| Requirements | 3.1〜3.5, 3.9, 10.1, 10.2 |
 
 ```c
 typedef struct mnd_merge_fuzzy mnd_merge_fuzzy_t;  /* 定義は merge_internal.h */
@@ -561,10 +561,10 @@ bool mnd_merge_hash_find(const mnd_merge_hash_t *hash, const void *key, size_t l
 ### Unit Tests
 - **similarity**: 空と空（1.0）、片方だけ空（0.0）、同一、共通なし、UTF-8 の複数バイト文字（バイト単位で数えること）。64 バイトと 65 バイト、128 バイトを超える問い合わせ（語の境界の桁上がり）。固定の種の擬似乱数による 1,000 組で、動的計画法の LCS（テスト内の参照実装）と一致すること。上限の分子が常に `2 × LCS` 以上であること（10.2、3.2）。
 - **index**: Hash の挿入・検索・既存のキーの扱い、容量の拡大の前後で値が保たれること、長さ 0 のキー。KeyIndex で、msgctxt のないキーと空の msgctxt のキーを区別すること、先に登録した添字が残ること（2.6、2.7、8.1、8.2）。
-- **entry**: `combine` の各要素の取り方の表、フラグの順序（`fuzzy` を先頭、未知のフラグの保持）、前回の msgid の 2 通り、複数形の後処理の 3 通り、`fresh` の新規の複数形、`obsolete` が抽出コメントと参照だけを消すこと、`tidy_previous`、複製が入力と領域を共有しないこと（1.5、2.1〜2.5、2.8、3.5、3.6、4.2、6.1〜6.7）。
-- **fuzzy**: 類似度 0.6 ちょうどの候補を選ばないこと（3.1）。4-gram を共有しない候補を選ばないこと。数え上げの多い候補が同点で勝つこと、数え上げも同じなら先の候補が勝つこと（3.11）。4 文字未満の問い合わせで、長さの範囲外の候補を調べないこと、3 文字の日本語（9 バイト）の問い合わせ。msgctxt のない候補と同じ msgctxt の候補が、同じ類似度の異なる msgctxt の候補に勝つこと（3.3、3.4）。廃止エントリが候補になり、未翻訳とヘッダが候補にならないこと（3.3、3.8）。同じ検索を 2 回行うと同じ結果になること（10.2）。
+- **entry**: `combine` の各要素の取り方の表、フラグの順序（`fuzzy` を先頭、未知のフラグの保持）、前回の msgid の 2 通り、複数形の後処理の 3 通り、`fresh` の新規の複数形、`obsolete` が抽出コメントと参照だけを消すこと、`tidy_previous`、複製が入力と領域を共有しないこと（1.5、2.1〜2.5、2.8、3.6、3.7、4.2、6.1〜6.7）。
+- **fuzzy**: 類似度 0.6 ちょうどの候補を選ばないこと（3.1）。4-gram を共有しない候補を選ばないこと。数え上げの多い候補が同点で勝つこと、数え上げも同じなら先の候補が勝つこと（3.5）。4 文字未満の問い合わせで、長さの範囲外の候補を調べないこと、3 文字の日本語（9 バイト）の問い合わせ。msgctxt のない候補と同じ msgctxt の候補が、同じ類似度の異なる msgctxt の候補に勝つこと（3.3、3.4）。廃止エントリが候補になり、未翻訳とヘッダが候補にならないこと（3.3、3.9）。同じ検索を 2 回行うと同じ結果になること（10.2）。
 - **header**: 既知の項目の並べ替えと表の綴りへの統一（`language:` → `Language:`）、未知の行の順序、同じ項目の後の行の優先、末尾に `\n` のない msgstr、空の msgstr（5.4）。Report-Msgid-Bugs-To と POT-Creation-Date の置き換え、テンプレートにない項目の保持、テンプレートにだけある項目の追加（5.1、5.3）。Language-Team だけがある場合の空の Language（5.5）。翻訳者コメント・fuzzy の保持とテンプレートの fuzzy の無視、テンプレートのヘッダが NULL の場合（5.2、5.6）。nplurals: なし、`nplurals=3; plural=...`、`nplurals = 1`、`nplurals=0`、`nplurals=x`、`nplurals=101`（6.2）。
-- **merge**: 出力の順序（ヘッダ、テンプレートの順、廃止エントリの順）と 1 対 1（1.2、1.3、4.5）。テンプレートの廃止エントリの無視（1.4）。入力のカタログが変わらないこと（バイト単位で書き出して比べる）（1.5）。空の既存（1.6）。完全一致の各要素の取り方、未知のフラグの保持、fuzzy の既存の前回の msgid、未翻訳の完全一致（2.1〜2.5、2.8）。廃止エントリの復活と、通常と廃止の両方がある場合（2.6、2.7）。あいまい一致の組み立てと、fuzzy の候補の前回の msgid（3.5、3.6）。1 つの候補を 2 つのテンプレートのエントリが使うこと（3.7）。無効の指定（3.10）。廃止エントリ化の各要素、訳のないものの削除、元からの廃止エントリ、あいまい一致に使われた廃止エントリ（4.1〜4.6）。ヘッダのない 3 つの組み合わせ（5.6〜5.8）。複数形の 4 つの場合と新規の複数形（6.1〜6.7）。統計の各値と合計（7.1〜7.5）。重複のエラーのメッセージ・行番号・出力が空であること、両方の入力の重複がすべて報告されること、廃止エントリどうしの重複を報告しないこと（8.1〜8.3）。結果を `mnd_po_write` で書き出せること（8.4）。
+- **merge**: 出力の順序（ヘッダ、テンプレートの順、廃止エントリの順）と 1 対 1（1.2、1.3、4.5）。テンプレートの廃止エントリの無視（1.4）。入力のカタログが変わらないこと（バイト単位で書き出して比べる）（1.5）。空の既存（1.6）。完全一致の各要素の取り方、未知のフラグの保持、fuzzy の既存の前回の msgid、未翻訳の完全一致（2.1〜2.5、2.8）。廃止エントリの復活と、通常と廃止の両方がある場合（2.6、2.7）。あいまい一致の組み立てと、fuzzy の候補の前回の msgid（3.6、3.7）。1 つの候補を 2 つのテンプレートのエントリが使うこと（3.8）。無効の指定（3.11）。廃止エントリ化の各要素、訳のないものの削除、元からの廃止エントリ、あいまい一致に使われた廃止エントリ（4.1〜4.6）。ヘッダのない 3 つの組み合わせ（5.6〜5.8）。複数形の 4 つの場合と新規の複数形（6.1〜6.7）。統計の各値と合計（7.1〜7.5）。重複のエラーのメッセージ・行番号・出力が空であること、両方の入力の重複がすべて報告されること、廃止エントリどうしの重複を報告しないこと（8.1〜8.3）。結果を `mnd_po_write` で書き出せること（8.4）。
 
 ### 正解ファイルとの比較（9.1〜9.3）
 - **golden**: `data/` の各ケースの `old.po` と `template.pot` を読み込み、`nofuzzy` は `fuzzy_matching = false`、ほかは既定でマージし、`mnd_po_write` の既定の設定（折り返しあり、LF）で書き出した結果が、`expected.po` とバイト単位で一致すること。全環境で実行する。
