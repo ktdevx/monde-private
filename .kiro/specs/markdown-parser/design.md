@@ -144,7 +144,16 @@ src/markdown/
 ├── md.h                    # 公開: 構文木の型、種類、行、走査、論理的な文字列、アンエスケープ（Model、Text）
 ├── md_parse.h              # 公開: mnd_md_parse、解析のオプション、確保関数（Parse）
 ├── md_dialect.h            # 公開: 方言の構造体、規則、コンテキスト関数、mnd_md_commonmark（Dialect）
-├── md_internal.h           # 内部: アリーナ、作業状態の型、各コンポーネントの内部関数の宣言
+├── md_internal.h           # 内部: アリーナ、作業用の配列、ノードの作成と連結、解析の作業状態とコンテキストの型（Model と Parse が持つ）
+├── md_lines.h              # 内部: LineIndex の宣言
+├── md_scan.h               # 内部: Scan の宣言
+├── md_html.h               # 内部: Html の宣言
+├── md_block.h              # 内部: BlockParser の宣言
+├── md_linkref.h            # 内部: LinkRef の宣言
+├── md_inline.h             # 内部: InlineParser の宣言
+├── md_delim.h              # 内部: Delims の宣言
+├── md_entity.h             # 内部: Entity の宣言
+├── md_unicode.h            # 内部: Unicode の宣言
 ├── md_arena.c              # Model: アリーナと、確保関数の既定値
 ├── md_node.c               # Model: ノードの作成と連結、文書の解放、走査
 ├── md_lines.c              # LineIndex: 行の分割（LF、CRLF、CR）、行番号の表（foundation の数え方）
@@ -156,7 +165,7 @@ src/markdown/
 ├── md_inline.c             # InlineParser: 行のカーソル、テキスト、エスケープ、実体参照、コードスパン、自動リンク、生の HTML、改行、角括弧とリンク
 ├── md_delim.c              # Delims: 区切り記号の連なりの判定と、強調の処理（方言の区切り記号の規則を含む）
 ├── md_text.c               # Text: mnd_md_logical_text、mnd_md_unescape
-├── md_dialect.c            # Dialect: mnd_md_commonmark、方言の検査、コンテキスト関数の実装
+├── md_dialect.c            # Dialect: mnd_md_commonmark、方言の検査、コンテキスト関数の実装、後処理のあとの木の検査
 ├── md_entity.c             # Entity: 実体名の検索（二分探索）
 ├── md_entity_table.c       # Entity: tools/gen_md_entities.py が生成する表（手で編集しない）
 ├── md_unicode.c            # Unicode: 一般カテゴリの判定、大文字小文字の畳み込み
@@ -170,6 +179,16 @@ tests/markdown/
 ├── html_render.c / .h      # テスト専用の HTML 出力（commonmark.js と同じ出力規則）
 ├── html_normalize.c / .h   # テスト専用の HTML の正規化（normalize.py の移植）
 ├── spec_reader.c / .h      # spec.txt から例（番号、節、Markdown、HTML）を取り出す
+├── model_test.c            # Model と test_alloc（アリーナ、走査、解放）
+├── lines_index_test.c      # LineIndex（行の分割、行番号）
+├── scan_test.c             # Scan（ブロックの開始の判定、タブの桁）
+├── html_test.c             # Html（HTML の字句、HTML ブロックの条件）
+├── unicode_test.c          # Unicode の表
+├── entity_test.c           # Entity の表
+├── tree_check_test.c       # tree_check 自体のテスト
+├── normalize_test.c        # html_normalize（normalize.py の doctest の例）
+├── render_test.c           # html_render（節ごとの代表例）
+├── spec_reader_test.c      # spec_reader（ファイルの大きさ、CR がないこと、例の数）
 ├── parse_test.c            # 1.x（解析の入口、開始位置、空の内容、NUL）
 ├── block_test.c            # 2.x（ブロックの種類と属性）
 ├── range_test.c            # 3.x（ソース範囲と行番号）
@@ -178,7 +197,7 @@ tests/markdown/
 ├── linkref_test.c          # 6.x（参照の解決）
 ├── dialect_test.c          # 7.x（テスト用の方言）
 ├── error_test.c            # 8.x（不正な UTF-8、メモリ不足、病的な入力）
-├── text_test.c             # Text と Unicode・Entity の表
+├── text_test.c             # Text（論理的な文字列、アンエスケープ）
 └── spec_test.c             # 9.x（全 652 例の HTML と範囲の検査）
 
 tests/data/commonmark/
@@ -301,6 +320,7 @@ sequenceDiagram
 | メモリ不足（8.2） | エラー | `out of memory` | 0 |
 | 方言の規則が不正（開始文字が CommonMark の特別な文字、種類が `MND_MD_KIND_DIALECT` 未満、必須のコールバックがない） | エラー | `dialect "%s": invalid %s rule %zu` | 0 |
 | 方言の規則が不正な結果を返した（行の範囲を超えて消費した、など） | エラー | `dialect "%s": rule %zu returned an invalid result` | その行 |
+| 方言の後処理が範囲の不変条件を壊した | エラー | `dialect "%s": postprocess produced an invalid tree` | 壊れたノードの行 |
 
 ## Requirements Traceability
 
@@ -766,7 +786,7 @@ void *mnd_md_post_alloc(mnd_md_post_ctx_t *ctx, size_t size);
 ```
 - **ブロックの規則の行**: `container` が偽の規則が開いたブロックは、続く行（`try_continue` が真の行）の残りを `mnd_md_line_t` として記録する。開始した行の残りも最初の行になる（`take_paragraph_lines` を使った場合は、その行が先に来る）。
 - **区切り記号形式**: 開始文字の連なりは、CommonMark の `*` と同じ左右の隣接の規則で `can_open` と `can_close` を決め、強調と同じスタックに積む。閉じの記号の処理で、規則の `match_delims` が真を返したら、その間のインラインを `kind` のノードの子にする。ノードのデータは `mnd_md_emph_t` と同じ形（開き・閉じの範囲）で、`as.dialect_data` が指す。
-- **後処理**: インラインの段階のあとに 1 回呼ぶ。範囲の不変条件（3.2、3.3）を壊す変更は、解析が `rule returned an invalid result` で失敗する（後処理のあとに検査する）。
+- **後処理**: インラインの段階のあとに 1 回呼ぶ。後処理のあとに、Dialect が木を再帰なしでたどり、範囲が内容の中にあること・子が親の内側・兄弟が重ならず原文の順であること（3.2、3.3）を検査する（製品側の検査で、テストの tree_check は使わない）。壊れていれば `postprocess produced an invalid tree` で失敗する。後処理を持たない方言では検査しない。
 - **GFM での使い方（次の版の見込み）**: 表は `try_start` と `take_paragraph_lines`、タスクリストは後処理でリスト項目の最初のテキストを調べる、取り消し線は `~` の区切り記号形式、自動リンクの拡張は後処理の `split_text` と `wrap`。
 
 ### 内部
@@ -818,7 +838,7 @@ void *mnd_md_post_alloc(mnd_md_post_ctx_t *ctx, size_t size);
 ### テスト用の部品
 - **tree_check**: 文書を前順にたどり（`mnd_md_node_next`）、次を確かめる。範囲が内容の範囲内で開始 ≤ 終了。子が親の内側。兄弟が重ならず原文の順。`start_line` と `end_line` が `mnd_source_line_of` の結果と一致する。各行の `prefix.end == content.start`、`prefix.start` が物理的な行の先頭、内容が行末記号を含まない、行が原文の順、内容がノードの範囲の内側（3.1〜3.3、4.1〜4.3）。
 - **html_render**: 構文木を commonmark.js と同じ規則で HTML にする。ブロックの改行の位置、タイトなリストの段落を `<p>` で囲まないこと、`<pre><code class="language-…">`（情報文字列の最初の語をアンエスケープ）、`<hr />` と `<br />`、`& < > "` のエスケープ、URL のパーセントエンコード（既存の `%XX` は残す）、画像の alt を子のインラインの文字列だけで書くこと、NUL を U+FFFD にすること。コードブロック・コードスパン・タイトル・URL の文字列は、`mnd_md_logical_text` と `mnd_md_unescape` で作る（範囲の誤りが HTML の不一致として現れるようにする）。再帰を使わない。
-- **html_normalize**: normalize.py の規則（`research.md` に記録）を C に移植する。完全一致しなかった例だけに使う。
+- **html_normalize**: normalize.py の規則（`research.md` に記録）を C に移植する。完全一致しなかった例だけに使う。実体名は、normalize.py の HTML4 の一覧の代わりに、本モジュールの Entity の表（HTML5。HTML4 の名前を含む）で文字に戻す。正規化は両方の HTML に同じように行うため、判定が甘くなることはない。
 - **spec_reader**: spec_tests.py と同じ規則で例を取り出し、`→` をタブに置き換える。例が 652 個であることを確かめる。
 - **test_alloc**: n 回目の確保で失敗する確保関数と、確保と解放の回数を数える確保関数。
 
@@ -831,7 +851,10 @@ void *mnd_md_post_alloc(mnd_md_post_ctx_t *ctx, size_t size);
 - **linkref**: 参照より後ろの定義（6.1）。`[ẞ]` と `[SS]`、空白の違うラベル（6.2）。同じラベルの 2 つの定義で最初のものが使われること（6.3）。定義のない `[foo]` がテキストになること（6.4）。
 - **dialect**: 方言を指定しない解析と `mnd_md_commonmark` の解析で、同じ木になること（7.1）。テスト用の方言（ブロックの規則 1 つ: 行頭の `%%% ` で始まる 1 行のリーフで、段落を中断でき、内容をインラインとして解析する。インラインの規則 2 つ: 開始文字形式の `{{name}}`、区切り記号形式の `==text==`。後処理: テキストの `TODO` を分割して包む）で、各ノードが期待する種類と範囲で木に入ること（7.2〜7.4、7.6）。何も追加しない方言で、spec の全例の木が CommonMark と同じ（HTML とすべての範囲が一致する）こと（7.5）。不正な規則（開始文字が `*`、種類が `MND_MD_KIND_DIALECT` 未満）でエラーになること。
 - **error**: 不正な UTF-8（途中の行、開始位置より前）の行番号とメッセージ（8.1）。メモリ不足: 中程度の文書（全種類のブロックとインライン）について、n = 1, 2, … と失敗させる位置を変えて解析し、失敗するたびに `false`、`*out == NULL`、確保と解放の回数が等しいことを確かめる。成功するまで続ける（8.2）。病的な入力（10,000 段の `>`、10,000 段のリスト、10,000 個の `[`、`*a` の 10,000 回の繰り返し、`[`、`](` の繰り返し、閉じないバッククォートの繰り返し）で、異常終了せずに解析が終わり、tree_check を満たすこと（8.3）。成功した解析で診断が増えないこと（8.4）。`mnd_md_doc_free` のあとに確保と解放の回数が等しいこと（8.5）。
-- **text**: `mnd_md_logical_text` の行の境目、`pad`、行をまたぐ範囲。`mnd_md_unescape` のエスケープと実体参照。Unicode の表（`!`、`$`（S）、`。`、U+00A0 と U+3000（Zs）、`ẞ` → `ss`）。Entity の表（`&amp;`、`&ngE;`、存在しない名前）。
+- **text**: `mnd_md_logical_text` の行の境目、`pad`、行をまたぐ範囲。`mnd_md_unescape` のエスケープと実体参照。
+- **unicode**: `!`、`$`（S）、`。` が句読点、U+00A0 と U+3000（Zs）が空白、`ẞ` → `ss`。
+- **entity**: `&amp;`、`&ngE;`、存在しない名前。
+- **model、lines_index、scan、html、tree_check、normalize、render、spec_reader**: 各内部部品とテスト用の部品の単体テスト（tasks.md の各タスクの完了条件に従う）。
 
 ### spec のテスト（spec_test）
 - **spec.html**: 全 652 例を解析し、html_render の出力と期待 HTML を比べる。完全一致しなければ、両方を html_normalize で正規化して比べる。一致しなかった例の番号と節を `NAOS_NOTE` で示し、一致しない例が 1 つでもあれば失敗にする。完全一致しなかった例の数もメモに出す（9.1〜9.3）。

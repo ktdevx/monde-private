@@ -105,3 +105,8 @@
 - [Unicode Character Database 15.0.0](https://www.unicode.org/Public/15.0.0/ucd/) — `DerivedGeneralCategory.txt`、`CaseFolding.txt`
 - [WHATWG HTML の実体名の一覧](https://html.spec.whatwg.org/entities.json) — 実体参照の表の生成元
 - [cmark-gfm](https://github.com/github/cmark-gfm) — 構文拡張の拡張点の参考
+
+## タスク生成時の補足（設計の小さな明確化）
+- 並行して実装できるように、内部の宣言を部品ごとの内部ヘッダ（`md_lines.h`、`md_scan.h` など）に分けた。`md_internal.h` には、アリーナ、ノードの作成と連結、解析の作業状態の型だけを置く。テストファイルも部品ごとに分けた。
+- 方言の後処理のあとの範囲の検査は、製品側（`md_dialect.c`）で行う（9.6 により、テストの tree_check は使えない）。メッセージは `dialect "%s": postprocess produced an invalid tree` とした。
+- normalize.py が HTML4 の実体名だけを文字に戻す処理は、本モジュールの HTML5 の表で代用する。正規化は両方の HTML に同じように行うため、判定が甘くなることはない。
