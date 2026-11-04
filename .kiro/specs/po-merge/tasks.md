@@ -48,7 +48,7 @@
   - _Boundary: Header_
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 6.2, 6.6_
 
-- [ ] 2.4 (P) エントリの複製と、完全一致・あいまい一致の組み立ての規則を実装し、単体テストを書く
+- [x] 2.4 (P) エントリの複製と、完全一致・あいまい一致の組み立ての規則を実装し、単体テストを書く
   - エントリの全要素の深い複製を、po-format の公開の関数だけで実装する。失敗時は複製先を初期状態に戻す
   - 設計の手順 5 の表のとおり、既存とテンプレートのエントリから要素を取り、fuzzy の判定（既存の fuzzy、強制、複数形の食い違い）、フラグの順序（`fuzzy` を先頭、テンプレートのフラグから `fuzzy` を除いて順に）、前回の msgid の 2 通り（既存が fuzzy なら既存の前回の値、そうでなければ既存の msgctxt・msgid・msgid_plural）を実装する
   - 「訳がある」（msgstr が 1 個以上で最初の msgstr が空でない）の判定を実装する
@@ -142,3 +142,4 @@
 - 2.1: `mnd_merge_ratio(n, sum)` の n は LCS（2 倍する前）。`mnd_merge_upper_numerator` は 2×LCS の上限（常に偶数）を返すので、3.2 の上限の比較値は `mnd_merge_ratio(upper / 2, sum)` とする（`(double)upper / (double)sum` と同じ値）
 - 2.2: KeyIndex は init で最大のキー長を求めて作業領域を確保し、find は確保をしない（作業領域に書くので再入不可）。登録しない添字の find は見つからない。重複を作るカタログはリーダーが拒むので、テストでは po.h の関数で直接作る
 - 2.3: po のリーダーはコメントの先頭の空白を除く（テストの期待値に注意）。ヘッダのマージは msgmerge 0.21 と同じ出力になることをレビューで確認済み（Language の推測だけが意図した差）
+- 2.4: `mnd_merge_entry_copy` は line と obsolete もそのまま複製する。fresh と obsolete（2.5）は複製の後で line = 0 と obsolete を設定する。複数形の msgstr の後処理は `merge_entry_combine_elements` の後に加える（fuzzy の判定は済み）
