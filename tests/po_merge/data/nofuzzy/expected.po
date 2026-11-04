@@ -1,0 +1,97 @@
+# Japanese translation for sample.
+# Copyright (C) 2026 THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the sample package.
+# 山田太郎 <taro@example.com>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: sample 1.0\n"
+"Report-Msgid-Bugs-To: https://example.com/sample/issues\n"
+"POT-Creation-Date: 2026-11-01 10:00+0900\n"
+"PO-Revision-Date: 2026-10-05 12:30+0900\n"
+"Last-Translator: 山田太郎 <taro@example.com>\n"
+"Language-Team: Japanese <ja@example.com>\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: src/browser.c:10
+msgid "Open the selected files"
+msgstr ""
+
+#: src/list.c:22
+msgid "Delete all items in the lists"
+msgstr ""
+
+#: src/view.c:5
+msgid "Show all the hidden files"
+msgstr ""
+
+#: src/menu.c:30
+msgctxt "menu"
+msgid "Print the current page"
+msgstr ""
+
+#: src/copy.c:3
+msgid "Copy file C"
+msgstr ""
+
+#: src/edit.c:1
+msgid "Cut"
+msgstr ""
+
+#: src/close.c:2
+msgid "閉じる"
+msgstr ""
+
+#: src/settings.c:40
+msgid "設定を保存しました。"
+msgstr ""
+
+#: src/folder.c:8
+msgid "Rename the selected folders"
+msgstr ""
+
+#: src/net.c:77
+msgid "Connection to the server was lost"
+msgstr ""
+
+#: src/misc.c:1
+msgid "Completely unrelated message"
+msgstr ""
+
+# 訳注: ファイル一覧の操作
+#~ msgid "Open the selected file"
+#~ msgstr "選択したファイルを開く"
+
+#~ msgid "Delete all items in the list"
+#~ msgstr "リスト内のすべての項目を削除"
+
+#, fuzzy
+#~| msgid "Show hidden files"
+#~ msgid "Show the hidden files"
+#~ msgstr "隠しファイルを表示"
+
+#~ msgctxt "toolbar"
+#~ msgid "Print the current page"
+#~ msgstr "現在のページを印刷"
+
+#~ msgid "Copy file A"
+#~ msgstr "ファイル A をコピー"
+
+#~ msgid "Copy file B"
+#~ msgstr "ファイル B をコピー"
+
+#~ msgid "Cut:"
+#~ msgstr "切り取り:"
+
+#~ msgid "閉じる。"
+#~ msgstr "Close."
+
+#~ msgid "設定を保存しました"
+#~ msgstr "Settings saved"
+
+#~ msgid "Rename the selected folder"
+#~ msgstr "選択したフォルダーの名前を変更"

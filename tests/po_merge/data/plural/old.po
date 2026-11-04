@@ -1,0 +1,44 @@
+# German translation for sample.
+# Copyright (C) 2026 THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the sample package.
+# Max Mustermann <max@example.com>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: sample 1.0\n"
+"Report-Msgid-Bugs-To: https://example.com/sample/issues\n"
+"POT-Creation-Date: 2026-10-01 09:00+0900\n"
+"PO-Revision-Date: 2026-10-05 12:30+0900\n"
+"Last-Translator: Max Mustermann <max@example.com>\n"
+"Language-Team: German <de@example.com>\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "a file was deleted"
+msgstr "eine Datei wurde gelöscht"
+
+msgid "a folder"
+msgid_plural "folders"
+msgstr[0] "ein Ordner"
+msgstr[1] "Ordner"
+
+msgid "one item"
+msgid_plural "many items"
+msgstr[0] "ein Element"
+msgstr[1] "viele Elemente"
+
+msgid "one window"
+msgid_plural "many windows"
+msgstr[0] "ein Fenster"
+msgstr[1] "viele Fenster"
+
+msgid "Remove the selected track"
+msgstr "Den ausgewählten Titel entfernen"
+
+msgid "an old plural entry"
+msgid_plural "old plural entries"
+msgstr[0] "ein alter Eintrag"
+msgstr[1] "alte Einträge"

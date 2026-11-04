@@ -102,8 +102,8 @@
   - _Depends: 3.2_
   - _Requirements: 3.6, 3.7, 3.8, 3.10, 3.11, 4.6, 7.1, 7.3_
 
-- [ ] 5. msgmerge との一致と性能の検証
-- [ ] 5.1 msgmerge 0.21 の出力である正解ファイルを作り、正解ファイルとの比較のテストを書く
+- [x] 5. msgmerge との一致と性能の検証
+- [x] 5.1 msgmerge 0.21 の出力である正解ファイルを作り、正解ファイルとの比較のテストを書く
   - 最初の手順として、正解ファイルを作る環境を用意する: Ubuntu 24.04 の `gettext` パッケージ（0.21）を導入し、`msgmerge --version` と `msgcat --version` の 1 行目が `(GNU gettext-tools) 0.21` であることを確かめる。作業環境に導入できない場合は、導入できる環境（Ubuntu 24.04 のコンテナや CI のジョブなど）で正解ファイルを作ってコミットし、その環境を README に書く。製品のコードとテストの実行には gettext を必要としない
   - 設計の 7 ケース（exact、fuzzy、obsolete、header、no_header、plural、nofuzzy）の `old.po` と `template.pot` を、msgcat 0.21 で整形したものとして作る。各ケースの `expected.po` を `msgmerge --previous`（nofuzzy は `--no-fuzzy-matching` も）で作る。msgmerge と意図して異なる入力（設計の Open Questions）は含めない
   - 正解ファイルの作り方（作った環境、gettext と libunistring の版、各ケースのコマンドと内容）をデータのディレクトリの README に書く
@@ -113,14 +113,14 @@
   - _Depends: 4.3_
   - _Requirements: 9.1, 9.2, 9.3_
 
-- [ ] 5.2 msgmerge のある環境で、正解ファイルが msgmerge の出力であることを確かめる互換性テストを登録する
+- [x] 5.2 msgmerge のある環境で、正解ファイルが msgmerge の出力であることを確かめる互換性テストを登録する
   - msgmerge を探し、`--version` の 1 行目が gettext-tools 0.21 の場合だけ、各ケースのテストを登録する（ラベル `po_merge`）。見つからない、または版が異なる場合は、構成時にその旨を表示して登録しない
   - 比較用の CMake スクリプトは、msgmerge を `--previous`（nofuzzy は `--no-fuzzy-matching` も）でビルドディレクトリに出力させ、正解ファイルと一致するかを確かめる
   - 完了時: msgmerge 0.21 のある環境で `ctest -L po_merge` に `po_merge_msgmerge_golden.<case>` の 7 件が表示されて合格する。msgmerge のない構成では登録されず、構成時のメッセージが表示される
   - _Depends: 5.1_
   - _Requirements: 9.1, 9.3_
 
-- [ ] 5.3 性能テストの実行ファイルを作り、CTest に登録する
+- [x] 5.3 性能テストの実行ファイルを作り、CTest に登録する
   - 固定の種の擬似乱数と単語の表から、平均 200 バイトの英語風の msgid を持つ 2,000 エントリの翻訳済みのカタログと、そのうち 200 エントリの msgid の一部の語を置き換えたテンプレートを作る
   - マージだけの時間を測り、ビルド構成が Release のときは 1.0 秒を超えたら失敗する。ほかの構成では時間を表示するだけにする。参考として、全 2,000 エントリを変えた場合の時間も表示する（判定しない）
   - Naos を使わない実行ファイルとして作り、ラベル `po_merge` と `perf` で登録する
@@ -129,7 +129,7 @@
   - _Depends: 4.3, 5.2_
   - _Requirements: 10.1_
 
-- [ ] 5.4 モジュールの独立性を確かめ、全体のテストを通す
+- [x] 5.4 モジュールの独立性を確かめ、全体のテストを通す
   - 製品のソース（`src/po_merge/`）を大文字と小文字を区別して検索し、該当がないことを確かめる（設計のコードレビューの確認を、検索できる形にしたもの）。コメントの中の一致も該当として扱い、表現を変えて取り除く
     - 単語単位（`grep -w`。`fputs` は `puts` に一致しない）: `fopen`、`printf`、`fprintf`、`puts`、`stdout`、`stderr`、`exit`、`abort`、`system`、`popen`
     - 部分文字列: `po_internal.h`、`po_read.h`、`po_write.h`、`file_io.h`、`markdown`（この語だけは大文字と小文字を区別せずに `grep -i` で探す）、`"extract"`、`"translate"`、`"update"`（`extracted_comments` や `MND_PO_STATE_TRANSLATED` に一致しないよう、サブコマンド名は文字列リテラルとして探す）
@@ -148,3 +148,5 @@
 - 3.2: 調べる順序を返す内部関数 `mnd_merge_fuzzy_order` を Fuzzy の節に追加した（テストで順序を確かめるため）。類似度 0.6 ちょうどでも bonus が付けば選ばれる（msgmerge と同じ）
 - 4.1: merge.c は手順ごとの static 関数と `merge_state_t`（O の索引、used、nplurals、統計）で構成する。4.2・4.3 は `merge_run` の `merge_place_header` の後に手順を加える。表示する値の 40 バイトは置き換えた後のバイト数（po の reader と writer と同じ）
 - 4.2: po-format のライターは msgstr が空のエントリにも `#, fuzzy` を書くが、gettext 0.21（msgcat、msgmerge）は msgstr[0] が空なら fuzzy を書かない（po-format の課題で、po-merge では直さない）。5.1 の正解ファイルには「未翻訳のまま fuzzy になるエントリ」（訳のない既存との複数形の食い違いなど）を含めない
+- 5.1: 正解ファイルは作業環境（Ubuntu 24.04、apt の gettext 0.21-14ubuntu2）で作った。nofuzzy の入力は fuzzy の写し。単数形 → 複数形の食い違いでは msgmerge は現在の msgid を `#|` に書く。data/.gitattributes で改行の変換を止めている
+- 5.3: 性能テストは Release で基準 約 0.3 秒、最悪（全 2,000 変更）約 2.5 秒。Debug では基準 約 1 秒・最悪 約 9 秒（判定なし）で、既定の ctest でも実行される

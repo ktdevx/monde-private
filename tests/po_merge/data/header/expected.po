@@ -1,0 +1,30 @@
+# Japanese translation for sample.
+# Copyright (C) 2026 THE PACKAGE'S COPYRIGHT HOLDER
+#
+# 翻訳者のメモ: ヘッダの翻訳者コメントは保たれる。
+# 山田太郎 <taro@example.com>, 2026.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: sample 2.5\n"
+"Report-Msgid-Bugs-To: new-bugs@example.com\n"
+"POT-Creation-Date: 2026-11-02 08:15+0900\n"
+"PO-Revision-Date: 2026-02-03 04:05+0900\n"
+"Last-Translator: 山田太郎 <taro@example.com>\n"
+"Language-Team: Japanese <ja@example.com>\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 3.4\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Poedit-SourceCharset: UTF-8\n"
+
+#: src/main.c:1
+msgid "Welcome"
+msgstr "ようこそ"
+
+#: src/main.c:2
+msgid "Goodbye"
+msgstr "さようなら"
