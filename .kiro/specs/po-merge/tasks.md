@@ -25,7 +25,7 @@
   - _Requirements: 10.1_
 
 - [ ] 2. 各段階の部品
-- [ ] 2.1 (P) 類似度の計算（LCS、上限、比較値）を実装し、単体テストを書く
+- [x] 2.1 (P) 類似度の計算（LCS、上限、比較値）を実装し、単体テストを書く
   - 問い合わせの文字列から 256 種のバイトの位置のビットマスク（64 ビットの語の列）を作り、候補の文字列の各バイトで更新する bit-parallel LCS を実装する。語の列の加減算は桁上がり・桁借りを伝える
   - 比較値の分数 `(double)(2 × LCS) / (double)(長さの和)`（長さの和が 0 なら 1.0）と、長さによる上限・バイトの出現数の差による上限（長さの和が 20 以上）の分子を、設計と同じ形で計算する。数学関数のライブラリは使わない
   - 完了時: similarity スイートで、空と空・片方だけ空・同一・共通なし・UTF-8 の複数バイト文字、64 バイト・65 バイト・128 バイトを超える問い合わせのテストと、固定の種の擬似乱数による 1,000 組でテスト内の動的計画法の LCS と一致すること、上限の分子が常に `2 × LCS` 以上であることのテストが合格する
@@ -139,3 +139,4 @@
 ## Implementation Notes
 - 1.1: merge_internal.h の節の順は依存順（Hash、Similarity、KeyIndex、Fuzzy、Builder、Header）。KeyIndex はエントリごとの mnd_buf_t で連結キーを所有する。const の `mnd_merge_key_index_find` は連結キーの作り方（作業領域か、ハッシュと比較を部分ごとに行うか）とメモリ不足の扱いを 2.2 で決める。Pattern のマスクは `masks[b * words + w]`、`vector` は LCS の作業領域
 - 1.2: テストの入力は `TEST_READ_PO`、結果の比較は `TEST_CHECK_WRITTEN`、データは `TEST_READ_DATA_FILE`（tests/po_merge/test_util.h）を使う。`TEST_READ_PO` は警告でも失敗させる。ヘッダは msgcat の正規形（複数行）で書かないと書き出しが一致しない
+- 2.1: `mnd_merge_ratio(n, sum)` の n は LCS（2 倍する前）。`mnd_merge_upper_numerator` は 2×LCS の上限（常に偶数）を返すので、3.2 の上限の比較値は `mnd_merge_ratio(upper / 2, sum)` とする（`(double)upper / (double)sum` と同じ値）

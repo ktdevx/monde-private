@@ -66,9 +66,15 @@ typedef struct mnd_merge_pattern
 bool mnd_merge_pattern_set(mnd_merge_pattern_t *pattern, const char *s, size_t len);
 void mnd_merge_pattern_free(mnd_merge_pattern_t *pattern);  /* 空の状態に戻す */
 size_t mnd_merge_lcs(const mnd_merge_pattern_t *pattern, const char *s, size_t len);
-/* 2 × numerator / sum を double で返す（sum == 0 なら 1.0） */
+/*
+ * (double)(2 × numerator) / (double)sum を返す（sum == 0 なら 1.0）。numerator は LCS（2 倍する前）。
+ * 比較値は mnd_merge_ratio(LCS, |q| + |c|)
+ */
 double mnd_merge_ratio(size_t numerator, size_t sum);
-/* 長さと出現数による上限の分子 */
+/*
+ * 長さと出現数による上限の分子（2 × LCS の上限。設計の「分子」と同じく 2 倍した後の値で、常に偶数）。
+ * 上限 u は mnd_merge_ratio(分子 / 2, |a| + |b|) で、(double)(分子) / (double)(|a| + |b|) と等しい
+ */
 size_t mnd_merge_upper_numerator(const char *a, size_t alen, const char *b, size_t blen);
 
 /* KeyIndex（merge_index.c） */
