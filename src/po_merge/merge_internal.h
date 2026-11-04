@@ -82,10 +82,17 @@ size_t mnd_merge_upper_numerator(const char *a, size_t alen, const char *b, size
 /* キーの msgctxt と msgid の区切り */
 #define MND_MERGE_KEY_SEPARATOR '\x04'
 
+/* キーの先頭の、msgctxt の有無を表す 1 バイト */
+#define MND_MERGE_KEY_NO_MSGCTXT '\x00'
+#define MND_MERGE_KEY_HAS_MSGCTXT '\x01'
+
 /*
  * キー（msgctxt の有無、msgctxt、msgid）からカタログの添字を引く索引。
  * キーは「msgctxt の有無の 1 バイト + msgctxt + 0x04 + msgid」の連結として索引が所有し、
- * hash のキーはその連結を指す
+ * hash のキーはその連結を指す。
+ * 検索（const の find）が領域を確保しないように、init で catalog のすべてのエントリのキーの
+ * 長さの最大を求め、その長さの作業領域を確保しておく。最大より長いキーはどのエントリの
+ * キーとも一致しないので、作業領域を使わずに「ない」とする
  */
 typedef struct mnd_merge_key_index
 {
@@ -93,13 +100,23 @@ typedef struct mnd_merge_key_index
     mnd_merge_hash_t hash;            /* キー → catalog の添字 */
     mnd_buf_t *keys;                  /* catalog の添字ごとのキーの連結（key_count 個。未登録は空） */
     size_t key_count;                 /* init の時点の catalog->count */
+    size_t max_key_len;               /* catalog のエントリのキーの長さの最大（エントリがなければ 0） */
+    unsigned char *work;              /* 検索のキーを作る作業領域（max_key_len バイト。0 なら NULL）。find が書き換える */
 } mnd_merge_key_index_t;
 
+/* catalog の索引を空の状態で用意する（エントリはまだ登録しない）。false はメモリ不足 */
 bool mnd_merge_key_index_init(mnd_merge_key_index_t *index, const mnd_po_catalog_t *catalog);
-void mnd_merge_key_index_free(mnd_merge_key_index_t *index);
-/* entry_index のキーを登録する。既にあれば登録せず *existing に先の添字を入れて true、*added を偽にする */
+void mnd_merge_key_index_free(mnd_merge_key_index_t *index);  /* 初期化に失敗した後・解放済みに対しても安全 */
+/*
+ * entry_index（init の時点の catalog->count 未満）のキーを登録する。
+ * 既にあれば登録せず *existing に先の添字を入れて true、*added を偽にする。false はメモリ不足
+ */
 bool mnd_merge_key_index_add(mnd_merge_key_index_t *index, size_t entry_index,
                              bool *added, size_t *existing);
+/*
+ * key の msgctxt の有無・msgctxt・msgid と同じキーの登録済みの添字を探す。領域を確保しない
+ * （作業領域を書き換えるため、同じ索引を複数のスレッドから同時に使わない）
+ */
 bool mnd_merge_key_index_find(const mnd_merge_key_index_t *index, const mnd_po_entry_t *key,
                               size_t *entry_index);
 

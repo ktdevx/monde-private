@@ -32,7 +32,7 @@
   - _Boundary: Similarity_
   - _Requirements: 3.2, 10.1, 10.2_
 
-- [ ] 2.2 (P) msgctxt と msgid による索引と、重複の検出を実装し、単体テストを書く
+- [x] 2.2 (P) msgctxt と msgid による索引と、重複の検出を実装し、単体テストを書く
   - キーを「msgctxt の有無の 1 バイト + msgctxt + 区切り + msgid」の連結として索引が所有し、ハッシュ表でカタログの添字を引く
   - 登録済みのキーは上書きせず、先に登録された添字を返す。登録の順で、通常のエントリの優先と、先の廃止エントリの優先を表せるようにする
   - 完了時: index スイートで、msgctxt のないキーと空の msgctxt のキーの区別、同じキーの 2 回目の登録で先の添字が返ること、存在しないキーの検索、のテストが合格する
@@ -140,3 +140,4 @@
 - 1.1: merge_internal.h の節の順は依存順（Hash、Similarity、KeyIndex、Fuzzy、Builder、Header）。KeyIndex はエントリごとの mnd_buf_t で連結キーを所有する。const の `mnd_merge_key_index_find` は連結キーの作り方（作業領域か、ハッシュと比較を部分ごとに行うか）とメモリ不足の扱いを 2.2 で決める。Pattern のマスクは `masks[b * words + w]`、`vector` は LCS の作業領域
 - 1.2: テストの入力は `TEST_READ_PO`、結果の比較は `TEST_CHECK_WRITTEN`、データは `TEST_READ_DATA_FILE`（tests/po_merge/test_util.h）を使う。`TEST_READ_PO` は警告でも失敗させる。ヘッダは msgcat の正規形（複数行）で書かないと書き出しが一致しない
 - 2.1: `mnd_merge_ratio(n, sum)` の n は LCS（2 倍する前）。`mnd_merge_upper_numerator` は 2×LCS の上限（常に偶数）を返すので、3.2 の上限の比較値は `mnd_merge_ratio(upper / 2, sum)` とする（`(double)upper / (double)sum` と同じ値）
+- 2.2: KeyIndex は init で最大のキー長を求めて作業領域を確保し、find は確保をしない（作業領域に書くので再入不可）。登録しない添字の find は見つからない。重複を作るカタログはリーダーが拒むので、テストでは po.h の関数で直接作る
