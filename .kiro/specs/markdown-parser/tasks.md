@@ -173,12 +173,13 @@
   - 全 652 例を解析し、HTML 出力と期待 HTML を、完全一致または正規化後の一致で比べる。一致しない例の番号と節をテストのメモに出し、1 つでもあれば失敗にする。完全一致しなかった例の数もメモに出す
   - 全例で範囲の不変条件の検査を行うテストと、何も追加しない方言（既定の方言とは別に作った空の方言）で HTML とすべての範囲が既定の方言と一致することを確かめるテストを作る
   - 完了時: spec スイートの html、ranges、empty_dialect のテストが実行でき、一致しない例の番号と節の一覧が出力される（この時点では全例の合格を求めない）
+  - 6.5 が終わるまで、spec スイートは失敗したままになる。6.3 と 6.4 の確認は、spec スイートのメモに出る節ごとの結果で行う
   - _Depends: 1.4, 2.6, 2.7, 5.2, 6.1_
   - _Requirements: 9.2, 9.3, 9.4_
 
 - [ ] 6.3 spec のブロックの節の不一致を直す
   - Tabs、Precedence、Thematic breaks、ATX headings、Setext headings、Indented code blocks、Fenced code blocks、HTML blocks、Link reference definitions、Paragraphs、Blank lines、Block quotes、List items、Lists の節で一致しない例を、ブロックの段階とリンク参照の部品（必要なら HTML 出力）で直す。spec.txt と期待 HTML は変えない
-  - 完了時: 上の節のすべての例が spec スイートの html と ranges で合格する
+  - 完了時: 上の節の例が spec スイートの html と ranges で合格する。原因がインラインや区切り記号の部品にある例は、番号を記録して 6.4 に引き継ぐ
   - _Boundary: BlockParser、LinkRef、html_render_
   - _Requirements: 9.2, 9.4_
 
