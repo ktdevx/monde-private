@@ -20,7 +20,7 @@
   - _Depends: 1.1_
   - _Requirements: 5.9, 6.2_
 
-- [ ] 1.3 (P) 実体名の表を生成するスクリプトを作り、実体名の検索を実装する
+- [x] 1.3 (P) 実体名の表を生成するスクリプトを作り、実体名の検索を実装する
   - WHATWG の `entities.json` を一度手で取得し、リポジトリの外に置く。`;` で終わる名前だけを、名前の順に、表す UTF-8 の列とともに C のソースとして生成するスクリプトを `tools/` に置く（Python 3 の標準ライブラリのみ。生成物の先頭に生成元と手で編集しない旨を書く）
   - 名前から二分探索して、表す UTF-8 の列を返す機能を実装する
   - 完了時: スクリプトの再実行で差分が出ない。entity スイートで、`amp` が `&`、`ngE` が 2 つのコードポイント、存在しない名前と `;` のない名前が見つからないテストが合格する
@@ -211,3 +211,4 @@
 
 ## Implementation Notes
 - 1.2: `mnd_md_unicode_is_space` は Zs だけを判定する。CommonMark の Unicode whitespace（タブ、LF、FF、CR を含む）は、使う側（Delims、LinkRef）でこの 4 文字を別に判定する。`mnd_md_unicode_fold` の出力は NUL 終端しない（最大 `MND_MD_UNICODE_FOLD_MAX` バイト）。
+- 1.3: `mnd_md_entity_lookup(name, len, &utf8, &utf8_len)` の名前は `&` と `;` を含まない（呼び出し側が `;` が続くことを確かめる）。名前の最大長は `MND_MD_ENTITY_NAME_MAX`（31）。
