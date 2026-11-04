@@ -113,7 +113,7 @@
   - _Depends: 4.3_
   - _Requirements: 9.1, 9.2, 9.3_
 
-- [ ] 5.2 msgmerge のある環境で、正解ファイルが msgmerge の出力であることを確かめる互換性テストを登録する
+- [x] 5.2 msgmerge のある環境で、正解ファイルが msgmerge の出力であることを確かめる互換性テストを登録する
   - msgmerge を探し、`--version` の 1 行目が gettext-tools 0.21 の場合だけ、各ケースのテストを登録する（ラベル `po_merge`）。見つからない、または版が異なる場合は、構成時にその旨を表示して登録しない
   - 比較用の CMake スクリプトは、msgmerge を `--previous`（nofuzzy は `--no-fuzzy-matching` も）でビルドディレクトリに出力させ、正解ファイルと一致するかを確かめる
   - 完了時: msgmerge 0.21 のある環境で `ctest -L po_merge` に `po_merge_msgmerge_golden.<case>` の 7 件が表示されて合格する。msgmerge のない構成では登録されず、構成時のメッセージが表示される
