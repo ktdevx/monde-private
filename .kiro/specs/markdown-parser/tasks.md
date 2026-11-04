@@ -47,7 +47,7 @@
   - _Boundary: Model、test_alloc_
   - _Requirements: 3.7, 8.5_
 
-- [ ] 2.2 (P) 行の分割と行番号の表を実装する
+- [x] 2.2 (P) 行の分割と行番号の表を実装する
   - LF、CRLF、単独の CR で終わる CommonMark の行を、行の先頭・行末記号の直前・行末記号の長さとして順に取り出す。NUL で止めない
   - LF の位置から行番号の表を作り、オフセットから行番号を二分探索で返す（単独の CR は数えない）
   - 完了時: lines_index スイートで、LF・CRLF・単独の CR・行末記号のない最後の行・NUL を含む内容の行の分割と、すべてのオフセットの行番号が foundation の `mnd_source_line_of` と一致するテストが合格する
@@ -214,3 +214,4 @@
 - 1.3: `mnd_md_entity_lookup(name, len, &utf8, &utf8_len)` の名前は `&` と `;` を含まない（呼び出し側が `;` が続くことを確かめる）。名前の最大長は `MND_MD_ENTITY_NAME_MAX`（31）。
 - 1.4: spec_reader の API は `mnd_md_spec_load(path, &spec, diags)` / `mnd_md_spec_free`。例は `spec.examples[i]` の `number`、`section`、`markdown`、`html`（`mnd_buf_t`、NUL 終端）。
 - 2.1: 共有の内部 API（`md_internal.h`）: アリーナ `mnd_md_arena_*`（ゼロ初期化）、作業用の配列 `mnd_md_array_*`（伸長は確保＋複製＋解放）、`mnd_md_size_mul`、`mnd_md_doc_create`、`mnd_md_node_new/append_child/insert_before/insert_after/unlink`。テスト用の確保関数は `tests/markdown/test_alloc.h` の `mnd_md_test_alloc_t`（n 回目で失敗、0 は失敗しない）。
+- 2.2: 行の分割は `mnd_md_lines_next(data, &pos, end, &line)`（`mnd_md_phys_line_t`、`pos >= end` で false）。行番号の表は `mnd_md_line_index_build(&index, data, len, arena)` でアリーナに作り、`mnd_md_line_index_line_of` で引く。
