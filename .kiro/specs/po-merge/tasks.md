@@ -1,7 +1,7 @@
 # Implementation Plan
 
 - [ ] 1. po_merge モジュールの基盤
-- [ ] 1.1 po_merge モジュールとテスト実行ファイルの雛形を作り、構成・ビルド・テストの手順を通す
+- [x] 1.1 po_merge モジュールとテスト実行ファイルの雛形を作り、構成・ビルド・テストの手順を通す
   - 設計の公開ヘッダ（設定・統計の型とマージの関数）と内部ヘッダ（Builder、Header、KeyIndex、Fuzzy、Similarity、Hash の型と関数）を置き、設計の宣言をすべて書く
   - 内部ヘッダでは、Hash、KeyIndex、Fuzzy、Similarity の構造体の定義（フィールド）もここで確定させる。Fuzzy は候補の添字の列、4-gram の表と添字の列、バイト長ごとの列、作業領域（数え上げの配列、触れた候補の列、問い合わせのマスク）を、Similarity はマスクの語数と 256 種のマスクを持つ。内部ヘッダは部品ごとの節に分け、以降のタスクで構造体を変える必要が出た場合は、そのタスクの部品の節だけを編集する
   - 設計の File Structure Plan の製品のソース 7 つ（手順、エントリの組み立て、ヘッダ、索引、あいまい一致、類似度、ハッシュ表）を最初から登録する。各ソースは空の翻訳単位にならず、警告なしでコンパイルできるようにする。公開のマージの関数は、実装されるまで「出力を空にして false を返す」仮の実装にしておく
@@ -135,3 +135,6 @@
     - 部分文字列: `po_internal.h`、`po_read.h`、`po_write.h`、`file_io.h`、`markdown`（この語だけは大文字と小文字を区別せずに `grep -i` で探す）、`"extract"`、`"translate"`、`"update"`（`extracted_comments` や `MND_PO_STATE_TRANSLATED` に一致しないよう、サブコマンド名は文字列リテラルとして探す）
   - 完了時: 上記の検索で該当がなく、標準の 3 行の手順で全モジュールのテストが合格する
   - _Requirements: 10.2, 11.1, 11.2, 11.3_
+
+## Implementation Notes
+- 1.1: merge_internal.h の節の順は依存順（Hash、Similarity、KeyIndex、Fuzzy、Builder、Header）。KeyIndex はエントリごとの mnd_buf_t で連結キーを所有する。const の `mnd_merge_key_index_find` は連結キーの作り方（作業領域か、ハッシュと比較を部分ごとに行うか）とメモリ不足の扱いを 2.2 で決める。Pattern のマスクは `masks[b * words + w]`、`vector` は LCS の作業領域
