@@ -102,7 +102,7 @@
   - _Depends: 3.2_
   - _Requirements: 3.6, 3.7, 3.8, 3.10, 3.11, 4.6, 7.1, 7.3_
 
-- [ ] 5. msgmerge との一致と性能の検証
+- [x] 5. msgmerge との一致と性能の検証
 - [x] 5.1 msgmerge 0.21 の出力である正解ファイルを作り、正解ファイルとの比較のテストを書く
   - 最初の手順として、正解ファイルを作る環境を用意する: Ubuntu 24.04 の `gettext` パッケージ（0.21）を導入し、`msgmerge --version` と `msgcat --version` の 1 行目が `(GNU gettext-tools) 0.21` であることを確かめる。作業環境に導入できない場合は、導入できる環境（Ubuntu 24.04 のコンテナや CI のジョブなど）で正解ファイルを作ってコミットし、その環境を README に書く。製品のコードとテストの実行には gettext を必要としない
   - 設計の 7 ケース（exact、fuzzy、obsolete、header、no_header、plural、nofuzzy）の `old.po` と `template.pot` を、msgcat 0.21 で整形したものとして作る。各ケースの `expected.po` を `msgmerge --previous`（nofuzzy は `--no-fuzzy-matching` も）で作る。msgmerge と意図して異なる入力（設計の Open Questions）は含めない
@@ -129,7 +129,7 @@
   - _Depends: 4.3, 5.2_
   - _Requirements: 10.1_
 
-- [ ] 5.4 モジュールの独立性を確かめ、全体のテストを通す
+- [x] 5.4 モジュールの独立性を確かめ、全体のテストを通す
   - 製品のソース（`src/po_merge/`）を大文字と小文字を区別して検索し、該当がないことを確かめる（設計のコードレビューの確認を、検索できる形にしたもの）。コメントの中の一致も該当として扱い、表現を変えて取り除く
     - 単語単位（`grep -w`。`fputs` は `puts` に一致しない）: `fopen`、`printf`、`fprintf`、`puts`、`stdout`、`stderr`、`exit`、`abort`、`system`、`popen`
     - 部分文字列: `po_internal.h`、`po_read.h`、`po_write.h`、`file_io.h`、`markdown`（この語だけは大文字と小文字を区別せずに `grep -i` で探す）、`"extract"`、`"translate"`、`"update"`（`extracted_comments` や `MND_PO_STATE_TRANSLATED` に一致しないよう、サブコマンド名は文字列リテラルとして探す）
