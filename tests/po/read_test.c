@@ -385,6 +385,402 @@ NAOS_TEST(read_raw_nul_in_comment)
     mnd_diag_list_free(&diags);
 }
 
+/* テスト用: 誤った並びの内容が失敗し、カタログが空になり、エラーが 1 件以上ある */
+static void check_rejected(const char *content)
+{
+    mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+
+    NAOS_CHECK_FALSE(read_str(content, &catalog, &diags));
+    NAOS_CHECK_UINT_EQ(catalog.count, 0);
+    NAOS_CHECK_TRUE(mnd_diag_list_has_error(&diags));
+    mnd_po_catalog_free(&catalog);
+    mnd_diag_list_free(&diags);
+}
+
+NAOS_TEST(read_multiline_concatenation)
+{
+    mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    const mnd_po_entry_t *entry;
+    const char *content =
+        "#| msgctxt \"\"\n"
+        "#| \"old \"\n"
+        "#|   \"ctx\"\n"
+        "#| msgid \"\"\n"
+        "#| \"o\"\n"
+        "#| msgid_plural \"p\"\n"
+        "#| \"s\"\n"
+        "msgctxt \"\"\n"
+        "\"c\"\n"
+        "  \"tx\"\n"
+        "msgid \"\"\n"
+        "\"line 1\\n\"\n"
+        "\"line 2\"\n"
+        "msgid_plural \"a\"\n"
+        "\"b\"\n"
+        "msgstr[0] \"\"\n"
+        "\"x\"\n"
+        "\"y\"\n"
+        "msgstr[1] \"z\"\n"
+        "\"\"\n"
+        "\"w\"\n";
+
+    NAOS_REQUIRE_TRUE(read_str(content, &catalog, &diags));
+    NAOS_CHECK_UINT_EQ(mnd_diag_list_count(&diags), 0);
+    NAOS_REQUIRE_UINT_EQ(catalog.count, 1);
+    entry = &catalog.entries[0];
+    NAOS_CHECK_TRUE(entry->has_prev_msgctxt);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->prev_msgctxt), "old ctx");
+    NAOS_CHECK_TRUE(entry->has_prev_msgid);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->prev_msgid), "o");
+    NAOS_CHECK_TRUE(entry->has_prev_msgid_plural);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->prev_msgid_plural), "ps");
+    NAOS_CHECK_TRUE(entry->has_msgctxt);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->msgctxt), "ctx");
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->msgid), "line 1\nline 2");
+    NAOS_CHECK_TRUE(entry->has_msgid_plural);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->msgid_plural), "ab");
+    NAOS_REQUIRE_UINT_EQ(entry->msgstr.count, 2);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->msgstr.items[0]), "xy");
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->msgstr.items[1]), "zw");
+    NAOS_CHECK_UINT_EQ(entry->line, 1);
+
+    mnd_po_catalog_free(&catalog);
+    mnd_diag_list_free(&diags);
+}
+
+NAOS_TEST(read_msgctxt_presence)
+{
+    mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    const char *content =
+        "msgctxt \"menu\"\n"
+        "msgid \"Open\"\n"
+        "msgstr \"Ouvrir\"\n"
+        "\n"
+        "msgid \"Open\"\n"
+        "msgstr \"Ouvrir 2\"\n"
+        "\n"
+        "msgctxt \"\"\n"
+        "msgid \"Open\"\n"
+        "msgstr \"\"\n";
+
+    NAOS_REQUIRE_TRUE(read_str(content, &catalog, &diags));
+    NAOS_CHECK_UINT_EQ(mnd_diag_list_count(&diags), 0);
+    NAOS_REQUIRE_UINT_EQ(catalog.count, 3);
+    NAOS_CHECK_TRUE(catalog.entries[0].has_msgctxt);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&catalog.entries[0].msgctxt), "menu");
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&catalog.entries[0].msgid), "Open");
+    NAOS_CHECK_FALSE(catalog.entries[1].has_msgctxt);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&catalog.entries[1].msgid), "Open");
+    /* 空の msgctxt は、msgctxt のないエントリと区別する */
+    NAOS_CHECK_TRUE(catalog.entries[2].has_msgctxt);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&catalog.entries[2].msgctxt), "");
+    NAOS_CHECK_FALSE(catalog.entries[2].has_prev_msgctxt);
+    NAOS_CHECK_FALSE(catalog.entries[2].has_prev_msgid);
+
+    mnd_po_catalog_free(&catalog);
+    mnd_diag_list_free(&diags);
+}
+
+NAOS_TEST(read_plural_entries)
+{
+    mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    const mnd_po_entry_t *entry;
+    const char *content =
+        "msgid \"one file\"\n"
+        "msgid_plural \"%d files\"\n"
+        "msgstr[0] \"f0\"\n"
+        "msgstr[1] \"\"\n"
+        "msgstr[2] \"f2\"\n"
+        "msgid \"single\"\n"
+        "msgstr \"s\"\n";
+
+    NAOS_REQUIRE_TRUE(read_str(content, &catalog, &diags));
+    NAOS_CHECK_UINT_EQ(mnd_diag_list_count(&diags), 0);
+    NAOS_REQUIRE_UINT_EQ(catalog.count, 2);
+    entry = &catalog.entries[0];
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->msgid), "one file");
+    NAOS_CHECK_TRUE(entry->has_msgid_plural);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->msgid_plural), "%d files");
+    NAOS_REQUIRE_UINT_EQ(entry->msgstr.count, 3);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->msgstr.items[0]), "f0");
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->msgstr.items[1]), "");
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->msgstr.items[2]), "f2");
+    NAOS_CHECK_INT_EQ(mnd_po_entry_state(entry), MND_PO_STATE_UNTRANSLATED);
+    entry = &catalog.entries[1];
+    NAOS_CHECK_FALSE(entry->has_msgid_plural);
+    NAOS_REQUIRE_UINT_EQ(entry->msgstr.count, 1);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->msgstr.items[0]), "s");
+    NAOS_CHECK_UINT_EQ(entry->line, 6);
+
+    mnd_po_catalog_free(&catalog);
+    mnd_diag_list_free(&diags);
+}
+
+NAOS_TEST(read_obsolete_entries)
+{
+    mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    const mnd_po_entry_t *entry;
+    const char *content =
+        "msgid \"live\"\n"
+        "msgstr \"L\"\n"
+        "\n"
+        "# translator\n"
+        "#, fuzzy\n"
+        "#~| msgctxt \"oc\"\n"
+        "#~| msgid \"old\"\n"
+        "#~| \"er\"\n"
+        "#~ msgctxt \"c\"\n"
+        "#~ msgid \"gone\"\n"
+        "#~ \"!\"\n"
+        "#~\n"
+        "#~ msgstr \"G\"\n"
+        "#~  \"!\"\n"
+        "\n"
+        "#~ msgid \"apple\"\n"
+        "#~ msgid_plural \"apples\"\n"
+        "#~ msgstr[0] \"a0\"\n"
+        "#~ msgstr[1] \"a1\"\n"
+        "msgid \"after\"\n"
+        "msgstr \"A\"\n";
+
+    NAOS_REQUIRE_TRUE(read_str(content, &catalog, &diags));
+    NAOS_CHECK_UINT_EQ(mnd_diag_list_count(&diags), 0);
+    NAOS_REQUIRE_UINT_EQ(catalog.count, 4);
+
+    NAOS_CHECK_FALSE(catalog.entries[0].obsolete);
+
+    entry = &catalog.entries[1];
+    NAOS_CHECK_TRUE(entry->obsolete);
+    NAOS_CHECK_UINT_EQ(entry->line, 4);
+    /* 前のコメントの行は廃止エントリに付く */
+    NAOS_REQUIRE_UINT_EQ(entry->translator_comments.count, 1);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->translator_comments.items[0]), "translator");
+    NAOS_CHECK_TRUE(mnd_po_flag_has(entry, "fuzzy"));
+    NAOS_CHECK_TRUE(entry->has_prev_msgctxt);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->prev_msgctxt), "oc");
+    NAOS_CHECK_TRUE(entry->has_prev_msgid);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->prev_msgid), "older");
+    NAOS_CHECK_FALSE(entry->has_prev_msgid_plural);
+    NAOS_CHECK_TRUE(entry->has_msgctxt);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->msgctxt), "c");
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->msgid), "gone!");
+    NAOS_REQUIRE_UINT_EQ(entry->msgstr.count, 1);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->msgstr.items[0]), "G!");
+
+    entry = &catalog.entries[2];
+    NAOS_CHECK_TRUE(entry->obsolete);
+    NAOS_CHECK_UINT_EQ(entry->line, 16);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->msgid), "apple");
+    NAOS_CHECK_TRUE(entry->has_msgid_plural);
+    NAOS_REQUIRE_UINT_EQ(entry->msgstr.count, 2);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->msgstr.items[1]), "a1");
+
+    entry = &catalog.entries[3];
+    NAOS_CHECK_FALSE(entry->obsolete);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&entry->msgid), "after");
+    NAOS_CHECK_UINT_EQ(entry->line, 20);
+
+    mnd_po_catalog_free(&catalog);
+    mnd_diag_list_free(&diags);
+}
+
+NAOS_TEST(read_header_identification)
+{
+    mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    size_t index = 99;
+    mnd_slice_t value;
+    const char *with_header =
+        "#~ msgid \"\"\n"
+        "#~ msgstr \"Obsolete: yes\\n\"\n"
+        "\n"
+        "msgctxt \"\"\n"
+        "msgid \"\"\n"
+        "msgstr \"Context: yes\\n\"\n"
+        "\n"
+        "# header comment\n"
+        "#, fuzzy\n"
+        "msgid \"\"\n"
+        "msgstr \"\"\n"
+        "\"Project-Id-Version: demo 1.0\\n\"\n"
+        "\"Content-Type: text/plain; charset=UTF-8\\n\"\n"
+        "\n"
+        "msgid \"a\"\n"
+        "msgstr \"b\"\n";
+    const char *without_header =
+        "msgid \"a\"\n"
+        "msgstr \"b\"\n"
+        "\n"
+        "msgctxt \"\"\n"
+        "msgid \"\"\n"
+        "msgstr \"\"\n";
+
+    NAOS_REQUIRE_TRUE(read_str(with_header, &catalog, &diags));
+    NAOS_CHECK_UINT_EQ(mnd_diag_list_count(&diags), 0);
+    NAOS_REQUIRE_UINT_EQ(catalog.count, 4);
+    NAOS_REQUIRE_TRUE(mnd_po_catalog_header(&catalog, &index));
+    NAOS_CHECK_UINT_EQ(index, 2);
+    NAOS_CHECK_UINT_EQ(catalog.entries[2].line, 8);
+    NAOS_REQUIRE_TRUE(mnd_po_header_get(&catalog.entries[2], "project-id-version", &value));
+    NAOS_CHECK_UINT_EQ(value.len, strlen("demo 1.0"));
+    NAOS_CHECK_TRUE(memcmp(value.data, "demo 1.0", value.len) == 0);
+    mnd_po_catalog_free(&catalog);
+
+    /* ヘッダのない内容も、エラーなしで読み込む（2.11） */
+    mnd_po_catalog_init(&catalog);
+    NAOS_REQUIRE_TRUE(read_str(without_header, &catalog, &diags));
+    NAOS_CHECK_UINT_EQ(mnd_diag_list_count(&diags), 0);
+    NAOS_CHECK_UINT_EQ(catalog.count, 2);
+    NAOS_CHECK_FALSE(mnd_po_catalog_header(&catalog, &index));
+
+    mnd_po_catalog_free(&catalog);
+    mnd_diag_list_free(&diags);
+}
+
+NAOS_TEST(read_empty_and_comment_only_content)
+{
+    static const char *const contents[] = {
+        "",
+        "\n",
+        "\r\n\n  \t\n",
+        "# only a comment\n",
+        "# a\n\n#. b\n#: c.c:1\n#, fuzzy\n\n",
+        "#| msgid \"previous only\"\n#| \"more\"\n",
+        "#~\n#|\n#~|\n",
+        "#~| msgid \"x\"\n# no newline at end"
+    };
+    size_t i;
+
+    for (i = 0; i < (sizeof(contents) / sizeof(contents[0])); i++)
+    {
+        mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+        mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+
+        NAOS_CHECK_TRUE(read_str(contents[i], &catalog, &diags));
+        NAOS_CHECK_UINT_EQ(catalog.count, 0);
+        NAOS_CHECK_UINT_EQ(mnd_diag_list_count(&diags), 0);
+        mnd_po_catalog_free(&catalog);
+        mnd_diag_list_free(&diags);
+    }
+}
+
+NAOS_TEST(read_trailing_comments_are_dropped)
+{
+    mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    const char *content =
+        "msgid \"a\"\n"
+        "msgstr \"b\"\n"
+        "# dangling\n"
+        "#| msgid \"dangling\"\n";
+
+    NAOS_REQUIRE_TRUE(read_str(content, &catalog, &diags));
+    NAOS_CHECK_UINT_EQ(mnd_diag_list_count(&diags), 0);
+    NAOS_REQUIRE_UINT_EQ(catalog.count, 1);
+    NAOS_CHECK_UINT_EQ(catalog.entries[0].translator_comments.count, 0);
+    NAOS_CHECK_FALSE(catalog.entries[0].has_prev_msgid);
+
+    mnd_po_catalog_free(&catalog);
+    mnd_diag_list_free(&diags);
+}
+
+NAOS_TEST(read_entry_order_and_start_lines)
+{
+    mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    const char *content =
+        "\n"                       /* 1 */
+        "\n"                       /* 2 */
+        "msgid \"first\"\n"        /* 3: キーワードで始まる */
+        "msgstr \"1\"\n"           /* 4 */
+        "# c\n"                    /* 5: 空行なしでコメントが次のエントリを始める */
+        "\n"                       /* 6: コメントの後の空行は区切りにしない */
+        "#. x\n"                   /* 7 */
+        "msgid \"second\"\n"       /* 8 */
+        "msgstr \"2\"\n"           /* 9 */
+        "msgctxt \"k\"\n"          /* 10: msgctxt が次のエントリを始める */
+        "msgid \"third\"\n"        /* 11 */
+        "msgstr \"3\"\n"           /* 12 */
+        "#| msgid \"p\"\n"         /* 13: 前回の msgid が次のエントリを始める */
+        "msgid \"fourth\"\n"       /* 14 */
+        "msgid_plural \"4s\"\n"    /* 15 */
+        "msgstr[0] \"4\"\n"        /* 16 */
+        "msgid \"fifth\"\n"        /* 17: msgstr[n] の後の msgid */
+        "msgstr \"5\"\n"           /* 18 */
+        "\n"                       /* 19 */
+        "\n"                       /* 20 */
+        "  msgid \"sixth\"\n"      /* 21 */
+        "msgstr \"6\"";            /* 22: 改行なしで終わる */
+    static const char *const ids[] = { "first", "second", "third", "fourth", "fifth", "sixth" };
+    static const size_t lines[] = { 3, 5, 10, 13, 17, 21 };
+    size_t i;
+
+    NAOS_REQUIRE_TRUE(read_str(content, &catalog, &diags));
+    NAOS_CHECK_UINT_EQ(mnd_diag_list_count(&diags), 0);
+    NAOS_REQUIRE_UINT_EQ(catalog.count, 6);
+    for (i = 0; i < 6; i++)
+    {
+        NAOS_CHECK_STR_EQ(mnd_buf_cstr(&catalog.entries[i].msgid), ids[i]);
+        NAOS_CHECK_UINT_EQ(catalog.entries[i].line, lines[i]);
+    }
+
+    NAOS_REQUIRE_UINT_EQ(catalog.entries[1].translator_comments.count, 1);
+    NAOS_REQUIRE_UINT_EQ(catalog.entries[1].extracted_comments.count, 1);
+    NAOS_CHECK_TRUE(catalog.entries[2].has_msgctxt);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&catalog.entries[3].prev_msgid), "p");
+    NAOS_CHECK_FALSE(catalog.entries[4].has_prev_msgid);
+    NAOS_CHECK_FALSE(catalog.entries[4].has_msgid_plural);
+
+    mnd_po_catalog_free(&catalog);
+    mnd_diag_list_free(&diags);
+}
+
+NAOS_TEST(read_rejects_invalid_transitions)
+{
+    /* msgid の欠落、または順序が逆のキーワード */
+    check_rejected("msgstr \"a\"\n");
+    check_rejected("msgctxt \"c\"\nmsgstr \"a\"\n");
+    check_rejected("msgctxt \"c\"\nmsgctxt \"d\"\nmsgid \"a\"\nmsgstr \"\"\n");
+    check_rejected("msgid \"a\"\nmsgctxt \"c\"\nmsgstr \"\"\n");
+    check_rejected("msgid_plural \"a\"\nmsgstr[0] \"\"\n");
+    check_rejected("msgid \"a\"\nmsgstr \"b\"\nmsgstr \"c\"\n");
+    /* msgstr の欠落 */
+    check_rejected("msgid \"a\"\nmsgid \"b\"\nmsgstr \"\"\n");
+    check_rejected("msgid \"a\"\n\nmsgstr \"b\"\n");
+    check_rejected("msgid \"a\"\n# c\nmsgstr \"b\"\n");
+    check_rejected("msgid \"a\"\n#| msgid \"p\"\nmsgstr \"b\"\n");
+    check_rejected("msgid \"a\"\nmsgid_plural \"b\"\n");
+    check_rejected("msgid \"a\"\nmsgstr \"\"\n\nmsgid \"b\"\n");
+    check_rejected("msgctxt \"c\"\n");
+    /* 単数形と複数形の不一致 */
+    check_rejected("msgid \"a\"\nmsgid_plural \"b\"\nmsgstr \"\"\n");
+    check_rejected("msgid \"a\"\nmsgstr[0] \"\"\n");
+    check_rejected("msgid \"a\"\nmsgstr \"\"\nmsgid_plural \"b\"\n");
+    /* 添字の順序 */
+    check_rejected("msgid \"a\"\nmsgid_plural \"b\"\nmsgstr[1] \"\"\n");
+    check_rejected("msgid \"a\"\nmsgid_plural \"b\"\nmsgstr[0] \"\"\nmsgstr[2] \"\"\n");
+    check_rejected("msgid \"a\"\nmsgid_plural \"b\"\nmsgstr[0] \"\"\nmsgstr[0] \"\"\n");
+    /* 廃止の行と通常の行の混在 */
+    check_rejected("#~ msgid \"a\"\nmsgstr \"\"\n");
+    check_rejected("msgid \"a\"\n#~ msgstr \"\"\n");
+    check_rejected("#~ msgid \"a\"\n\"b\"\n#~ msgstr \"\"\n");
+    check_rejected("msgid \"a\"\n#~ \"b\"\nmsgstr \"\"\n");
+    check_rejected("#| msgid \"p\"\n#~ msgid \"a\"\n#~ msgstr \"\"\n");
+    check_rejected("#~| msgid \"p\"\nmsgid \"a\"\nmsgstr \"\"\n");
+    check_rejected("#| msgid \"p\"\n#~| \"q\"\nmsgid \"a\"\nmsgstr \"\"\n");
+    /* 連結する先のない文字列 */
+    check_rejected("\"a\"\nmsgid \"a\"\nmsgstr \"\"\n");
+    check_rejected("# c\n\"a\"\nmsgid \"a\"\nmsgstr \"\"\n");
+    check_rejected("#| \"a\"\nmsgid \"a\"\nmsgstr \"\"\n");
+    check_rejected("#| msgid \"p\"\n\"a\"\nmsgid \"a\"\nmsgstr \"\"\n");
+    check_rejected("msgid \"a\"\n#| \"p\"\nmsgstr \"\"\n");
+}
+
 NAOS_TEST(read_path_may_be_null)
 {
     mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
@@ -414,5 +810,14 @@ NAOS_SUITE(read,
     NAOS_ADD_TEST(read_escape_errors),
     NAOS_ADD_TEST(read_unknown_keyword),
     NAOS_ADD_TEST(read_raw_nul_in_comment),
-    NAOS_ADD_TEST(read_path_may_be_null)
+    NAOS_ADD_TEST(read_path_may_be_null),
+    NAOS_ADD_TEST(read_multiline_concatenation),
+    NAOS_ADD_TEST(read_msgctxt_presence),
+    NAOS_ADD_TEST(read_plural_entries),
+    NAOS_ADD_TEST(read_obsolete_entries),
+    NAOS_ADD_TEST(read_header_identification),
+    NAOS_ADD_TEST(read_empty_and_comment_only_content),
+    NAOS_ADD_TEST(read_trailing_comments_are_dropped),
+    NAOS_ADD_TEST(read_entry_order_and_start_lines),
+    NAOS_ADD_TEST(read_rejects_invalid_transitions)
 )

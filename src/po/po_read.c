@@ -61,17 +61,41 @@ typedef enum mnd_po_lex_status
     MND_PO_LEX_NO_MEMORY
 } mnd_po_lex_status_t;
 
+/* エントリの組み立ての状態（設計の「エントリの組み立て（状態機械）」の状態図） */
+typedef enum mnd_po_read_state
+{
+    MND_PO_READ_STATE_COMMENTS,   /* コメントと前回の文字列だけ（またはまだ何もない） */
+    MND_PO_READ_STATE_CONTEXT,    /* msgctxt の後 */
+    MND_PO_READ_STATE_ID,         /* msgid の後 */
+    MND_PO_READ_STATE_PLURAL,     /* msgid_plural の後 */
+    MND_PO_READ_STATE_SINGLE,     /* msgstr の後（エントリは完成できる） */
+    MND_PO_READ_STATE_PLURAL_STR  /* msgstr[n] の後（エントリは完成できる） */
+} mnd_po_read_state_t;
+
+/* 状態機械が受け付けない遷移の種類 */
+typedef enum mnd_po_read_fault
+{
+    MND_PO_READ_FAULT_MISSING_MSGID,
+    MND_PO_READ_FAULT_MISSING_MSGSTR,
+    MND_PO_READ_FAULT_FORM_MISMATCH,  /* 単数形と複数形の不一致 */
+    MND_PO_READ_FAULT_INDEX_ORDER,    /* msgstr[n] の添字の順序 */
+    MND_PO_READ_FAULT_MIXED           /* 廃止の行と通常の行の混在 */
+} mnd_po_read_fault_t;
+
 typedef struct mnd_po_reader
 {
     const char *path;
     mnd_diag_list_t *diags;
     mnd_po_catalog_t *out;
-    bool failed;          /* エラーを 1 つ以上報告した */
-    mnd_po_entry_t entry; /* 組み立て中のエントリ */
-    bool entry_started;   /* entry にコメントかキーワードがある */
-    bool has_keyword;     /* entry にキーワードがある */
-    bool has_msgstr;      /* entry に msgstr がある */
-    mnd_buf_t *target;    /* 続きの文字列を連結する先。なければ NULL */
+    bool failed;                 /* エラーを 1 つ以上報告した */
+    mnd_po_read_state_t state;
+    mnd_po_entry_t entry;        /* 組み立て中のエントリ */
+    bool entry_started;          /* entry にコメントかキーワードがある */
+    bool has_active_previous;    /* entry に #| の行がある */
+    bool has_obsolete_previous;  /* entry に #~| の行がある */
+    mnd_buf_t *target;           /* 続きの文字列を連結する先。なければ NULL */
+    bool target_previous;        /* target は前回の文字列（#| または #~|） */
+    bool target_obsolete;        /* target の行は #~ 付き */
 } mnd_po_reader_t;
 
 static bool mnd_po_read_is_blank(char c)
@@ -710,10 +734,19 @@ static bool mnd_po_read_flags(const char *s, size_t len, mnd_po_entry_t *entry)
 static void mnd_po_read_reset_entry(mnd_po_reader_t *reader)
 {
     mnd_po_entry_free(&reader->entry);
+    reader->state = MND_PO_READ_STATE_COMMENTS;
     reader->entry_started = false;
-    reader->has_keyword = false;
-    reader->has_msgstr = false;
+    reader->has_active_previous = false;
+    reader->has_obsolete_previous = false;
     reader->target = NULL;
+    reader->target_previous = false;
+    reader->target_obsolete = false;
+}
+
+/* エントリの msgstr があり、エントリを完成できる状態か */
+static bool mnd_po_read_is_complete(mnd_po_read_state_t state)
+{
+    return (state == MND_PO_READ_STATE_SINGLE) || (state == MND_PO_READ_STATE_PLURAL_STR);
 }
 
 /* 組み立て中のエントリをカタログの末尾に移す */
@@ -733,6 +766,75 @@ static bool mnd_po_read_finish_entry(mnd_po_reader_t *reader)
     return true;
 }
 
+/*
+ * 状態機械が受け付けない遷移。エラーを報告し、組み立て中のエントリを捨てる。
+ * expected は MND_PO_READ_FAULT_INDEX_ORDER のときに期待した添字
+ */
+static void mnd_po_read_invalid(mnd_po_reader_t *reader, size_t line, mnd_po_read_fault_t fault,
+                                size_t expected)
+{
+    switch (fault)
+    {
+    case MND_PO_READ_FAULT_MISSING_MSGID:
+        mnd_po_read_error(reader, line, "missing msgid");
+        break;
+    case MND_PO_READ_FAULT_MISSING_MSGSTR:
+        mnd_po_read_error(reader, line, "missing msgstr");
+        break;
+    case MND_PO_READ_FAULT_FORM_MISMATCH:
+        mnd_po_read_error(reader, line, "msgstr form does not match msgid_plural");
+        break;
+    case MND_PO_READ_FAULT_INDEX_ORDER:
+        mnd_diag_add(reader->diags, MND_SEVERITY_ERROR, reader->path, line,
+                     "msgstr index out of order: expected [%zu]", expected);
+        reader->failed = true;
+        break;
+    case MND_PO_READ_FAULT_MIXED:
+    default:
+        mnd_po_read_error(reader, line, "obsolete and active lines mixed in one entry");
+        break;
+    }
+
+    mnd_po_read_reset_entry(reader);
+}
+
+/*
+ * msgstr のないまま、エントリを続けられない行（空行、コメント、前回の文字列）か内容の終わりが
+ * 現れたときの欠落の種類。Context の後なら msgid、Id と Plural の後なら msgstr が欠けている
+ */
+static mnd_po_read_fault_t mnd_po_read_missing_fault(mnd_po_read_state_t state)
+{
+    return (state == MND_PO_READ_STATE_CONTEXT) ? MND_PO_READ_FAULT_MISSING_MSGID
+                                                : MND_PO_READ_FAULT_MISSING_MSGSTR;
+}
+
+/*
+ * エントリの外（Comments の状態）にしか現れない行の前処理。完成できるエントリはカタログに加え、
+ * msgstr のないエントリの途中なら、その欠落を報告する。行を Comments の状態で受け付けるなら
+ * *accept を真にする。メモリ不足なら false
+ */
+static bool mnd_po_read_leave_entry(mnd_po_reader_t *reader, size_t line, bool *accept)
+{
+    *accept = false;
+    if (mnd_po_read_is_complete(reader->state))
+    {
+        if (!mnd_po_read_finish_entry(reader))
+        {
+            return false;
+        }
+    }
+    else if (reader->state != MND_PO_READ_STATE_COMMENTS)
+    {
+        mnd_po_read_invalid(reader, line, mnd_po_read_missing_fault(reader->state), 0);
+
+        return true;
+    }
+
+    *accept = true;
+
+    return true;
+}
+
 /* エントリの最初の行なら開始行を記録する */
 static void mnd_po_read_start_entry(mnd_po_reader_t *reader, size_t number)
 {
@@ -743,6 +845,15 @@ static void mnd_po_read_start_entry(mnd_po_reader_t *reader, size_t number)
     }
 }
 
+/* 続きの文字列の連結先を設定する */
+static void mnd_po_read_set_target(mnd_po_reader_t *reader, mnd_buf_t *target,
+                                   const mnd_po_line_t *line)
+{
+    reader->target = target;
+    reader->target_previous = line->previous;
+    reader->target_obsolete = line->obsolete;
+}
+
 /* buf を value の内容で置き換える */
 static bool mnd_po_read_set(mnd_buf_t *buf, const mnd_buf_t *value)
 {
@@ -751,11 +862,44 @@ static bool mnd_po_read_set(mnd_buf_t *buf, const mnd_buf_t *value)
     return mnd_buf_append(buf, value->data, value->len);
 }
 
-/* 前回の msgctxt・msgid・msgid_plural の行をエントリに付ける */
+/* コメントの行（#、#.、#:、#,）を Comments の状態のエントリに付ける */
+static bool mnd_po_read_add_comment(mnd_po_reader_t *reader, const mnd_po_line_t *line)
+{
+    mnd_po_entry_t *entry = &reader->entry;
+
+    mnd_po_read_start_entry(reader, line->number);
+    reader->target = NULL;
+    switch (line->kind)
+    {
+    case MND_PO_LINE_TRANSLATOR:
+        return mnd_po_strings_push(&entry->translator_comments, line->text.data, line->text.len);
+    case MND_PO_LINE_EXTRACTED:
+        return mnd_po_strings_push(&entry->extracted_comments, line->text.data, line->text.len);
+    case MND_PO_LINE_REFERENCE:
+        return mnd_po_read_refs(line->text.data, line->text.len, entry);
+    case MND_PO_LINE_FLAGS:
+    default:
+        break;
+    }
+
+    return mnd_po_read_flags(line->text.data, line->text.len, entry);
+}
+
+/* 前回の msgctxt・msgid・msgid_plural の行（#| または #~|）を Comments の状態のエントリに付ける */
 static bool mnd_po_read_add_previous(mnd_po_reader_t *reader, const mnd_po_line_t *line)
 {
     mnd_po_entry_t *entry = &reader->entry;
     mnd_buf_t *field;
+
+    mnd_po_read_start_entry(reader, line->number);
+    if (line->obsolete)
+    {
+        reader->has_obsolete_previous = true;
+    }
+    else
+    {
+        reader->has_active_previous = true;
+    }
 
     switch (line->keyword)
     {
@@ -776,23 +920,160 @@ static bool mnd_po_read_add_previous(mnd_po_reader_t *reader, const mnd_po_line_
         break;
     }
 
-    reader->target = field;
+    mnd_po_read_set_target(reader, field, line);
 
     return mnd_po_read_set(field, &line->value);
 }
 
-/* キーワードの行をエントリに付ける */
-static bool mnd_po_read_add_keyword(mnd_po_reader_t *reader, const mnd_po_line_t *line)
+/*
+ * キーワードの行について、現在の状態からの遷移先を決める。受け付けない遷移なら false を返し、
+ * *fault（と添字の順序の誤りなら *expected）に種類を入れる
+ */
+static bool mnd_po_read_keyword_transition(const mnd_po_reader_t *reader,
+                                           const mnd_po_line_t *line,
+                                           mnd_po_read_state_t *next,
+                                           mnd_po_read_fault_t *fault, size_t *expected)
 {
-    mnd_po_entry_t *entry = &reader->entry;
-    mnd_buf_t *field;
+    mnd_po_read_state_t state = reader->state;
+    bool before_id = (state == MND_PO_READ_STATE_COMMENTS) || (state == MND_PO_READ_STATE_CONTEXT);
 
-    if (!reader->has_keyword)
+    *expected = 0;
+    switch (line->keyword)
     {
-        entry->obsolete = line->obsolete;
-        reader->has_keyword = true;
+    case MND_PO_KEYWORD_MSGCTXT:
+        *next = MND_PO_READ_STATE_CONTEXT;
+        if (state != MND_PO_READ_STATE_COMMENTS)
+        {
+            *fault = mnd_po_read_missing_fault(state);
+
+            return false;
+        }
+
+        return true;
+    case MND_PO_KEYWORD_MSGID:
+        *next = MND_PO_READ_STATE_ID;
+        if (!before_id)
+        {
+            *fault = MND_PO_READ_FAULT_MISSING_MSGSTR;
+
+            return false;
+        }
+
+        return true;
+    case MND_PO_KEYWORD_MSGID_PLURAL:
+        *next = MND_PO_READ_STATE_PLURAL;
+        if (state == MND_PO_READ_STATE_ID)
+        {
+            return true;
+        }
+
+        if (before_id)
+        {
+            *fault = MND_PO_READ_FAULT_MISSING_MSGID;
+        }
+        else if (state == MND_PO_READ_STATE_PLURAL)
+        {
+            *fault = MND_PO_READ_FAULT_MISSING_MSGSTR;
+        }
+        else
+        {
+            *fault = MND_PO_READ_FAULT_FORM_MISMATCH;
+        }
+
+        return false;
+    case MND_PO_KEYWORD_MSGSTR:
+        *next = MND_PO_READ_STATE_SINGLE;
+        if (state == MND_PO_READ_STATE_ID)
+        {
+            return true;
+        }
+
+        if (before_id || (state == MND_PO_READ_STATE_SINGLE))
+        {
+            *fault = MND_PO_READ_FAULT_MISSING_MSGID;
+        }
+        else
+        {
+            *fault = MND_PO_READ_FAULT_FORM_MISMATCH;
+        }
+
+        return false;
+    case MND_PO_KEYWORD_MSGSTR_INDEXED:
+    default:
+        break;
     }
 
+    *next = MND_PO_READ_STATE_PLURAL_STR;
+    if (before_id)
+    {
+        *fault = MND_PO_READ_FAULT_MISSING_MSGID;
+
+        return false;
+    }
+
+    if ((state == MND_PO_READ_STATE_ID) || (state == MND_PO_READ_STATE_SINGLE))
+    {
+        *fault = MND_PO_READ_FAULT_FORM_MISMATCH;
+
+        return false;
+    }
+
+    *expected = (state == MND_PO_READ_STATE_PLURAL) ? 0 : reader->entry.msgstr.count;
+    if (line->index != *expected)
+    {
+        *fault = MND_PO_READ_FAULT_INDEX_ORDER;
+
+        return false;
+    }
+
+    return true;
+}
+
+/* キーワードの行（msgctxt、msgid、msgid_plural、msgstr、msgstr[n]）で状態を進める */
+static bool mnd_po_read_step_keyword(mnd_po_reader_t *reader, const mnd_po_line_t *line)
+{
+    mnd_po_entry_t *entry = &reader->entry;
+    mnd_po_read_state_t next = MND_PO_READ_STATE_COMMENTS;
+    mnd_po_read_fault_t fault = MND_PO_READ_FAULT_MISSING_MSGID;
+    size_t expected = 0;
+    mnd_buf_t *field;
+
+    /* 完成できるエントリの後の msgctxt と msgid は、次のエントリを始める */
+    if (mnd_po_read_is_complete(reader->state)
+        && ((line->keyword == MND_PO_KEYWORD_MSGCTXT) || (line->keyword == MND_PO_KEYWORD_MSGID))
+        && !mnd_po_read_finish_entry(reader))
+    {
+        return false;
+    }
+
+    if (reader->state == MND_PO_READ_STATE_COMMENTS)
+    {
+        /* 最初のキーワードの行が、廃止エントリかどうかと、受け付ける前回の文字列を決める */
+        mnd_po_read_start_entry(reader, line->number);
+        entry->obsolete = line->obsolete;
+        if ((line->obsolete && reader->has_active_previous)
+            || (!line->obsolete && reader->has_obsolete_previous))
+        {
+            mnd_po_read_invalid(reader, line->number, MND_PO_READ_FAULT_MIXED, 0);
+
+            return true;
+        }
+    }
+    else if (line->obsolete != entry->obsolete)
+    {
+        mnd_po_read_invalid(reader, line->number, MND_PO_READ_FAULT_MIXED, 0);
+
+        return true;
+    }
+
+    if (!mnd_po_read_keyword_transition(reader, line, &next, &fault, &expected))
+    {
+        mnd_po_read_invalid(reader, line->number, fault, expected);
+
+        return true;
+    }
+
+    reader->state = next;
     switch (line->keyword)
     {
     case MND_PO_KEYWORD_MSGCTXT:
@@ -814,91 +1095,132 @@ static bool mnd_po_read_add_keyword(mnd_po_reader_t *reader, const mnd_po_line_t
             return false;
         }
 
-        reader->has_msgstr = true;
-        reader->target = &entry->msgstr.items[entry->msgstr.count - 1];
+        mnd_po_read_set_target(reader, &entry->msgstr.items[entry->msgstr.count - 1], line);
 
         return true;
     }
 
-    reader->target = field;
+    mnd_po_read_set_target(reader, field, line);
 
     return mnd_po_read_set(field, &line->value);
 }
 
 /*
- * 分類した行をエントリに付ける。msgstr の後ろに空行、コメント、前回の文字列、msgctxt、msgid が
- * 現れたら、エントリを完成させてカタログに加える。メモリ不足なら false
+ * 続きの文字列の行を、直前のキーワードまたは前回の文字列に連結する。
+ * #| 付きの文字列は前回の文字列に、そのほかの文字列はキーワードの文字列にだけ連結でき、
+ * #~ の有無も連結先と一致しなければならない
  */
-static bool mnd_po_read_assemble(mnd_po_reader_t *reader, const mnd_po_line_t *line)
+static bool mnd_po_read_step_string(mnd_po_reader_t *reader, const mnd_po_line_t *line)
 {
-    bool starts_entry;
+    if (line->previous)
+    {
+        bool accept;
+
+        if (!mnd_po_read_leave_entry(reader, line->number, &accept))
+        {
+            return false;
+        }
+
+        if (!accept)
+        {
+            return true;
+        }
+    }
+    else if (reader->state == MND_PO_READ_STATE_COMMENTS)
+    {
+        mnd_po_read_invalid(reader, line->number, MND_PO_READ_FAULT_MISSING_MSGID, 0);
+
+        return true;
+    }
+
+    if ((reader->target == NULL) || (reader->target_previous != line->previous))
+    {
+        mnd_po_read_invalid(reader, line->number, MND_PO_READ_FAULT_MISSING_MSGID, 0);
+
+        return true;
+    }
+
+    if (reader->target_obsolete != line->obsolete)
+    {
+        mnd_po_read_invalid(reader, line->number, MND_PO_READ_FAULT_MIXED, 0);
+
+        return true;
+    }
+
+    return mnd_buf_append(reader->target, line->value.data, line->value.len);
+}
+
+/* 分類した 1 行で状態機械を進める。メモリ不足なら false */
+static bool mnd_po_read_step(mnd_po_reader_t *reader, const mnd_po_line_t *line)
+{
+    bool accept;
 
     switch (line->kind)
     {
-    case MND_PO_LINE_BLANK:
-        return !reader->has_msgstr || mnd_po_read_finish_entry(reader);
     case MND_PO_LINE_IGNORED:
         return true;
+    case MND_PO_LINE_BLANK:
+        /* コメントだけの並びの後の空行は、エントリの区切りにしない */
+        return mnd_po_read_leave_entry(reader, line->number, &accept);
     case MND_PO_LINE_STRING:
-        return (reader->target == NULL)
-               || mnd_buf_append(reader->target, line->value.data, line->value.len);
+        return mnd_po_read_step_string(reader, line);
     case MND_PO_LINE_KEYWORD:
-        starts_entry = line->previous || (line->keyword == MND_PO_KEYWORD_MSGCTXT)
-                       || (line->keyword == MND_PO_KEYWORD_MSGID);
+        if (!line->previous)
+        {
+            return mnd_po_read_step_keyword(reader, line);
+        }
+
         break;
     case MND_PO_LINE_TRANSLATOR:
     case MND_PO_LINE_EXTRACTED:
     case MND_PO_LINE_REFERENCE:
     case MND_PO_LINE_FLAGS:
     default:
-        starts_entry = true;
         break;
     }
 
-    if (starts_entry && reader->has_msgstr && !mnd_po_read_finish_entry(reader))
+    /* コメントの行と前回の文字列の行は、Comments の状態でだけ受け付ける */
+    if (!mnd_po_read_leave_entry(reader, line->number, &accept))
     {
         return false;
     }
 
-    mnd_po_read_start_entry(reader, line->number);
-    switch (line->kind)
+    if (!accept)
     {
-    case MND_PO_LINE_TRANSLATOR:
-        reader->target = NULL;
+        return true;
+    }
 
-        return mnd_po_strings_push(&reader->entry.translator_comments, line->text.data,
-                                   line->text.len);
-    case MND_PO_LINE_EXTRACTED:
-        reader->target = NULL;
+    if (line->kind == MND_PO_LINE_KEYWORD)
+    {
+        return mnd_po_read_add_previous(reader, line);
+    }
 
-        return mnd_po_strings_push(&reader->entry.extracted_comments, line->text.data,
-                                   line->text.len);
-    case MND_PO_LINE_REFERENCE:
-        reader->target = NULL;
+    return mnd_po_read_add_comment(reader, line);
+}
 
-        return mnd_po_read_refs(line->text.data, line->text.len, &reader->entry);
-    case MND_PO_LINE_FLAGS:
-        reader->target = NULL;
+/*
+ * 内容の終わりでエントリを完成させる。コメントだけの並びは捨て、msgstr のないエントリの途中なら
+ * 最後の行 last_line で欠落を報告する。メモリ不足なら false
+ */
+static bool mnd_po_read_finish(mnd_po_reader_t *reader, size_t last_line)
+{
+    if (mnd_po_read_is_complete(reader->state))
+    {
+        return mnd_po_read_finish_entry(reader);
+    }
 
-        return mnd_po_read_flags(line->text.data, line->text.len, &reader->entry);
-    case MND_PO_LINE_KEYWORD:
-        if (line->previous)
-        {
-            return mnd_po_read_add_previous(reader, line);
-        }
-
-        return mnd_po_read_add_keyword(reader, line);
-    case MND_PO_LINE_BLANK:
-    case MND_PO_LINE_IGNORED:
-    case MND_PO_LINE_STRING:
-    default:
-        break;
+    if (reader->state != MND_PO_READ_STATE_COMMENTS)
+    {
+        mnd_po_read_invalid(reader, last_line, mnd_po_read_missing_fault(reader->state), 0);
     }
 
     return true;
 }
 
-/* 前処理を終えた内容 data[0..len) を行に分けて解析する。メモリ不足なら false */
+/*
+ * 前処理を終えた内容 data[0..len) を行に分けて解析する。最初のエラーで解析を止める。
+ * メモリ不足なら false
+ */
 static bool mnd_po_read_lines(mnd_po_reader_t *reader, const char *data, size_t len)
 {
     mnd_po_line_t line;
@@ -907,7 +1229,7 @@ static bool mnd_po_read_lines(mnd_po_reader_t *reader, const char *data, size_t 
     bool ok = true;
 
     mnd_buf_init(&line.value);
-    while (ok && (pos < len))
+    while (ok && !reader->failed && (pos < len))
     {
         const char *newline = memchr(data + pos, '\n', len - pos);
         size_t line_end = (newline != NULL) ? (size_t)(newline - data) : len;
@@ -923,7 +1245,7 @@ static bool mnd_po_read_lines(mnd_po_reader_t *reader, const char *data, size_t 
         status = mnd_po_read_lex(reader, data + pos, text_len, &line);
         if (status == MND_PO_LEX_OK)
         {
-            ok = mnd_po_read_assemble(reader, &line);
+            ok = mnd_po_read_step(reader, &line);
         }
         else if (status == MND_PO_LEX_NO_MEMORY)
         {
@@ -934,10 +1256,9 @@ static bool mnd_po_read_lines(mnd_po_reader_t *reader, const char *data, size_t 
         number++;
     }
 
-    /* 内容の終わりでエントリが完成する。msgstr のないコメントだけの並びは捨てる */
-    if (ok && reader->has_msgstr)
+    if (ok && !reader->failed)
     {
-        ok = mnd_po_read_finish_entry(reader);
+        ok = mnd_po_read_finish(reader, number - 1);
     }
 
     mnd_buf_free(&line.value);
@@ -956,10 +1277,7 @@ bool mnd_po_read(const char *data, size_t len, const char *path,
     reader.out = out;
     reader.failed = false;
     mnd_po_entry_init(&reader.entry);
-    reader.entry_started = false;
-    reader.has_keyword = false;
-    reader.has_msgstr = false;
-    reader.target = NULL;
+    mnd_po_read_reset_entry(&reader);
 
     /* 前処理: BOM を飛ばし、内容全体の UTF-8 を検査する（不正なら解析しない） */
     if (mnd_po_read_starts_with(data, len, "\xEF\xBB\xBF"))
