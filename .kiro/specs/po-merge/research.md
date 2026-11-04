@@ -44,7 +44,7 @@
 - **Implications**: 正解ファイル（`tests/po_merge/data/`）は、同じ msgmerge 0.21 で作る。ヘッダの Language の推測と、通常・廃止の重複は比較のケースから外す。
 
 ### 類似度とあいまい一致の索引
-- **Context**: 要件 3.2、3.11（msgmerge と同じ候補）と、要件 10.1（性能）。
+- **Context**: 要件 3.2、3.5（msgmerge と同じ候補）と、要件 10.1（性能）。
 - **Sources Consulted**: `msgl-fsearch.c`、`message.c`、`fstrcmp.c`（いずれも gettext 0.21）。Hyyrö, "Bit-Parallel LCS-length Computation Revisited"（2004）。Allison & Dix, "A bit-string longest-common-subsequence algorithm"（1986）。
 - **Findings**:
   - 類似度 `fstrcmp(a, b)` は、バイト列の挿入・削除だけの最小編集数 `e` から `(|a| + |b| − e) / (|a| + |b|)` を返す。`e = |a| + |b| − 2 × LCS` なので、値は `2 × LCS / (|a| + |b|)`。片方だけが空なら 0、両方空なら 1。
@@ -108,18 +108,18 @@
   - 書式文字列と `range` の検査による fuzzy の付与はしない。
   - Language の推測（Language-Team の英語名の表）はせず、値が空の Language を加える。Monde の `init` は常に Language を設定する。
   - Plural-Forms は `nplurals` の値だけを読む（msgmerge は plural の式も解釈し、式が壊れていると 2 にする）。
-  - 空の msgid で msgctxt を持つテンプレートのエントリは、ヘッダとはあいまい一致しない（要件 3.8）。
+  - 空の msgid で msgctxt を持つテンプレートのエントリは、ヘッダとはあいまい一致しない（要件 3.9）。
 - **Rationale**: いずれも Monde の通常の使い方では出力が msgmerge と変わらない。
 - **Trade-offs**: 上記の入力では msgmerge と出力が異なる。比較のケースに含めない。
 
 ### Decision: 類似度は bit-parallel LCS で厳密に計算し、比較は msgmerge と同じ double の式で行う
-- **Context**: 3.2、3.11、10.1、10.2、11.3。
+- **Context**: 3.2、3.5、10.1、10.2、11.3。
 - **Selected Approach**: 問い合わせ（テンプレートの msgid）のバイトごとのマスクを 1 回作り、各候補の msgid を走査して LCS を求める。比較値は `(double)(2 × LCS) / (double)(長さの和) + bonus`。上限（長さ、バイトの出現数の差）を同じ形の式で計算し、最良値を超えられない候補を飛ばす。
 - **Rationale**: 枝刈りは結果を変えない。浮動小数点の演算は除算 1 回と加算 1 回で、IEEE 754 の倍精度で丸めが決まる（x87 の余分な精度は `volatile` で落とす）。
 - **Trade-offs**: diffseq が最小でない編集を返す、非常に長く異なる文字列では、msgmerge と異なる候補を選ぶことがある（Risks に記載）。
 
 ### Decision: 4-gram 索引と候補の順序を msgmerge と同じにする
-- **Context**: 3.2、3.11。同じ値の候補が複数あると、調べる順で結果が決まる。
+- **Context**: 3.2、3.5。同じ値の候補が複数あると、調べる順で結果が決まる。
 - **Selected Approach**: Fuzzy は、msgmerge と同じ候補の集合（4-gram の共有、短い msgid の長さの範囲）と順序（数え上げの降順・添字の昇順、短い msgid は長さの昇順・ファイル順）で候補を調べる。並べ替えは添字を含む全順序で行い、安定でない qsort でも同じ結果にする。
 - **Rationale**: 類似度だけで選ぶと、同点のときに msgmerge と異なる候補を選びうる。
 - **Trade-offs**: 4-gram を共有しない候補は、類似度が 0.6 を超えても選ばない（msgmerge と同じ）。
