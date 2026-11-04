@@ -145,6 +145,7 @@ tests/po_merge/
 | `no_header` | テンプレートにだけヘッダがある場合 |
 | `plural` | 単数形 → 複数形（Plural-Forms あり）、複数形 → 単数形、msgid_plural の変更、新規の複数形エントリの msgstr[n] の個数 |
 | `nofuzzy` | `fuzzy` と同じ入力を、`--no-fuzzy-matching` で処理した結果（`expected.po`）（9.3） |
+| `untranslated_fuzzy` | 訳のない既存のエントリが単数形と複数形の食い違いで fuzzy になる場合（`#, fuzzy` と `#|` を書かない。po-format 5.7）。訳のある食い違いと、訳のない完全一致との対比（po-format のタスク 7.4 で追加） |
 
 ### Modified Files
 - `src/CMakeLists.txt` — `add_subdirectory(po_merge)` を追加する（`po` の後）。
