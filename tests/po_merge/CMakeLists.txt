@@ -48,3 +48,11 @@ if(msgmerge_version_ok)
 elseif(NOT MONDE_MSGMERGE)
   message(STATUS "po_merge: msgmerge not found; the po_merge_msgmerge_golden tests are not registered")
 endif()
+
+# 性能テスト（10.1）: Naos を使わない実行ファイルで、マージだけの時間を測る。
+# 構成名を引数で渡し、Release のときだけ 1.0 秒の上限で判定する（ほかの構成では時間を表示するだけ）
+add_executable(po_merge_perf perf_main.c)
+target_link_libraries(po_merge_perf PRIVATE monde::po_merge monde::po)
+monde_apply_compile_options(po_merge_perf)
+add_test(NAME po_merge_perf COMMAND po_merge_perf "$<CONFIG>")
+set_tests_properties(po_merge_perf PROPERTIES LABELS "po_merge;perf")
