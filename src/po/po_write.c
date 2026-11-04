@@ -181,10 +181,19 @@ static bool mnd_po_write_comments(mnd_po_writer_t *writer, const char *mark,
     return true;
 }
 
-/* ファイル名に空白かタブが含まれるか */
-static bool mnd_po_write_needs_isolate(const mnd_buf_t *file)
+/*
+ * ファイル名を U+2068 と U+2069 で囲むか。空白かタブを含む場合と、行番号もない空のファイル名の
+ * 場合（何も書かないと読み直したときに参照が消えるため）に囲む
+ */
+static bool mnd_po_write_needs_isolate(const mnd_po_ref_t *ref)
 {
+    const mnd_buf_t *file = &ref->file;
     size_t i;
+
+    if ((file->len == 0) && (ref->line == 0))
+    {
+        return true;
+    }
 
     for (i = 0; i < file->len; i++)
     {
@@ -199,7 +208,7 @@ static bool mnd_po_write_needs_isolate(const mnd_buf_t *file)
 
 /*
  * 参照の行を書く。行に参照が 1 つ以上あり、" <ref>" を加えると行のバイト数が 79 を超える場合は、
- * 新しい #: の行を始める。no_wrap なら 1 行に書く
+ * 新しい #: の行を始める。msgcat 0.21 の --no-wrap と同じく、no_wrap でも折り返す
  */
 static bool mnd_po_write_refs(mnd_po_writer_t *writer, const mnd_po_refs_t *refs)
 {
@@ -221,7 +230,7 @@ static bool mnd_po_write_refs(mnd_po_writer_t *writer, const mnd_po_refs_t *refs
     for (i = 0; i < refs->count; i++)
     {
         const mnd_po_ref_t *ref = &refs->items[i];
-        bool isolate = mnd_po_write_needs_isolate(&ref->file);
+        bool isolate = mnd_po_write_needs_isolate(ref);
         char number[32];
         size_t number_len = 0;
         size_t piece_len;
@@ -241,7 +250,7 @@ static bool mnd_po_write_refs(mnd_po_writer_t *writer, const mnd_po_refs_t *refs
 
         piece_len = 1 + ref->file.len + (isolate ? 6 : 0) + number_len;
         line_len = out->len - line_start;
-        if (!writer->no_wrap && (line_len > 2) && ((line_len + piece_len) > MND_PO_WRITE_WIDTH))
+        if ((line_len > 2) && ((line_len + piece_len) > MND_PO_WRITE_WIDTH))
         {
             if (!mnd_buf_append_str(out, writer->eol))
             {

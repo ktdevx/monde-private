@@ -1,0 +1,53 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: example 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-01-15 10:30+0900\n"
+"PO-Revision-Date: 2026-02-01 09:00+0900\n"
+"Last-Translator: Taro Yamada <taro@example.com>\n"
+"Language-Team: Japanese <ja@example.com>\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: src/nowrap.c:1 src/nowrap.c:2 src/nowrap.c:3 src/nowrap.c:4 src/nowrap.c:5
+#: src/nowrap.c:6
+#, no-wrap
+msgid "This message has the no-wrap flag, so its long lines are written without wrapping even when they are longer than the page width."
+msgstr "このメッセージには no-wrap のフラグがあるので、ページの幅より長い行でも折り返さずに書き出されます。"
+
+#, c-format, no-wrap
+msgid ""
+"Line one is short.\n"
+"Line two is long enough to exceed the page width of seventy-nine columns: %s\n"
+msgstr ""
+"1 行目は短い。\n"
+"2 行目は、79 桁のページの幅を超えるくらい長い行です。ここに値が入ります: %s\n"
+
+#, fuzzy, no-wrap
+#| msgid "Previous This message has the no-wrap flag, so its long lines are written without wrapping even when they are longer than the page width."
+msgid "Fuzzy: This message has the no-wrap flag, so its long lines are written without wrapping even when they are longer than the page width."
+msgstr "このメッセージには no-wrap のフラグがあるので、ページの幅より長い行でも折り返さずに書き出されます。"
+
+#, no-wrap
+msgctxt "context context context context context context context context context context context context"
+msgid "Short"
+msgstr "短い 短い 短い 短い 短い 短い 短い 短い 短い 短い 短い 短い 短い 短い 短い 短い 短い 短い 短い 短い 短い 短い 短い 短い 短い 短い 短い 短い 短い 短い"
+
+msgid ""
+"Without the flag: This message has the no-wrap flag, so its long lines are "
+"written without wrapping even when they are longer than the page width."
+msgstr ""
+"このメッセージには no-wrap のフラグがあるので、ページの幅より長い行でも折り返"
+"さずに書き出されます。"
+
+#, no-wrap
+msgid "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+msgid_plural "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+msgstr[0] "訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳訳"
+
+#, no-wrap
+#~ msgid "Obsolete: This message has the no-wrap flag, so its long lines are written without wrapping even when they are longer than the page width."
+#~ msgstr "このメッセージには no-wrap のフラグがあるので、ページの幅より長い行でも折り返さずに書き出されます。"

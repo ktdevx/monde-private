@@ -2,7 +2,6 @@
 
 #include "po/po_internal.h"
 
-#include <stdlib.h>
 #include <string.h>
 
 /* 行の幅（引用符と前置きを含む桁数の上限） */
@@ -101,13 +100,11 @@ static size_t segment_end(const char *s, size_t len, size_t i)
 
 /*
  * 区分 seg[0..len) をエスケープして esc に入れ、ebreaks に「エスケープ後のバイト位置の直前で
- * 区切れるなら 1」を入れる。分割の機会はエスケープ前の文字列で求め、各バイトのエスケープの
- * 先頭に対応付ける（エスケープの内部では区切らない）
+ * 区切れるなら 1」を入れる。gettext（msgcat 0.21）と同じく、分割の機会はエスケープ後の文字列で
+ * 求め、エスケープの内部（\ の次の文字の前）と、\n のエスケープの直前では区切らない
  */
 static bool escape_segment(const char *seg, size_t len, mnd_buf_t *esc, mnd_buf_t *ebreaks)
 {
-    unsigned char *breaks = NULL;
-    bool ok = true;
     size_t i;
 
     mnd_buf_clear(esc);
@@ -116,25 +113,37 @@ static bool escape_segment(const char *seg, size_t len, mnd_buf_t *esc, mnd_buf_
     {
         return true;
     }
-    breaks = malloc(len);
-    if (breaks == NULL)
+
+    if (!mnd_po_escape(seg, len, esc) || !mnd_buf_reserve(ebreaks, esc->len))
     {
         return false;
     }
-    mnd_po_linebreaks(seg, len, breaks);
-    for (i = 0; ok && (i < len); i++)
-    {
-        size_t before = esc->len;
 
-        ok = mnd_po_escape(seg + i, 1, esc) && mnd_buf_append_byte(ebreaks, breaks[i]);
-        if (ok && ((esc->len - before) == 2))
+    mnd_po_linebreaks(esc->data, esc->len, (unsigned char *)ebreaks->data);
+    ebreaks->len = esc->len;
+    ebreaks->data[ebreaks->len] = '\0';
+    /* エスケープ後の \ は、必ず 2 文字のエスケープの先頭である */
+    for (i = 0; (i + 1) < esc->len; i++)
+    {
+        if (esc->data[i] == '\\')
         {
-            ok = mnd_buf_append_byte(ebreaks, 0);
+            if (esc->data[i + 1] == 'n')
+            {
+                ebreaks->data[i] = 0;
+            }
+
+            ebreaks->data[i + 1] = 0;
+            i++;
         }
     }
-    free(breaks);
 
-    return ok;
+    return true;
+}
+
+/* 区分の中に分割の機会があるか */
+static bool has_break_opportunity(const mnd_buf_t *ebreaks)
+{
+    return (ebreaks->len > 0) && (memchr(ebreaks->data, 1, ebreaks->len) != NULL);
 }
 
 /*
@@ -197,14 +206,17 @@ bool mnd_po_wrap_string(const char *prefix, const char *keyword, const char *s, 
     size_t first_end = segment_end(s, len, 0);
     bool ok;
 
-    /* 区分が 1 つ（途中に \n がない）なら、1 行に収まるかを確かめる */
+    /*
+     * 区分が 1 つ（途中に \n がない）なら、1 行に収まるか、分割の機会がないなら（W を超えても）
+     * キーワードの行に書く（gettext と同じく、実際に区切るときだけ "" の行にする）
+     */
     ok = escape_segment(s, first_end, &esc, &ebreaks);
     if (ok && (first_end == len))
     {
         size_t width = columns(prefix, strlen(prefix)) + columns(keyword, strlen(keyword)) + 2
                      + columns(esc.data, esc.len) + 1;
 
-        if (!wrap || (width <= MND_PO_WRAP_WIDTH))
+        if (!wrap || (width <= MND_PO_WRAP_WIDTH) || !has_break_opportunity(&ebreaks))
         {
             ok = mnd_buf_append_str(out, prefix) && mnd_buf_append_str(out, keyword)
               && mnd_buf_append_str(out, " \"") && mnd_buf_append(out, esc.data, esc.len)

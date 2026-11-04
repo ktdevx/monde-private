@@ -192,6 +192,69 @@ NAOS_TEST(write_wrap_long_word_without_break_opportunity)
     mnd_buf_free(&expected);
 }
 
+NAOS_TEST(write_wrap_single_segment_without_break_opportunity_stays_on_keyword_line)
+{
+    mnd_buf_t s = MND_BUF_INIT;
+    mnd_buf_t out = MND_BUF_INIT;
+    mnd_buf_t expected = MND_BUF_INIT;
+
+    /*
+     * msgcat 0.21 と同じく、区分が 1 つで分割の機会がなければ、W を超えてもキーワードの行に書く
+     * （"" の行にするのは、実際に区切るときか、途中に \n があるときだけ）
+     */
+    append_repeat(&s, "x", 100);
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&expected, "msgid \""));
+    append_repeat(&expected, "x", 100);
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&expected, "\"\n"));
+    NAOS_CHECK_TRUE(wrap_ok("", "msgid", mnd_buf_cstr(&s), true, &out));
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&out), mnd_buf_cstr(&expected));
+
+    /* 末尾の \n の直前でも区切らないので、末尾だけに \n がある区分も同じ */
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&s, "\n"));
+    mnd_buf_clear(&out);
+    mnd_buf_clear(&expected);
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&expected, "#~ msgstr \""));
+    append_repeat(&expected, "x", 100);
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&expected, "\\n\"\n"));
+    NAOS_CHECK_TRUE(wrap_ok("#~ ", "msgstr", mnd_buf_cstr(&s), true, &out));
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&out), mnd_buf_cstr(&expected));
+    mnd_buf_free(&s);
+    mnd_buf_free(&out);
+    mnd_buf_free(&expected);
+}
+
+NAOS_TEST(write_wrap_break_opportunities_come_from_escaped_text)
+{
+    mnd_buf_t out = MND_BUF_INIT;
+
+    /*
+     * msgcat 0.21 と同じく、分割の機会はエスケープ後の文字列で求める。タブの後ろ（エスケープ前の BA）
+     * ではなく、"\t" の "\"（PR）の前で区切れるかで決まる: ":" の後ろでは区切れ、英字の後ろでは区切れない
+     */
+    NAOS_CHECK_TRUE(wrap_ok("", "msgid",
+                            "Columns:\tname\tsize\tdate\tpermissions\towner\tgroup\tmodified\tcreated"
+                            "\taccessed\tchanged\tinode",
+                            true, &out));
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&out),
+                      "msgid \"\"\n"
+                      "\"Columns:\"\n"
+                      "\"\\tname\\tsize\\tdate\\tpermissions\\towner\\tgroup\\tmodified\\tcreated"
+                      "\\taccessed\\tchanged\\tinode\"\n");
+
+    /* 空白の後ろでも、\n のエスケープの直前では区切らない */
+    mnd_buf_clear(&out);
+    NAOS_CHECK_TRUE(wrap_ok("", "msgid",
+                            "abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd "
+                            "abcdef \nnext line",
+                            true, &out));
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&out),
+                      "msgid \"\"\n"
+                      "\"abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd \"\n"
+                      "\"abcdef \\n\"\n"
+                      "\"next line\"\n");
+    mnd_buf_free(&out);
+}
+
 NAOS_TEST(write_wrap_fullwidth_counts_two_columns)
 {
     mnd_buf_t s = MND_BUF_INIT;
@@ -850,7 +913,29 @@ NAOS_TEST(write_refs_count_bytes_and_isolate_names_with_spaces)
     mnd_po_catalog_free(&catalog);
 }
 
-NAOS_TEST(write_no_wrap_option_writes_refs_on_one_line)
+NAOS_TEST(write_refs_with_empty_file_name)
+{
+    mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
+    mnd_buf_t out = MND_BUF_INIT;
+    mnd_po_entry_t *entry;
+
+    /*
+     * 行番号のある空のファイル名は msgcat 0.21 と同じく ":5" と書く。行番号もない空のファイル名は、
+     * 読み直しても参照が消えないように U+2068 と U+2069 だけを書く（リーダーは空のファイル名に戻す）
+     */
+    entry = add_msg(&catalog, NULL, "a", "");
+    NAOS_REQUIRE_NOT_NULL(entry);
+    NAOS_REQUIRE_TRUE(mnd_po_refs_push(&entry->refs, "", 5));
+    NAOS_REQUIRE_TRUE(mnd_po_refs_push(&entry->refs, "", 0));
+    NAOS_REQUIRE_TRUE(mnd_po_refs_push(&entry->refs, "b.c", 0));
+    write_ok(&catalog, NULL, &out);
+    NAOS_CHECK_STR_EQ(mnd_buf_cstr(&out),
+                      "#: :5 \xE2\x81\xA8\xE2\x81\xA9 b.c\nmsgid \"a\"\nmsgstr \"\"\n");
+    mnd_buf_free(&out);
+    mnd_po_catalog_free(&catalog);
+}
+
+NAOS_TEST(write_no_wrap_option_still_wraps_refs)
 {
     mnd_po_catalog_t catalog = MND_PO_CATALOG_INIT;
     mnd_po_write_options_t options = MND_PO_WRITE_OPTIONS_INIT;
@@ -870,14 +955,16 @@ NAOS_TEST(write_no_wrap_option_writes_refs_on_one_line)
         NAOS_REQUIRE_TRUE(mnd_po_refs_push(&entry->refs, "b.c", i));
     }
 
+    /* msgcat 0.21 の --no-wrap と同じく、折り返しなしでも参照は 79 バイトで折り返す */
     options.no_wrap = true;
     write_ok(&catalog, &options, &out);
     NAOS_REQUIRE_TRUE(mnd_buf_append_str(&expected, "#: "));
     NAOS_REQUIRE_TRUE(mnd_buf_append_str(&expected, name));
-    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&expected, ":1 b.c:1 b.c:2 b.c:3 b.c:4 b.c:5 b.c:6 b.c:7"
-                                                    " b.c:8 b.c:9 b.c:10 b.c:11 b.c:12 b.c:13"
-                                                    " b.c:14 b.c:15 b.c:16 b.c:17 b.c:18 b.c:19"
-                                                    " b.c:20\nmsgid \"a\"\nmsgstr \"\"\n"));
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&expected, ":1\n"
+                                                    "#: b.c:1 b.c:2 b.c:3 b.c:4 b.c:5 b.c:6 b.c:7"
+                                                    " b.c:8 b.c:9 b.c:10 b.c:11 b.c:12\n"
+                                                    "#: b.c:13 b.c:14 b.c:15 b.c:16 b.c:17 b.c:18"
+                                                    " b.c:19 b.c:20\nmsgid \"a\"\nmsgstr \"\"\n"));
     NAOS_CHECK_STR_EQ(mnd_buf_cstr(&out), mnd_buf_cstr(&expected));
     mnd_buf_free(&out);
     mnd_buf_free(&expected);
@@ -930,14 +1017,14 @@ NAOS_TEST(write_no_wrap_flag_and_option)
     NAOS_REQUIRE_TRUE(mnd_buf_append_str(&expected, mnd_buf_cstr(&wrapped)));
     NAOS_CHECK_STR_EQ(mnd_buf_cstr(&out), mnd_buf_cstr(&expected));
 
-    /* no_wrap オプションでは、どのエントリも折り返さない（6.5） */
+    /* no_wrap オプションでは、どのエントリの文字列も折り返さない（6.5）。参照は折り返す */
     mnd_buf_clear(&out);
     mnd_buf_clear(&expected);
     options.no_wrap = true;
     write_ok(&catalog, &options, &out);
     NAOS_REQUIRE_TRUE(mnd_buf_append_str(&expected, "#: "));
     NAOS_REQUIRE_TRUE(mnd_buf_append_str(&expected, mnd_buf_cstr(&name)));
-    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&expected, ":1 b.c:2\n#, no-wrap\n#| msgid \""));
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&expected, ":1\n#: b.c:2\n#, no-wrap\n#| msgid \""));
     NAOS_REQUIRE_TRUE(mnd_buf_append_str(&expected, mnd_buf_cstr(&s)));
     NAOS_REQUIRE_TRUE(mnd_buf_append_str(&expected, "\"\nmsgid \""));
     NAOS_REQUIRE_TRUE(mnd_buf_append_str(&expected, mnd_buf_cstr(&s)));
@@ -1023,6 +1110,8 @@ NAOS_SUITE(write,
     NAOS_ADD_TEST(write_wrap_inner_newline_splits_after_it),
     NAOS_ADD_TEST(write_wrap_empty_string),
     NAOS_ADD_TEST(write_wrap_long_word_without_break_opportunity),
+    NAOS_ADD_TEST(write_wrap_single_segment_without_break_opportunity_stays_on_keyword_line),
+    NAOS_ADD_TEST(write_wrap_break_opportunities_come_from_escaped_text),
     NAOS_ADD_TEST(write_wrap_fullwidth_counts_two_columns),
     NAOS_ADD_TEST(write_wrap_counts_prefix_columns),
     NAOS_ADD_TEST(write_wrap_prefix_on_continuation_lines),
@@ -1039,7 +1128,8 @@ NAOS_SUITE(write,
     NAOS_ADD_TEST(write_duplicate_reports_each_pair_with_shortened_values),
     NAOS_ADD_TEST(write_refs_79_byte_boundary),
     NAOS_ADD_TEST(write_refs_count_bytes_and_isolate_names_with_spaces),
-    NAOS_ADD_TEST(write_no_wrap_option_writes_refs_on_one_line),
+    NAOS_ADD_TEST(write_refs_with_empty_file_name),
+    NAOS_ADD_TEST(write_no_wrap_option_still_wraps_refs),
     NAOS_ADD_TEST(write_no_wrap_flag_and_option),
     NAOS_ADD_TEST(write_zero_msgstr_entries)
 )

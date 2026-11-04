@@ -1,0 +1,81 @@
+# Japanese translations for the example package.
+# Copyright (C) 2026 THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the example package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: example 1.0\n"
+"Report-Msgid-Bugs-To: bugs@example.com\n"
+"POT-Creation-Date: 2026-01-15 10:30+0900\n"
+"PO-Revision-Date: 2026-02-01 09:00+0900\n"
+"Last-Translator: Taro Yamada <taro@example.com>\n"
+"Language-Team: Japanese <ja@example.com>\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+# 翻訳者のコメント
+#. 抽出されたコメント
+#: src/main.c:10 src/main.c:25
+msgid "Hello"
+msgstr "こんにちは"
+
+#. TRANSLATORS: the first line
+#. the second line
+#.
+#: src/app.c:42
+#, c-format
+msgid "%d file"
+msgid_plural "%d files"
+msgstr[0] "%d 個のファイル"
+
+#: src/menu.c:7
+msgctxt "menu"
+msgid "Open"
+msgstr "開く"
+
+msgctxt "button"
+msgid "Open"
+msgstr "開ける"
+
+msgctxt ""
+msgid "Open"
+msgstr "オープン"
+
+#: src/menu.c:9
+#, fuzzy
+#| msgctxt "menu"
+#| msgid "Close all"
+msgctxt "menu"
+msgid "Close"
+msgstr "すべて閉じる"
+
+#: README
+msgid "Not translated yet"
+msgstr ""
+
+msgid ""
+"Tab:\tquote:\" backslash:\\\n"
+"second line\n"
+msgstr ""
+"タブ:\tクォート:\" バックスラッシュ:\\\n"
+"2 行目\n"
+
+msgid "one"
+msgid_plural "many"
+msgstr[0] ""
+
+#~ msgid "Removed"
+#~ msgstr "削除済み"
+
+#, fuzzy
+#~| msgid "Old text"
+#~ msgid "Older text"
+#~ msgstr "古い文"
+
+#~ msgctxt "ctx"
+#~ msgid "%d item"
+#~ msgid_plural "%d items"
+#~ msgstr[0] "%d 項目"
