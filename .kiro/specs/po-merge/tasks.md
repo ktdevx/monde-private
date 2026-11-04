@@ -111,9 +111,10 @@
   - Naos を使わない実行ファイルとして作り、ラベル `po_merge` と `perf` で登録する
   - 完了時: Release の構成で `ctest -L perf` が合格し、基準の場合と最悪の場合の時間が出力に表示される
   - 5.2 と同じテストのビルドファイルを編集するため、5.2 の後に行う
+  - _Depends: 4.2_
   - _Requirements: 10.1_
 
 - [ ] 5.4 モジュールの独立性を確かめ、全体のテストを通す
-  - 製品のソース（`src/po_merge/`）で、`fopen`、`printf`、`fprintf`、`puts`、`stdout`、`stderr`、`exit`、`abort`、`system`、`popen`、`po_internal.h`、`po_read.h`、`po_write.h`、`file_io.h`、`markdown`、`extract`、`translate` を検索し、該当がないことを確かめる（設計のコードレビューの確認を、検索できる形にしたもの）。見つかれば取り除く
+  - 製品のソース（`src/po_merge/`）で、`fopen`、`printf`、`fprintf`、`puts`、`stdout`、`stderr`、`exit`、`abort`、`system`、`popen`、`po_internal.h`、`po_read.h`、`po_write.h`、`file_io.h`、`markdown`、`"extract"`、`"translate"`、`"update"` を大文字と小文字を区別して検索し、該当がないことを確かめる（設計のコードレビューの確認を、検索できる形にしたもの。`extracted_comments` や `MND_PO_STATE_TRANSLATED` に一致しないよう、サブコマンド名は文字列リテラルとして探す）。見つかれば取り除く
   - 完了時: 上記の検索で該当がなく、標準の 3 行の手順で全モジュールのテストが合格する
   - _Requirements: 10.2, 11.1, 11.2, 11.3_
