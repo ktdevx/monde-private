@@ -28,7 +28,7 @@
   - _Depends: 1.1_
   - _Requirements: 5.8_
 
-- [ ] 1.4 (P) CommonMark spec のテストデータを置き、例を読み込むテスト用の部品を作る
+- [x] 1.4 (P) CommonMark spec のテストデータを置き、例を読み込むテスト用の部品を作る
   - タグ `0.31.2` の spec.txt を無改変で `tests/data/commonmark/` に置き、出典の URL、タグ、SHA-256、CC-BY-SA 4.0 のライセンス表記、無改変であること、リリース成果物に含めないことを書いた README を添える
   - `.gitattributes` を新しく作り、spec.txt の改行がチェックアウトで変わらないようにする
   - spec_tests.py と同じ規則で、例の番号・節・Markdown・期待 HTML を取り出し、`→` をタブに置き換える部品を作る
@@ -212,3 +212,4 @@
 ## Implementation Notes
 - 1.2: `mnd_md_unicode_is_space` は Zs だけを判定する。CommonMark の Unicode whitespace（タブ、LF、FF、CR を含む）は、使う側（Delims、LinkRef）でこの 4 文字を別に判定する。`mnd_md_unicode_fold` の出力は NUL 終端しない（最大 `MND_MD_UNICODE_FOLD_MAX` バイト）。
 - 1.3: `mnd_md_entity_lookup(name, len, &utf8, &utf8_len)` の名前は `&` と `;` を含まない（呼び出し側が `;` が続くことを確かめる）。名前の最大長は `MND_MD_ENTITY_NAME_MAX`（31）。
+- 1.4: spec_reader の API は `mnd_md_spec_load(path, &spec, diags)` / `mnd_md_spec_free`。例は `spec.examples[i]` の `number`、`section`、`markdown`、`html`（`mnd_buf_t`、NUL 終端）。
