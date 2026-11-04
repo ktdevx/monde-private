@@ -67,7 +67,7 @@ Monde は、Markdown 文書を gettext の `.pot` / `.po` を介して翻訳す�
 - [x] project-foundation -- CMake ビルド、Naos の導入、GitHub Actions による CI、共通部品（UTF-8 / BOM の入出力、改行コードの検出、文字列バッファ、エラー報告、ソース範囲の型）。Dependencies: none
 - [ ] cli-args -- 再利用できるコマンドライン引数パーサ（サブコマンド、オプション、英語のヘルプとエラー）。Dependencies: project-foundation
 - [x] po-format -- `.po` / `.pot` の読み書き（ヘッダ、各種コメント、fuzzy、廃止エントリ、エスケープ、複数形の読み込み許容）。Dependencies: project-foundation
-- [ ] po-merge -- msgmerge 相当のマージ（完全一致、あいまい一致による fuzzy の付与、廃止エントリ化）。Dependencies: po-format
+- [x] po-merge -- msgmerge 相当のマージ（完全一致、あいまい一致による fuzzy の付与、廃止エントリ化）。Dependencies: po-format
 - [ ] markdown-parser -- ソース範囲を保持する CommonMark パーサと、方言を差し替えるインターフェース。Dependencies: project-foundation
 - [ ] yaml-front-matter -- フロントマターの検出と YAML サブセットの解析（スカラー値のソース範囲を保持）。Dependencies: project-foundation
 - [ ] translation-units -- Markdown とフロントマターからの翻訳単位の抽出（msgid、`#:`、`#.`、重複の統合）と、翻訳済み Markdown の範囲置換による再構成。Dependencies: po-format, markdown-parser, yaml-front-matter
