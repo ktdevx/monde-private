@@ -166,6 +166,13 @@ void mnd_merge_fuzzy_free(mnd_merge_fuzzy_t *fuzzy);
  */
 bool mnd_merge_fuzzy_search(mnd_merge_fuzzy_t *fuzzy, const mnd_po_entry_t *query,
                             bool *has_found, size_t *found);
+/*
+ * query の msgid について調べる候補の番号を、調べる順に touched[0..touched_count) に入れる。
+ * 4 文字以上なら 4-gram の数え上げの降順・番号の昇順、4 文字未満ならバイト長の範囲の列の
+ * バイト長の昇順・番号の昇順。領域を確保せず、終了時には counts をすべて 0 に戻す。
+ * mnd_merge_fuzzy_search の前半で、テストからも調べる順の確認に使う
+ */
+void mnd_merge_fuzzy_order(mnd_merge_fuzzy_t *fuzzy, const mnd_po_entry_t *query);
 
 /* Builder（merge_entry.c） */
 

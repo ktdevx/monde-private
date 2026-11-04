@@ -4,9 +4,14 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 /* 列と 4-gram の列の配列を初めて確保するときの容量 */
 #define MND_MERGE_FUZZY_INITIAL_CAP 4u
+/* 比較値のしきい値（最良値の初期値）。この値を超えた候補だけを選ぶ */
+#define MND_MERGE_FUZZY_THRESHOLD 0.6
+/* msgctxt を持たない候補と、問い合わせと同じ msgctxt を持つ候補の比較値に加える値 */
+#define MND_MERGE_FUZZY_BONUS 0.00001
 
 static void mnd_merge_index_list_init(mnd_merge_index_list_t *list)
 {
@@ -147,6 +152,22 @@ static bool add_gram(mnd_merge_fuzzy_t *fuzzy, const unsigned char *gram, size_t
     return index_list_push(list, candidate);
 }
 
+/* s の先頭から 4 文字先の位置を *end に入れる。4 文字に満たなければ false */
+static bool first_gram_end(const unsigned char *s, size_t len, size_t *end)
+{
+    size_t pos = 0;
+    size_t chars = 0;
+
+    while ((chars < MND_MERGE_FUZZY_GRAM_CHARS) && (pos < len))
+    {
+        pos = next_char(s, len, pos);
+        chars++;
+    }
+    *end = pos;
+
+    return chars >= MND_MERGE_FUZZY_GRAM_CHARS;
+}
+
 /* 候補の番号 candidate の msgid のすべての 4-gram を索引に加える。4 文字未満なら何もしない */
 static bool add_grams(mnd_merge_fuzzy_t *fuzzy, const mnd_buf_t *msgid, size_t candidate)
 {
@@ -154,16 +175,8 @@ static bool add_grams(mnd_merge_fuzzy_t *fuzzy, const mnd_buf_t *msgid, size_t c
     size_t len = msgid->len;
     size_t start = 0;
     size_t end = 0;
-    size_t chars = 0;
 
-    /* end を start から 4 文字先に進める */
-    while ((chars < MND_MERGE_FUZZY_GRAM_CHARS) && (end < len))
-    {
-        end = next_char(s, len, end);
-        chars++;
-    }
-
-    if (chars < MND_MERGE_FUZZY_GRAM_CHARS)
+    if (!first_gram_end(s, len, &end))
     {
         return true;
     }
@@ -329,4 +342,268 @@ void mnd_merge_fuzzy_free(mnd_merge_fuzzy_t *fuzzy)
     fuzzy->touched_count = 0;
     mnd_merge_pattern_free(&fuzzy->pattern);
     fuzzy->catalog = NULL;
+}
+
+/* 候補の番号 a を b より先に調べる（数え上げの降順、同数なら番号の昇順。全順序） */
+static bool order_before(const size_t *counts, size_t a, size_t b)
+{
+    if (counts[a] != counts[b])
+    {
+        return counts[a] > counts[b];
+    }
+
+    return a < b;
+}
+
+/* items[start..end) のヒープで、start の要素を子の方へ沈める（後に調べる候補ほど根に近い） */
+static void sift_down(size_t *items, size_t start, size_t end, const size_t *counts)
+{
+    size_t root = start;
+
+    for (;;)
+    {
+        size_t child;
+        size_t tmp;
+
+        /* end <= candidate_count <= SIZE_MAX / sizeof(size_t) なので 2 × root + 2 はオーバーフローしない */
+        child = (2 * root) + 1;
+        if (child >= end)
+        {
+            break;
+        }
+        if (((child + 1) < end) && order_before(counts, items[child], items[child + 1]))
+        {
+            child++;
+        }
+        if (!order_before(counts, items[root], items[child]))
+        {
+            break;
+        }
+
+        tmp = items[root];
+        items[root] = items[child];
+        items[child] = tmp;
+        root = child;
+    }
+}
+
+/* touched を調べる順に並べる（ヒープソート。全順序なので結果は一意） */
+static void sort_touched(mnd_merge_fuzzy_t *fuzzy)
+{
+    size_t *items = fuzzy->touched;
+    size_t n = fuzzy->touched_count;
+    size_t i;
+    size_t end;
+
+    if (n < 2)
+    {
+        return;
+    }
+
+    for (i = n / 2; i > 0; i--)
+    {
+        sift_down(items, i - 1, n, fuzzy->counts);
+    }
+
+    for (end = n - 1; end > 0; end--)
+    {
+        size_t tmp = items[0];
+
+        items[0] = items[end];
+        items[end] = tmp;
+        sift_down(items, 0, end, fuzzy->counts);
+    }
+}
+
+/* 4 文字以上の msgid の 4-gram の各出現で候補を数え上げ、数え上げが 1 以上の候補を touched に入れる */
+static void count_grams(mnd_merge_fuzzy_t *fuzzy, const unsigned char *s, size_t len, size_t end)
+{
+    size_t start = 0;
+
+    for (;;)
+    {
+        size_t id = 0;
+
+        if (mnd_merge_hash_find(&fuzzy->grams, s + start, end - start, &id))
+        {
+            const mnd_merge_index_list_t *list = &fuzzy->gram_lists[id];
+            size_t i;
+
+            for (i = 0; i < list->count; i++)
+            {
+                size_t n = list->items[i];
+
+                if (fuzzy->counts[n] == 0)
+                {
+                    fuzzy->touched[fuzzy->touched_count] = n;
+                    fuzzy->touched_count++;
+                }
+                fuzzy->counts[n]++;
+            }
+        }
+
+        if (end >= len)
+        {
+            break;
+        }
+
+        start = next_char(s, len, start);
+        end = next_char(s, len, end);
+    }
+}
+
+/*
+ * 4 文字未満の msgid（バイト長 len）について、k = 2.0 / 0.6 − 1.0 として、バイト長 ceil(len / k)
+ * から (size_t)(len × k) まで（28 以下）の列を、バイト長の昇順に touched に入れる。
+ * ceil は double の商の整数部分と比べて切り上げる（浮動小数点の数学関数を使わない）
+ */
+static void collect_short(mnd_merge_fuzzy_t *fuzzy, size_t len)
+{
+    const double k = (2.0 / MND_MERGE_FUZZY_THRESHOLD) - 1.0;
+    const double max_len = (double)MND_MERGE_FUZZY_SHORT_MAX_LEN;
+    double lower_value = (double)len / k;
+    double upper_value = (double)len * k;
+    size_t lower;
+    size_t upper;
+    size_t l;
+
+    /* 28 を超える長さの列はないので、変換のオーバーフローを避けて先に除く */
+    if (lower_value > max_len)
+    {
+        return;
+    }
+    lower = (size_t)lower_value;
+    if ((double)lower < lower_value)
+    {
+        lower++;
+    }
+
+    if (upper_value >= max_len)
+    {
+        upper = MND_MERGE_FUZZY_SHORT_MAX_LEN;
+    }
+    else
+    {
+        upper = (size_t)upper_value;
+    }
+
+    for (l = lower; l <= upper; l++)
+    {
+        const mnd_merge_index_list_t *list = &fuzzy->by_length[l];
+        size_t i;
+
+        /* 各候補は 1 つの列にだけあるので、合計は candidate_count を超えない */
+        for (i = 0; i < list->count; i++)
+        {
+            fuzzy->touched[fuzzy->touched_count] = list->items[i];
+            fuzzy->touched_count++;
+        }
+    }
+}
+
+void mnd_merge_fuzzy_order(mnd_merge_fuzzy_t *fuzzy, const mnd_po_entry_t *query)
+{
+    const unsigned char *s = (const unsigned char *)query->msgid.data;
+    size_t len = query->msgid.len;
+    size_t end = 0;
+    size_t i;
+
+    fuzzy->touched_count = 0;
+    if (fuzzy->candidate_count == 0)
+    {
+        return;
+    }
+
+    if (first_gram_end(s, len, &end))
+    {
+        count_grams(fuzzy, s, len, end);
+        sort_touched(fuzzy);
+        for (i = 0; i < fuzzy->touched_count; i++)
+        {
+            fuzzy->counts[fuzzy->touched[i]] = 0;
+        }
+    }
+    else
+    {
+        collect_short(fuzzy, len);
+    }
+}
+
+/* 候補 candidate が msgctxt を持たない、または query が candidate と同じ msgctxt を持つ */
+static bool has_bonus(const mnd_po_entry_t *candidate, const mnd_po_entry_t *query)
+{
+    if (!candidate->has_msgctxt)
+    {
+        return true;
+    }
+    if (!query->has_msgctxt || (query->msgctxt.len != candidate->msgctxt.len))
+    {
+        return false;
+    }
+
+    return (query->msgctxt.len == 0)
+        || (memcmp(query->msgctxt.data, candidate->msgctxt.data, query->msgctxt.len) == 0);
+}
+
+bool mnd_merge_fuzzy_search(mnd_merge_fuzzy_t *fuzzy, const mnd_po_entry_t *query,
+                            bool *has_found, size_t *found)
+{
+    const char *q = query->msgid.data;
+    size_t qlen = query->msgid.len;
+    double best = MND_MERGE_FUZZY_THRESHOLD;
+    bool has_best = false;
+    size_t best_index = 0;
+    size_t i;
+
+    *has_found = false;
+    *found = 0;
+
+    if (fuzzy->candidate_count == 0)
+    {
+        return true;
+    }
+
+    /* 問い合わせのマスクを 1 回作る（数え上げより前に作り、失敗しても作業領域を汚さない） */
+    if (!mnd_merge_pattern_set(&fuzzy->pattern, q, qlen))
+    {
+        return false;
+    }
+
+    mnd_merge_fuzzy_order(fuzzy, query);
+
+    for (i = 0; i < fuzzy->touched_count; i++)
+    {
+        size_t entry_index = fuzzy->candidates[fuzzy->touched[i]];
+        const mnd_po_entry_t *candidate = &fuzzy->catalog->entries[entry_index];
+        const char *c = candidate->msgid.data;
+        size_t clen = candidate->msgid.len;
+        size_t sum = qlen + clen;
+        double bonus = has_bonus(candidate, query) ? MND_MERGE_FUZZY_BONUS : 0.0;
+        volatile double upper;
+        volatile double weight;
+        volatile double value;
+
+        /* 上限に bonus を加えても最良値を超えない候補は、LCS を計算せずに飛ばす */
+        upper = mnd_merge_ratio(mnd_merge_upper_numerator(q, qlen, c, clen) / 2, sum);
+        if ((upper + bonus) <= best)
+        {
+            continue;
+        }
+
+        /* 片方だけが空なら LCS は 0 で 0.0、両方空なら 1.0 */
+        weight = mnd_merge_ratio(mnd_merge_lcs(&fuzzy->pattern, c, clen), sum);
+        value = weight + bonus;
+        if (value > best)
+        {
+            best = value;
+            has_best = true;
+            best_index = entry_index;
+        }
+    }
+
+    fuzzy->touched_count = 0;
+    *has_found = has_best;
+    *found = best_index;
+
+    return true;
 }
