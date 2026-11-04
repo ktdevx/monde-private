@@ -53,7 +53,7 @@
 ### Revalidation Triggers
 - `mnd_po_entry_t` などの公開の型のフィールドの追加・意味の変更 → po-merge、translation-units
 - 状態の判定（翻訳済み・fuzzy・未翻訳）の規則の変更 → translation-units（未翻訳・fuzzy の扱い）、monde-cli（翻訳率）
-- 書き出しの形式・折り返しの規則の変更 → po-merge と monde-cli のテストの期待値、利用者の既存の PO の差分
+- 書き出しの形式・折り返しの規則の変更 → po-merge と monde-cli のテストの期待値（po-merge の msgmerge の正解ファイルを含む）、利用者の既存の PO の差分
 - Unicode の表のバージョンの変更 → 正解ファイルの再生成
 - リーダーが受け付ける文法、エラー・警告の分類の変更 → monde-cli のエラー表示とテスト
 - 初期化で設定するヘッダの項目の変更 → monde-cli（`monde init`）のテストと利用マニュアル
@@ -136,6 +136,7 @@ src/po/
 
 tests/po/
 ├── CMakeLists.txt        # Naos のテスト、互換性テストの登録
+├── msgcat_compare.cmake  # msgcat の出力と正解ファイルを比べる（cmake -P。入力を正解ファイルと別に指定できる）
 ├── main.c                # NAOS_MAIN にスイートを並べる
 ├── entry_test.c          # Model（1.x）
 ├── header_test.c         # Model のヘッダと日時（8.x）
@@ -154,6 +155,8 @@ tests/po/
     ├── wrap_cjk.po       # 日本語・韓国語・全角英数字・絵文字・句読点・括弧（msgcat の出力）
     ├── refs.po           # 参照の折り返し、日本語と空白を含むファイル名（msgcat の出力）
     ├── nowrap_flag.po    # `#, no-wrap` のエントリ（msgcat の出力）
+    ├── fuzzy_empty_in.po # fuzzy で最初の msgstr が空のエントリを含む入力（手で書いたもの。msgcat の出力ではない）
+    ├── fuzzy_empty.po    # fuzzy_empty_in.po を msgcat で書き出したもの（5.7）
     └── nowrap_option.po  # wrap_cjk.po を `msgcat --no-wrap` で書き出したもの
 
 tools/
@@ -252,13 +255,14 @@ stateDiagram-v2
 | 1 | `# <text>`（空なら `#`） | 翻訳者コメントの各行 |
 | 2 | `#. <text>`（空なら `#.`） | 抽出コメントの各行 |
 | 3 | `#: <ref> <ref> ...`（折り返しは下記） | 参照が 1 つ以上 |
-| 4 | `#, fuzzy, <flag>, ...` | フラグが 1 つ以上。`fuzzy` があれば先頭に書き、ほかはエントリの順に書く |
+| 4 | `#, fuzzy, <flag>, ...` | 書くフラグが 1 つ以上。`fuzzy` は書く条件（下記）を満たせば先頭に書き、ほかはエントリの順に書く |
 | 5 | `Q msgctxt ...`、`Q msgid ...`、`Q msgid_plural ...` | `has_prev_*` が真のもの |
 | 6 | `P msgctxt ...` | `has_msgctxt` が真 |
 | 7 | `P msgid ...` | 常に |
 | 8 | `P msgid_plural ...` | `has_msgid_plural` が真 |
 | 9 | `P msgstr ...`、または `P msgstr[i] ...` | 単数形: `msgstr` の 1 つ目（0 個なら空文字列）。複数形: 各要素を添字付きで（0 個なら `msgstr[0] ""` と `msgstr[1] ""`） |
 
+- `fuzzy` を書く条件（5.7）: エントリが `fuzzy` フラグを持ち、msgstr が 1 個以上あって最初の msgstr が空でないとき。満たさないときは `fuzzy` を飛ばし、ほかのフラグがなければ行 4 を書かない。単数形と複数形、廃止エントリ、ヘッダで同じ規則とする（gettext 0.21 の書き出しと同じ。research.md）。エントリの `flags` は変更しない。
 - 参照は `<file>` または `<file>:<line>` と書く。ファイル名に空白かタブが含まれる場合は、U+2068 と U+2069 で囲む。
 - 単数形のエントリで `msgstr` が 2 個以上ある場合は、1 つ目だけを書く（利用者の誤りであり、書き出しは決定的にする）。
 
@@ -330,9 +334,10 @@ stateDiagram-v2
 | 5.1〜5.4 | 並び、行の順序、廃止エントリ、改行コード | Writer | `mnd_po_write` | 書き出しの規則 |
 | 5.5 | 重複の拒否 | Writer、Model | `mnd_po_find_duplicate` | — |
 | 5.6 | msgfmt --check | Writer | `mnd_po_write` | 互換性テスト |
+| 5.7 | 最初の msgstr が空のエントリの `fuzzy` を書かない | Writer | `mnd_po_write` | 書き出しの規則 |
 | 6.1〜6.6 | 折り返し | Wrap、LineBreak、Ucd | `mnd_po_wrap_string`、`mnd_po_linebreaks`、`mnd_po_ucd_width` | 文字列の行、分割の機会 |
 | 6.7 | 参照の折り返し | Writer | `mnd_po_write` | 参照の行 |
-| 7.1、7.2 | 内容の保持と再読み込み | Reader、Writer | `mnd_po_read`、`mnd_po_write` | — |
+| 7.1、7.2 | 内容の保持と再読み込み（5.7 の `fuzzy` を除く） | Reader、Writer | `mnd_po_read`、`mnd_po_write` | 書き出しの規則 |
 | 7.3 | gettext の出力とのバイト一致 | Reader、Writer、Wrap | — | 正解ファイルとの比較 |
 | 7.4 | 整形の正規化 | Writer | `mnd_po_write` | 書き出しの規則 |
 | 8.1〜8.3 | ヘッダの取得と設定 | Model | `mnd_po_header_get`、`mnd_po_header_set` | — |
@@ -368,7 +373,7 @@ stateDiagram-v2
 - 文字列のフィールドは `mnd_buf_t` とし、利用者は `mnd_buf_*` で直接設定する。省略可能な文字列は `has_*` で有無を表す（1.3）。`has_*` が偽のときの文字列の内容は無視される。
 - 配列への追加は関数を通す（確保の失敗を返すため）。
 - ヘッダは「廃止エントリでなく、`has_msgctxt` が偽で、msgid が空の最初のエントリ」とする（1.4）。
-- 状態（1.5）: フラグ `fuzzy` があれば FUZZY。なければ、msgstr が 1 個以上あり、すべてが空でなければ TRANSLATED。それ以外は UNTRANSLATED。ヘッダと廃止エントリにも同じ規則を当てはめる（除外は呼び出し側が決める）。
+- 状態（1.5）: フラグ `fuzzy` があり、msgstr が 1 個以上あって最初の msgstr が空でなければ FUZZY。フラグ `fuzzy` がなく、msgstr が 1 個以上あり、すべてが空でなければ TRANSLATED。それ以外（`fuzzy` があって msgstr がないか最初の msgstr が空のものを含む）は UNTRANSLATED。「最初の msgstr が空でない」の条件は、ライターの `fuzzy` を書く条件（5.7）と同じにする。ヘッダと廃止エントリにも同じ規則を当てはめる（除外は呼び出し側が決める）。
 - フラグの比較は、バイト単位の完全一致とする。
 
 **Contracts**: Service [x]
@@ -686,19 +691,20 @@ bool mnd_po_init(mnd_po_catalog_t *catalog, const char *language, const char *re
 すべての単体テストは Naos で書き、`po_tests` にまとめる（1 ファイル 1 スイート）。正解ファイルは `tests/po/data/` に置き、`DEFINITIONS MND_PO_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data"` で渡して foundation の `mnd_file_read` で読む。正解ファイルは Ubuntu 24.04 の msgcat 0.21（libunistring 1.1）で作る。
 
 ### Unit Tests
-- **entry**: `mnd_po_catalog_append` と `insert` の順序（1.8）。`has_msgctxt` が偽のエントリと、空の msgctxt を持つエントリを、`mnd_po_catalog_find` が区別すること（1.3、1.7）。廃止エントリが検索に一致しないこと。状態の判定: fuzzy、空の msgstr、複数形で 1 つだけ空、すべて空でない（1.5）。フラグの追加の重複と、削除の後のほかのフラグの順序（1.6）。ヘッダの識別で、msgctxt を持つ空の msgid と、廃止エントリを除くこと（1.4）。
+- **entry**: `mnd_po_catalog_append` と `insert` の順序（1.8）。`has_msgctxt` が偽のエントリと、空の msgctxt を持つエントリを、`mnd_po_catalog_find` が区別すること（1.3、1.7）。廃止エントリが検索に一致しないこと。状態の判定: fuzzy、空の msgstr、複数形で 1 つだけ空、すべて空でない（1.5）。fuzzy で最初の msgstr が空・msgstr が 0 個なら UNTRANSLATED、複数形の fuzzy で msgstr[0] が空でなく msgstr[1] が空なら FUZZY（1.5）。フラグの追加の重複と、削除の後のほかのフラグの順序（1.6）。ヘッダの識別で、msgctxt を持つ空の msgid と、廃止エントリを除くこと（1.4）。
 - **header**: 大文字と小文字を区別しない取得、存在しない項目（8.1）。既存の項目の置き換えで、ほかの項目の順序と名前の綴りが変わらないこと（8.2）。末尾が `\n` でない msgstr への追加（8.3）。テンプレート用ヘッダの msgstr を、期待するリテラルとバイト単位で比較する（8.4、8.5）。`mnd_po_date_format` の正と負の UTC オフセット。
 - **escape**: 各エスケープの変換（3.1）。`\0`〜`\377` と `\x41`、`\x1ff`（`BAD_ESCAPE`）、`\q`（3.2、3.3）。`\0` による NUL と、`\xff` による不正な UTF-8。制御文字・非 ASCII を含む文字列のエスケープ（3.4）。0x01〜0x7F のすべての ASCII と、日本語・絵文字の文字列の往復（3.5）。
 - **read**: 全種類のコメント、参照（行番号なし、U+2068 で囲まれた空白を含むファイル名）、フラグの空白とカンマ（2.2〜2.4）。複数行の連結（2.5）。廃止エントリと、その `#~|`（2.6）。複数形（2.7）。CRLF と LF の混在、BOM（2.8、2.9）。空の内容、コメントだけの内容、ヘッダのない内容（2.10、2.11）。
 - **read_error**: 4.4〜4.6 の各エラーのメッセージと行番号（4.1）。3 つのエントリに 1 つずつ誤りがある内容で、診断が 3 件になり、`out` が空であること（4.2、4.3）。重複で先の行番号を含むこと（4.7）。不正な UTF-8 の行番号（4.8）。`charset=ISO-8859-1` がエラーになり、`CHARSET` と `utf-8` がエラーにならないこと（4.9）。改行の不一致が警告で、戻り値が真であること。fuzzy のエントリでは警告しないこと（4.10）。
 - **linebreak**: 空白の後、ハイフンの後、ひらがなの間で区切れること。`。`、`」`、`っ` の前で区切れないこと。`（` の後で区切れないこと。数字と `%` の間、絵文字の修飾子、地域指示子の対の内部で区切れないこと。文字幅: `a`=1、`あ`=2、`Ａ`=2、`😀`=2、結合文字 U+0301=0、`…`（A）=1。
-- **write**: 行の順序とコメントの書き方（5.2）。`fuzzy` を先頭に置くこと。廃止エントリの行の前置き（5.3）。CRLF（5.4）。重複のあるカタログで、`out` が変わらずに `false` が返ること（5.5）。79 桁ちょうどと 80 桁の境界、末尾だけに `\n` がある文字列、途中に `\n` がある文字列、空文字列、分割の機会のない長い語（6.1、6.3、6.4）。`no_wrap` オプションと `no-wrap` フラグ（6.5、6.6）。参照の 79 バイトの境界（6.7）。msgstr が 0 個の単数形と複数形のエントリ。
-- **roundtrip**: `data/` の各正解ファイルを読み込み、既定の設定で書き出した結果が、正解ファイルとバイト単位で一致すること（7.3、6.1、6.2、6.7）。wrap_cjk.po を読み込んで `no_wrap` で書き出した結果と、nowrap_option.po を読み込んで `no_wrap` で書き出した結果が、どちらも nowrap_option.po と一致すること（6.5）。各正解ファイルを CRLF に変えた内容を読み込み、LF で書き出すと元の正解ファイルと一致すること（2.8）。書き出した内容をもう一度読み込んだカタログが、最初のカタログと一致すること（7.1、7.2）。行の分け方の違う入力（gettext の形式でない）を書き出すと、規則どおりに整形されること（7.4）。
+- **write**: 行の順序とコメントの書き方（5.2）。`fuzzy` を先頭に置くこと。廃止エントリの行の前置き（5.3）。CRLF（5.4）。重複のあるカタログで、`out` が変わらずに `false` が返ること（5.5）。79 桁ちょうどと 80 桁の境界、末尾だけに `\n` がある文字列、途中に `\n` がある文字列、空文字列、分割の機会のない長い語（6.1、6.3、6.4）。`no_wrap` オプションと `no-wrap` フラグ（6.5、6.6）。参照の 79 バイトの境界（6.7）。msgstr が 0 個の単数形と複数形のエントリ。`fuzzy` の書き出し（5.7）: 単数形で空の msgstr（フラグの行を書かない）、`fuzzy` と `c-format` で空の msgstr（`#, c-format`）、msgstr が 0 個、複数形で msgstr[0] だけ空（書かない）と msgstr[1] だけ空（書く）、廃止エントリ、ヘッダ。書き出しの前後でエントリの `flags` が変わらないこと。
+- **roundtrip**: `data/` の各正解ファイルを読み込み、既定の設定で書き出した結果が、正解ファイルとバイト単位で一致すること（7.3、6.1、6.2、6.7）。wrap_cjk.po を読み込んで `no_wrap` で書き出した結果と、nowrap_option.po を読み込んで `no_wrap` で書き出した結果が、どちらも nowrap_option.po と一致すること（6.5）。各正解ファイルを CRLF に変えた内容を読み込み、LF で書き出すと元の正解ファイルと一致すること（2.8）。書き出した内容をもう一度読み込んだカタログが、最初のカタログと一致すること（7.1、7.2）。行の分け方の違う入力（gettext の形式でない）を書き出すと、規則どおりに整形されること（7.4）。fuzzy_empty_in.po を読み込んで書き出した結果が fuzzy_empty.po と一致し、それを読み直したカタログが、5.7 で書かなかった `fuzzy` を除いて最初のカタログと一致すること（5.7、7.1、7.2）。
 - **init**: ヘッダの Language、PO-Revision-Date、fuzzy の解除（9.1）。`CHARSET` の置き換え（9.2）。ほかの項目とエントリが変わらないこと、Plural-Forms がないこと（9.3）。ヘッダのないテンプレート（9.4）。空、`"ja JP"`、`"ja\t"` の言語コードでカタログが変わらないこと（9.5）。
 
 ### 互換性テスト（gettext のある環境）
 `tests/po/CMakeLists.txt` で `find_program(MONDE_MSGCAT msgcat)`、`find_program(MONDE_MSGFMT msgfmt)` を探し、見つかったときだけ次を登録する（ラベル `po`）。見つからない場合は、構成時に `message(STATUS ...)` で登録しないことを示す。
-- **po_msgcat_golden.<file>**: `msgcat <正解ファイル>` の出力が、正解ファイルと一致することを確かめる（`cmake -E compare_files`）。`nowrap_option.po` は `msgcat --no-wrap` で確かめる。正解ファイルが gettext の出力そのものであることを保証する（7.3 の前提）。
+- **po_msgcat_golden.<file>**: `msgcat <正解ファイル>` の出力が、正解ファイルと一致することを確かめる（`cmake -E compare_files`）。`nowrap_option.po` は `msgcat --no-wrap` で確かめる。`fuzzy_empty.po` も対象に含める。正解ファイルが gettext の出力そのものであることを保証する（7.3 の前提）。
+- **po_msgcat_normalize.fuzzy_empty**: `msgcat fuzzy_empty_in.po` の出力が `fuzzy_empty.po` と一致することを確かめる（`msgcat_compare.cmake` に入力を `-DINPUT=` で渡す。省略時は `GOLDEN` を入力とする）。ライターの 5.7 の規則が gettext と同じであることを保証する。fuzzy_empty_in.po には、msgcat が書き出さない「msgstr が空の廃止エントリ」を含めない（research.md の未決）。
 - **po_msgfmt_gen**: `msgfmt_gen.c`（`add_executable`、`monde::po` にリンク、`monde_apply_compile_options` を適用）が、次の PO をビルドディレクトリに書く（`FIXTURES_SETUP po_msgfmt`）。
   - テンプレート用ヘッダ、日本語の長い msgid、msgctxt、改行を含む msgid、参照を持つ `.pot`
   - その `.pot` を `mnd_po_init` で初期化し、一部を翻訳済み・fuzzy・廃止エントリにした `.po`
