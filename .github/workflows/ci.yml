@@ -52,6 +52,13 @@ jobs:
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-ninja
 
+      # gettext は po の互換性テスト（msgcat、msgfmt）に使う。見つからない環境ではそのテストを登録しない
+      - if: runner.os == 'Linux'
+        name: Install gettext
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gettext
+
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.configure-args }}
 

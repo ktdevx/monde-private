@@ -121,7 +121,7 @@
   - _Depends: 3.3, 4.2_
   - _Requirements: 2.8, 6.1, 6.2, 6.5, 6.7, 7.1, 7.2, 7.3, 7.4, 10.3_
 
-- [ ] 6.2 msgcat と msgfmt による互換性テストを CTest に登録し、CI に gettext を入れる
+- [x] 6.2 msgcat と msgfmt による互換性テストを CTest に登録し、CI に gettext を入れる
   - 統合タスクとする。テストのビルドファイル、互換性テスト用の実行ファイル（新規）、CI の設定を編集する
   - msgcat と msgfmt を探し、見つかったときだけテストを登録する。見つからなければ、登録しないことを構成時に表示する
   - 各正解ファイルに msgcat（`--no-wrap` の正解ファイルには `msgcat --no-wrap`）をかけた出力が、正解ファイルと一致することを確かめるテストを登録する
@@ -154,3 +154,4 @@
 - 5: Init は言語コードを検査してから変更する。値の表示は po_init.c 内の static ヘルパー（40 バイト、制御文字と不正な UTF-8 を ?）で、po_read.c の `mnd_po_read_show` と重複している（部品間の依存を避けるため）。charset は `charset=` 直後の値（`;` まで、前後の空白を除く）が CHARSET のときだけ UTF-8 に置き換える。ヘッダがなければ設計の順の 5 項目を先頭に挿入し、失敗時は挿入を取り消す。
 - 6.1: msgcat 0.21 と一致させるため、設計の文言から次の点で逸脱した（design.md の「文字列の行」「分割の機会」「参照の行」と po_write.h の no_wrap の記述は後続で更新が必要）: (a) 区分が 1 つで分割の機会がなければ 79 桁を超えてもキーワードの行に書く（`""` の行にするのは実際に区切るときか途中に `\n` があるときだけ）。(b) 分割の機会はエスケープ後の文字列で求め、エスケープの 2 文字目の前と `\n` のエスケープの直前を禁止する（乱数 12000 件で msgcat と一致）。(c) no_wrap オプションでも参照は 79 バイトで折り返す（msgcat 0.21 の --no-wrap と同じ。6.7 は折り返しが有効な場合だけを規定する）。(d) 行番号もない空のファイル名の参照は U+2068 U+2069 だけを書き、読み直しても消えないようにする。`:5` は空のファイル名と行番号 5 として往復する。
 - 6.1: 空白を含むファイル名は msgcat 0.21 が囲まず読むときに分けるため、正解ファイルに入れず write の単体テストと roundtrip の往復のテストで確かめる。正解ファイルに文字幅の異なる文字は出てこなかったので Ucd の表は変えていない。正解ファイルは tests/po/data/.gitattributes の `*.po -text` で改行を変換させない。
+- 6.2: 互換性テストは msgcat と msgfmt を別々に探して登録する。po_msgcat_golden は `msgcat --version` の 1 行目が 0.21 系のときだけ登録し（正解ファイルは 0.21 の出力。macOS の Homebrew などほかのバージョンでは構成時に表示して登録しない）、tests/po/msgcat_compare.cmake（cmake -P、`msgcat -o` と `cmake -E compare_files`）で比べる。po_msgfmt_gen は build の tests/po/gettext/msgfmt/ に template.pot・init_ja.po・basic.po を書く（出力先はコンパイル定義 MND_PO_MSGFMT_OUT_DIR）。
