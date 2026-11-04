@@ -461,3 +461,36 @@ bool mnd_po_find_duplicate(const mnd_po_catalog_t *catalog, size_t from, size_t 
     return false;
 }
 
+
+size_t mnd_po_format_decimal(size_t value, size_t min_digits, char *out, size_t size)
+{
+    size_t digits = 1;
+    size_t rest = value;
+    size_t i;
+
+    while (rest >= 10)
+    {
+        rest /= 10;
+        digits++;
+    }
+
+    if (digits < min_digits)
+    {
+        digits = min_digits;
+    }
+
+    /* NUL の分を含めて収まるか（digits + 1 の桁あふれを避ける） */
+    if ((size == 0) || (digits > (size - 1)))
+    {
+        return 0;
+    }
+
+    out[digits] = '\0';
+    for (i = digits; i > 0; i--)
+    {
+        out[i - 1] = (char)('0' + (value % 10));
+        value /= 10;
+    }
+
+    return digits;
+}

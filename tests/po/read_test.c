@@ -601,7 +601,7 @@ NAOS_TEST(read_header_identification)
         "\n"
         "msgctxt \"\"\n"
         "msgid \"\"\n"
-        "msgstr \"Context: yes\\n\"\n"
+        "msgstr \"Context: yes\"\n"  /* 改行の不一致の警告（4.10）を避けるため \n で終えない */
         "\n"
         "# header comment\n"
         "#, fuzzy\n"

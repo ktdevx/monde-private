@@ -12,7 +12,7 @@
 
 typedef struct mnd_po_write_options
 {
-    bool no_wrap;   /* 真なら \n の直後でだけ区切る（参照も 1 行にする） */
+    bool no_wrap;   /* 真なら文字列を \n の直後でだけ区切る（参照は msgcat と同じく折り返す） */
     mnd_eol_t eol;  /* MND_EOL_CRLF なら CRLF、それ以外は LF */
 } mnd_po_write_options_t;
 

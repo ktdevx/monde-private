@@ -1,0 +1,134 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: example 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-01-15 10:30+0900\n"
+"PO-Revision-Date: 2026-02-01 09:00+0900\n"
+"Last-Translator: Taro Yamada <taro@example.com>\n"
+"Language-Team: Japanese <ja@example.com>\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: src/messages/ja-long.c:10 src/messages/ja-long.c:200
+#: src/messages/common/strings.c:3000
+msgctxt "ja-long"
+msgid ""
+"This is a long English sentence that will be translated into a long Japanese "
+"sentence."
+msgstr ""
+"これは長い日本語の文で、gettext のツールが書き出すときに 79 桁を超えるため、"
+"途中で折り返されることを確かめるためのものです。句読点の前では区切りません。"
+
+#: src/messages/ja-punct.c:11 src/messages/ja-punct.c:201
+#: src/messages/common/strings.c:3001
+msgctxt "ja-punct"
+msgid "Brackets and punctuation."
+msgstr ""
+"「かぎ括弧」や（丸括弧）、『二重かぎ括弧』、【隅付き括弧】の中の文字と、句"
+"点。読点、中黒・長音ー、感嘆符！疑問符？の前後で区切られる位置を確かめます。"
+
+#: src/messages/ja-small.c:12 src/messages/ja-small.c:202
+#: src/messages/common/strings.c:3002
+msgctxt "ja-small"
+msgid "Small kana."
+msgstr ""
+"ちょっとキャッシュをクリアしてからもう一度ダウンロードしてみてください。ジャ"
+"ンプ、シャッター、チェックボックス、ファイル、ウィンドウ、メッセージ。"
+
+#: src/messages/ja-mixed.c:13 src/messages/ja-mixed.c:203
+#: src/messages/common/strings.c:3003
+msgctxt "ja-mixed"
+msgid "Mixed text."
+msgstr ""
+"設定ファイル config.yaml の output_dir に、出力先のディレクトリ（例: /var/"
+"lib/monde/output）を 255 文字以内で指定してください。100% 完了しました。"
+
+#: src/messages/ja-newline.c:14 src/messages/ja-newline.c:204
+#: src/messages/common/strings.c:3004
+msgctxt "ja-newline"
+msgid ""
+"First line.\n"
+"Second line that is long enough to need wrapping when it is written by the "
+"msgcat tool.\n"
+msgstr ""
+"1 行目です。\n"
+"2 行目は、msgcat が書き出すときに折り返しが必要になるくらい長い行で、ここで改"
+"行の後ろの区分が折り返されます。\n"
+
+#: src/messages/ko.c:15 src/messages/ko.c:205
+#: src/messages/common/strings.c:3005
+msgctxt "ko"
+msgid "Korean text."
+msgstr ""
+"한국어 문장은 단어 사이에 공백이 있으므로 공백의 뒤에서 줄을 바꿀 수 있습니"
+"다. 이 문장은 일흔아홉 칸을 넘도록 충분히 길게 썼습니다."
+
+#: src/messages/zh.c:16 src/messages/zh.c:206
+#: src/messages/common/strings.c:3006
+msgctxt "zh"
+msgid "Chinese text."
+msgstr ""
+"这是一个用于测试的中文句子，它的长度足以超过七十九列，因此在写出时会被折行。"
+"标点符号“引号”和《书名号》的前后也需要检查。"
+
+#: src/messages/fullwidth.c:17 src/messages/fullwidth.c:207
+#: src/messages/common/strings.c:3007
+msgctxt "fullwidth"
+msgid "Fullwidth letters and digits."
+msgstr ""
+"ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺ　０１２３４５６７８９　"
+"ａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ"
+
+#: src/messages/halfwidth.c:18 src/messages/halfwidth.c:208
+#: src/messages/common/strings.c:3008
+msgctxt "halfwidth"
+msgid "Halfwidth katakana."
+msgstr ""
+"ﾊﾝｶｸｶﾀｶﾅﾊ 1 ｹﾀﾃﾞｽ｡ ｺﾉ ﾌﾞﾝﾊ ﾅﾅｼﾞｭｳｷｭｳ ｹﾀｦ ｺｴﾙﾖｳﾆ ﾅｶﾞｸ ｶｲﾃｲﾏｽ｡ ﾏﾀﾞ ﾀﾘﾅｲﾉﾃﾞ ﾓｳｽｺ"
+"ｼ ﾂﾂﾞｹﾏｽ｡ ｵﾜﾘ｡"
+
+#: src/messages/emoji.c:19 src/messages/emoji.c:209
+#: src/messages/common/strings.c:3009
+msgctxt "emoji"
+msgid "Emoji."
+msgstr ""
+"絵文字の幅は 2 桁です😀😃😄😁😆😅🤣😂🙂🙃😉😊😇🥰😍🤩😘😗😚😙😋😛😜🤪😝🤑🤗🤭"
+"🤫🤔🤐🤨😐😑😶😏😒🙄😬🤥😌😔😪"
+
+#: src/messages/emoji-seq.c:20 src/messages/emoji-seq.c:210
+#: src/messages/common/strings.c:3010
+msgctxt "emoji-seq"
+msgid "Emoji sequences."
+msgstr ""
+"修飾子つき👍🏻👍🏼👍🏽👍🏾👍🏿と国旗🇯🇵🇰🇷🇺🇸🇬🇧🇫🇷と ZWJ の列👨‍👩‍👧‍👦👩‍💻🧑‍🚀は、"
+"途中で区切られません。もう少し続けて 79 桁を超えるようにします。"
+
+#: src/messages/ja-escape.c:21 src/messages/ja-escape.c:211
+#: src/messages/common/strings.c:3011
+msgctxt "ja-escape"
+msgid "Quotes and tabs."
+msgstr ""
+"「\"引用符\"」とタブ\tを含む日本語の文が、エスケープの位置で正しく折り返され"
+"ることを確かめます。\\バックスラッシュ\\も含みます。"
+
+#: src/messages/ja-nospace.c:22 src/messages/ja-nospace.c:212
+#: src/messages/common/strings.c:3012
+msgctxt "ja-nospace"
+msgid "No spaces."
+msgstr ""
+"あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよ"
+"らりるれろわをんアイウエオカキクケコサシスセソタチツテト"
+
+#, fuzzy
+msgid "Fuzzy entry with a long translation."
+msgstr ""
+"このエントリは fuzzy で、長い訳文を持っています。fuzzy のエントリも、ほかのエ"
+"ントリと同じ規則で折り返されます。"
+
+#~ msgid "Obsolete Japanese entry."
+#~ msgstr ""
+#~ "廃止されたエントリの訳文も、先頭に #~ を付けた行で、ほかのエントリと同じ規"
+#~ "則で折り返されることを確かめます。"

@@ -1,0 +1,69 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: example 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-01-15 10:30+0900\n"
+"PO-Revision-Date: 2026-02-01 09:00+0900\n"
+"Last-Translator: Taro Yamada <taro@example.com>\n"
+"Language-Team: Japanese <ja@example.com>\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: src/main.c:1 src/main.c:2 src/main.c:3 src/main.c:4 src/main.c:5
+#: src/main.c:6 src/main.c:7 src/main.c:8 src/main.c:9 src/main.c:10
+#: src/main.c:11 src/main.c:12 src/main.c:13 src/main.c:14 src/main.c:15
+#: src/main.c:16 src/main.c:17 src/main.c:18 src/main.c:19 src/main.c:20
+#: src/main.c:21 src/main.c:22 src/main.c:23 src/main.c:24 src/main.c:25
+#: src/main.c:26 src/main.c:27 src/main.c:28 src/main.c:29 src/main.c:30
+#: src/main.c:31 src/main.c:32 src/main.c:33 src/main.c:34 src/main.c:35
+#: src/main.c:36 src/main.c:37 src/main.c:38 src/main.c:39
+msgid "Many references"
+msgstr ""
+
+#: docs/guide/index.md
+msgid "Reference without line number"
+msgstr ""
+
+#: docs/a.md docs/b.md:3 docs/c.md README.md:120 CHANGELOG.md
+#: docs/very/long/path/to/some/file.md:9999 x.c:1
+msgid "Mixed references"
+msgstr ""
+
+#: ドキュメント/はじめに.md:12 ドキュメント/使い方.md:34
+#: ドキュメント/設定.md:5
+msgid "Japanese file names (106 bytes and 79 columns on one line)"
+msgstr ""
+
+#: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1
+#: b:1
+msgid "Eighty bytes with the second reference"
+msgstr ""
+
+#: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1 b:1
+msgid "Seventy-nine bytes with the second reference"
+msgstr ""
+
+#: src/very_long_directory_name/very_long_directory_name/very_long_directory_name/very_long_directory_name/file_with_a_long_name.c:1234
+#: short.c:1
+msgid "A reference longer than the line"
+msgstr ""
+
+#: src/a.c:1 src/a.c:2 src/a.c:3
+msgid "Translated entry with references"
+msgstr "参照を持つ訳済みのエントリ"
+
+#: :5 file.c
+msgid "Reference with an empty file name"
+msgstr ""
+
+#: g.c:0 h.c:x i.c:
+msgid "References whose line part is not a positive number"
+msgstr ""
+
+#: src/old.c:1 src/old.c:2 src/old.c:3 src/old.c:4 src/old.c:5 src/old.c:6
+#: src/old.c:7 src/old.c:8
+#~ msgid "Obsolete entry with references"
+#~ msgstr "参照を持つ廃止エントリ"

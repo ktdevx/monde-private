@@ -87,7 +87,8 @@ typedef struct mnd_po_reader
     const char *path;
     mnd_diag_list_t *diags;
     mnd_po_catalog_t *out;
-    bool failed;                 /* エラーを 1 つ以上報告した */
+    size_t errors;               /* 報告したエラーの数 */
+    bool recovering;             /* エラーの後、再開できる行を探している */
     mnd_po_read_state_t state;
     mnd_po_entry_t entry;        /* 組み立て中のエントリ */
     bool entry_started;          /* entry にコメントかキーワードがある */
@@ -118,7 +119,7 @@ static bool mnd_po_read_starts_with(const char *s, size_t len, const char *prefi
 static void mnd_po_read_error(mnd_po_reader_t *reader, size_t line, const char *message)
 {
     mnd_diag_add(reader->diags, MND_SEVERITY_ERROR, reader->path, line, "%s", message);
-    reader->failed = true;
+    reader->errors++;
 }
 
 static void mnd_po_read_no_memory(mnd_po_reader_t *reader)
@@ -224,7 +225,7 @@ static mnd_po_lex_status_t mnd_po_read_unescape_error(mnd_po_reader_t *reader, s
 
         mnd_diag_add(reader->diags, MND_SEVERITY_ERROR, reader->path, line,
                      "invalid escape sequence '\\%s'", shown);
-        reader->failed = true;
+        reader->errors++;
 
         return MND_PO_LEX_ERROR;
     case MND_PO_UNESCAPE_NUL:
@@ -399,7 +400,7 @@ static mnd_po_lex_status_t mnd_po_read_lex_code(mnd_po_reader_t *reader, const c
         mnd_po_read_show(s, word_len, shown);
         mnd_diag_add(reader->diags, MND_SEVERITY_ERROR, reader->path, line->number,
                      "unknown keyword '%s'", shown);
-        reader->failed = true;
+        reader->errors++;
 
         return MND_PO_LEX_ERROR;
     }
@@ -415,7 +416,7 @@ static mnd_po_lex_status_t mnd_po_read_lex_code(mnd_po_reader_t *reader, const c
         mnd_po_read_show(s, word_len, shown);
         mnd_diag_add(reader->diags, MND_SEVERITY_ERROR, reader->path, line->number,
                      "missing string after '%s'", shown);
-        reader->failed = true;
+        reader->errors++;
 
         return MND_PO_LEX_ERROR;
     }
@@ -787,7 +788,7 @@ static void mnd_po_read_invalid(mnd_po_reader_t *reader, size_t line, mnd_po_rea
     case MND_PO_READ_FAULT_INDEX_ORDER:
         mnd_diag_add(reader->diags, MND_SEVERITY_ERROR, reader->path, line,
                      "msgstr index out of order: expected [%zu]", expected);
-        reader->failed = true;
+        reader->errors++;
         break;
     case MND_PO_READ_FAULT_MIXED:
     default:
@@ -1217,8 +1218,75 @@ static bool mnd_po_read_finish(mnd_po_reader_t *reader, size_t last_line)
     return true;
 }
 
+/* s[0..len) の先頭の語（空白とタブまで）が msgctxt か msgid なら true */
+static bool mnd_po_read_starts_entry_keyword(const char *s, size_t len)
+{
+    size_t word_len = 0;
+
+    while ((word_len < len) && !mnd_po_read_is_blank(s[word_len]))
+    {
+        word_len++;
+    }
+
+    return ((word_len == 7) && (memcmp(s, "msgctxt", 7) == 0))
+           || ((word_len == 5) && (memcmp(s, "msgid", 5) == 0));
+}
+
+/* s[0..len) の先頭の空白とタブを除いた位置を返す */
+static size_t mnd_po_read_skip_blanks(const char *s, size_t len)
+{
+    size_t i = 0;
+
+    while ((i < len) && mnd_po_read_is_blank(s[i]))
+    {
+        i++;
+    }
+
+    return i;
+}
+
 /*
- * 前処理を終えた内容 data[0..len) を行に分けて解析する。最初のエラーで解析を止める。
+ * エラーからの回復で、解析を再開できる行（空行、コメントの行、msgctxt、msgid）か。
+ * 行を字句解析せずに先頭だけで判定する（読み飛ばす行のエラーを報告しないため）。
+ * 前回の文字列の行（#|、#~|）はコメントの行として扱い、残りが空の #~、#|、#~| は再開の行としない
+ */
+static bool mnd_po_read_is_resync(const char *s, size_t len)
+{
+    size_t i = mnd_po_read_skip_blanks(s, len);
+
+    s += i;
+    len -= i;
+    if (len == 0)
+    {
+        return true;
+    }
+
+    if (s[0] != '#')
+    {
+        return mnd_po_read_starts_entry_keyword(s, len);
+    }
+
+    if (mnd_po_read_starts_with(s, len, "#~|") || mnd_po_read_starts_with(s, len, "#|"))
+    {
+        i = (s[1] == '~') ? 3 : 2;
+
+        return mnd_po_read_skip_blanks(s + i, len - i) < (len - i);
+    }
+
+    if (mnd_po_read_starts_with(s, len, "#~"))
+    {
+        i = 2 + mnd_po_read_skip_blanks(s + 2, len - 2);
+
+        return mnd_po_read_starts_entry_keyword(s + i, len - i);
+    }
+
+    return true;
+}
+
+/*
+ * 前処理を終えた内容 data[0..len) を行に分けて解析する。エラーを報告したら組み立て中のエントリを
+ * 捨て、再開できる行まで読み飛ばして（その間のエラーは報告しない）、最後まで解析を続ける。
+ * 誤りを見つけた行そのものが再開できる行で、字句の誤りがなければ、その行から再開する。
  * メモリ不足なら false
  */
 static bool mnd_po_read_lines(mnd_po_reader_t *reader, const char *data, size_t len)
@@ -1229,34 +1297,58 @@ static bool mnd_po_read_lines(mnd_po_reader_t *reader, const char *data, size_t 
     bool ok = true;
 
     mnd_buf_init(&line.value);
-    while (ok && !reader->failed && (pos < len))
+    while (ok && (pos < len))
     {
         const char *newline = memchr(data + pos, '\n', len - pos);
         size_t line_end = (newline != NULL) ? (size_t)(newline - data) : len;
         size_t text_len = line_end - pos;
-        mnd_po_lex_status_t status;
+        size_t errors = reader->errors;
 
         if ((text_len > 0) && (data[line_end - 1] == '\r'))
         {
             text_len--;
         }
 
-        line.number = number;
-        status = mnd_po_read_lex(reader, data + pos, text_len, &line);
-        if (status == MND_PO_LEX_OK)
+        if (!reader->recovering || mnd_po_read_is_resync(data + pos, text_len))
         {
-            ok = mnd_po_read_step(reader, &line);
-        }
-        else if (status == MND_PO_LEX_NO_MEMORY)
-        {
-            ok = false;
+            mnd_po_lex_status_t status;
+
+            reader->recovering = false;
+            line.number = number;
+            status = mnd_po_read_lex(reader, data + pos, text_len, &line);
+            if (status == MND_PO_LEX_OK)
+            {
+                ok = mnd_po_read_step(reader, &line);
+
+                /*
+                 * 状態機械の誤りを見つけた行が次のエントリの始まりになる行なら、前のエントリだけを
+                 * 捨て、同じ行から新しいエントリを始める（次のエントリの誤りも報告するため）。
+                 * Comments の状態からもう一度誤りになる場合は、1 回だけで回復に移る
+                 */
+                if (ok && (reader->errors > errors) && mnd_po_read_is_resync(data + pos, text_len))
+                {
+                    mnd_po_read_reset_entry(reader);
+                    errors = reader->errors;
+                    ok = mnd_po_read_step(reader, &line);
+                }
+            }
+            else if (status == MND_PO_LEX_NO_MEMORY)
+            {
+                ok = false;
+            }
+
+            if (reader->errors > errors)
+            {
+                mnd_po_read_reset_entry(reader);
+                reader->recovering = true;
+            }
         }
 
         pos = line_end + 1;
         number++;
     }
 
-    if (ok && !reader->failed)
+    if (ok)
     {
         ok = mnd_po_read_finish(reader, number - 1);
     }
@@ -1264,6 +1356,194 @@ static bool mnd_po_read_lines(mnd_po_reader_t *reader, const char *data, size_t 
     mnd_buf_free(&line.value);
 
     return ok;
+}
+
+/* 重複（4.7）: 廃止エントリでないエントリの msgctxt と msgid の組の重複をすべて報告する */
+static void mnd_po_read_check_duplicates(mnd_po_reader_t *reader)
+{
+    const mnd_po_catalog_t *catalog = reader->out;
+    size_t from = 0;
+    size_t first;
+    size_t second;
+
+    while (mnd_po_find_duplicate(catalog, from, &first, &second))
+    {
+        mnd_diag_add(reader->diags, MND_SEVERITY_ERROR, reader->path,
+                     catalog->entries[second].line,
+                     "duplicate message definition (first defined at line %zu)",
+                     catalog->entries[first].line);
+        reader->errors++;
+        from = second + 1;
+    }
+}
+
+/* a[0..len) と NUL 終端の b が、ASCII の大文字と小文字を区別せずに等しいか */
+static bool mnd_po_read_equals_nocase(const char *a, size_t len, const char *b)
+{
+    size_t i;
+
+    if (strlen(b) != len)
+    {
+        return false;
+    }
+
+    for (i = 0; i < len; i++)
+    {
+        char x = a[i];
+        char y = b[i];
+
+        if ((x >= 'a') && (x <= 'z'))
+        {
+            x = (char)(x - ('a' - 'A'));
+        }
+
+        if ((y >= 'a') && (y <= 'z'))
+        {
+            y = (char)(y - ('a' - 'A'));
+        }
+
+        if (x != y)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/*
+ * charset（4.9）: ヘッダの Content-Type の charset= の値（';' か行末まで、前後の空白を除く）が
+ * UTF-8 でも CHARSET（未設定）でもなければ報告する。大文字と小文字は区別しない
+ */
+static void mnd_po_read_check_charset(mnd_po_reader_t *reader)
+{
+    static const char key[] = "charset=";
+    const size_t key_len = sizeof(key) - 1;
+    char shown[MND_PO_READ_SHOW_MAX + 1];
+    const mnd_po_entry_t *header;
+    mnd_slice_t value;
+    size_t index;
+    size_t i;
+    size_t start;
+    size_t end;
+
+    if (!mnd_po_catalog_header(reader->out, &index))
+    {
+        return;
+    }
+
+    header = &reader->out->entries[index];
+    if (!mnd_po_header_get(header, "Content-Type", &value))
+    {
+        return;
+    }
+
+    for (i = 0; (i + key_len) <= value.len; i++)
+    {
+        if (mnd_po_read_equals_nocase(value.data + i, key_len, key))
+        {
+            break;
+        }
+    }
+
+    if ((i + key_len) > value.len)
+    {
+        return;
+    }
+
+    start = i + key_len;
+    end = start;
+    while ((end < value.len) && (value.data[end] != ';'))
+    {
+        end++;
+    }
+
+    while ((start < end) && mnd_po_read_is_blank(value.data[start]))
+    {
+        start++;
+    }
+
+    while ((end > start) && mnd_po_read_is_blank(value.data[end - 1]))
+    {
+        end--;
+    }
+
+    if (mnd_po_read_equals_nocase(value.data + start, end - start, "UTF-8")
+        || mnd_po_read_equals_nocase(value.data + start, end - start, "CHARSET"))
+    {
+        return;
+    }
+
+    mnd_po_read_show(value.data + start, end - start, shown);
+    mnd_diag_add(reader->diags, MND_SEVERITY_ERROR, reader->path, header->line,
+                 "unsupported charset '%s'; only UTF-8 is supported", shown);
+    reader->errors++;
+}
+
+/* 改行の不一致を警告する。plural が偽なら msgstr の添字を表示しない */
+static void mnd_po_read_warn_newline(mnd_po_reader_t *reader, const mnd_po_entry_t *entry,
+                                     bool plural, size_t i, const char *where)
+{
+    if (plural)
+    {
+        mnd_diag_add(reader->diags, MND_SEVERITY_WARNING, reader->path, entry->line,
+                     "msgid and msgstr[%zu] do not both %s with '\\n'", i, where);
+    }
+    else
+    {
+        mnd_diag_add(reader->diags, MND_SEVERITY_WARNING, reader->path, entry->line,
+                     "msgid and msgstr do not both %s with '\\n'", where);
+    }
+}
+
+/*
+ * 改行の不一致（4.10）: 翻訳済みで、ヘッダでも廃止エントリでもない各エントリについて、
+ * msgid と各 msgstr の先頭と末尾の '\n' の有無が異なれば警告する
+ */
+static void mnd_po_read_check_newlines(mnd_po_reader_t *reader)
+{
+    const mnd_po_catalog_t *catalog = reader->out;
+    size_t header = SIZE_MAX;
+    size_t e;
+
+    if (!mnd_po_catalog_header(catalog, &header))
+    {
+        header = SIZE_MAX;
+    }
+
+    for (e = 0; e < catalog->count; e++)
+    {
+        const mnd_po_entry_t *entry = &catalog->entries[e];
+        const mnd_buf_t *msgid = &entry->msgid;
+        bool id_begins;
+        bool id_ends;
+        size_t i;
+
+        if ((e == header) || entry->obsolete
+            || (mnd_po_entry_state(entry) != MND_PO_STATE_TRANSLATED))
+        {
+            continue;
+        }
+
+        id_begins = (msgid->len > 0) && (msgid->data[0] == '\n');
+        id_ends = (msgid->len > 0) && (msgid->data[msgid->len - 1] == '\n');
+        for (i = 0; i < entry->msgstr.count; i++)
+        {
+            const mnd_buf_t *msgstr = &entry->msgstr.items[i];
+            bool str_begins = (msgstr->len > 0) && (msgstr->data[0] == '\n');
+            bool str_ends = (msgstr->len > 0) && (msgstr->data[msgstr->len - 1] == '\n');
+
+            if (id_begins != str_begins)
+            {
+                mnd_po_read_warn_newline(reader, entry, entry->has_msgid_plural, i, "begin");
+            }
+
+            if (id_ends != str_ends)
+            {
+                mnd_po_read_warn_newline(reader, entry, entry->has_msgid_plural, i, "end");
+            }
+        }
+    }
 }
 
 bool mnd_po_read(const char *data, size_t len, const char *path,
@@ -1275,7 +1555,8 @@ bool mnd_po_read(const char *data, size_t len, const char *path,
     reader.path = path;
     reader.diags = diags;
     reader.out = out;
-    reader.failed = false;
+    reader.errors = 0;
+    reader.recovering = false;
     mnd_po_entry_init(&reader.entry);
     mnd_po_read_reset_entry(&reader);
 
@@ -1302,7 +1583,16 @@ bool mnd_po_read(const char *data, size_t len, const char *path,
     }
 
     mnd_po_read_reset_entry(&reader);
-    if (reader.failed)
+
+    /* 読み込み後の検査は、構文エラーがない場合にだけ行う */
+    if (reader.errors == 0)
+    {
+        mnd_po_read_check_duplicates(&reader);
+        mnd_po_read_check_charset(&reader);
+        mnd_po_read_check_newlines(&reader);
+    }
+
+    if (reader.errors > 0)
     {
         mnd_po_catalog_free(out);
         mnd_po_catalog_init(out);
