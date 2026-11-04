@@ -170,6 +170,27 @@
   - 完了時: po-merge の golden スイートと `po_merge_msgmerge_golden.<case>` に新しいケースが加わって合格し、標準の 3 行の手順で全体のテストが合格する
   - _Requirements: 5.7_
 
+- [ ] 8. 最初の msgstr が空の廃止エントリを gettext と同じく書き出さない
+- [ ] 8.1 ライターが最初の msgstr が空の廃止エントリを書き出さないようにし、単体テストを書く
+  - 設計の「エントリの並びと区切り」の「書き出さない廃止エントリ（5.8）」のとおり、廃止エントリで msgstr が 0 個か最初の msgstr が空のものを、コメント・フラグ・前回の msgid を含めて 1 行も書かずに飛ばす。判定は 5.7・1.5 と同じ条件（状態の判定と同じ「最初の msgstr が空でない」）とし、空行の区切りは実際に書いたエントリの間にだけ置く。カタログは変更しない
+  - 既存の write のテスト `write_zero_msgstr_entries` の、msgstr が 0 個の複数形の廃止エントリ（`gone`）の期待値を直す。エントリごと書かないことを確かめるか、廃止エントリの msgstr[n] の書き方を確かめ続ける場合は訳を与える（どちらにしたかをテストのコメントに書く）
+  - 7.2 で加えた write のテストのうち、msgstr が空の廃止エントリに `fuzzy` を書かないことを確かめている部分は、エントリごと書かないことの確認に直す。訳のある fuzzy の廃止エントリが `#, fuzzy` 付きで書かれることの確認は残す
+  - 書き出しの変更で結果が変わる po-merge の単体テストを、テストの意味を変えずに同じタスクで直す。po-merge の製品のコードは変えない（全体のテストが赤い期間を作らないため）
+    - 既存の入力に msgstr が空の廃止エントリを含むもの（`merge_unused_entries_become_obsolete` の `u`）: 7.2 で加えた期待する書き戻しの指定（`old_written`）を使う
+    - テンプレートの入力に msgstr が空の廃止エントリを含むもの（`merge_output_order_and_template_obsolete_ignored` の `x`・`q`、`merge_empty_old_makes_all_new` の `gone`）: テストの補助関数（`merge_test_run_written`）にテンプレートの期待する書き戻しの指定を加え、テンプレートの廃止エントリを無視すること（1.4）と空の既存（1.6）の確認を保つ
+  - 完了時: write スイートで、単数形の空・msgstr が 0 個・コメントとフラグと前回の msgid と msgctxt を持つもの・複数形で msgstr[0] だけ空のものを書かないこと、複数形で msgstr[1] だけ空のものと訳のあるものを書くこと、書かないエントリが先頭・途中・末尾・連続・すべての場合の空行の区切り（すべての場合は空のカタログの出力と同じ）、書き出しの前後でカタログが変わらないこと、のテストが合格し、po_merge のテストを含む全体のテストが合格する
+  - _Boundary: Writer（po-merge の単体テストの期待値と、その補助関数の修正を含む）_
+  - _Requirements: 5.1, 5.7, 5.8, 7.1, 7.2_
+
+- [ ] 8.2 msgcat で作った正解ファイルを加え、往復のテストと互換性テストで gettext と一致することを確かめる
+  - 統合タスクとする。テストデータ、roundtrip のテスト、テストのビルドファイル、po-format の research.md を編集する
+  - 設計の互換性テストの「po_msgcat_normalize.obsolete_empty」のとおり、書かない廃止エントリ（単数形、コメント・フラグ・`#~|`・msgctxt を持つもの、複数形ですべて空・msgstr[0] だけ空）と、書く廃止エントリ（訳のあるもの、複数形で msgstr[1] だけ空）を、先頭・途中・末尾に置いた入力 `obsolete_empty_in.po` を手で書き、Ubuntu 24.04 の msgcat 0.21 で書き出した `obsolete_empty.po` を作る。作り方と内容をテストデータの README に書く
+  - roundtrip スイートで、`obsolete_empty.po` を既存の正解ファイルと同じ比較の対象に加え、`obsolete_empty_in.po` を読み込んで書き出した結果が `obsolete_empty.po` と一致すること、それを読み直したカタログが 5.8 で書かなかった廃止エントリを除いて最初のカタログと一致することを確かめる
+  - `po_msgcat_golden.obsolete_empty` と `po_msgcat_normalize.obsolete_empty` を、既存の msgcat 0.21 の版の条件の内側で登録する
+  - po-format の research.md の未決（msgstr が空の廃止エントリ）を、解消したことがわかるように直す
+  - 完了時: roundtrip スイートが全環境で合格し、msgcat 0.21 のある環境で `ctest -L po` に `po_msgcat_golden.obsolete_empty` と `po_msgcat_normalize.obsolete_empty` が表示されて合格し、標準の 3 行の手順で全体のテストが合格する
+  - _Requirements: 5.8, 7.1, 7.2, 7.3_
+
 ## Implementation Notes
 - 1.1: Ucd の表の形式（`mnd_po_ucd_range_t` と `mnd_po_ucd_lb_ranges` / `mnd_po_ucd_width_ranges` とその件数）は `po_internal.h` で定義した内部の形式で、1.2 で変えてよい。SA → CM の解決に必要な一般カテゴリ Mn・Mc の判定は、設計の宣言にないため 1.2 で内部の関数として追加する。
 - 1.2: UCD 15.0.0 で U+FFFC が CB のため、`MND_PO_LB_CB` を XX の後ろに追加した。2.4 で CB を解決・処理する（UAX #14 LB20、libunistring 1.1 の扱いに合わせる）。Mn・Mc の判定は `mnd_po_ucd_is_mark`。生成コマンド: `python3 -I tools/gen_po_ucd.py <ucd>/LineBreak.txt <ucd>/EastAsianWidth.txt <ucd>/extracted/DerivedGeneralCategory.txt -o src/po/po_ucd_tables.c`。文字幅は libunistring 1.1 の `uc_width` と 386 個のコードポイント（Unicode 15.0 の新しい絵文字、CJK のブロック内の未割り当て、U+D7B0〜U+D7FB、U+00AD など）で異なる。正解ファイルと合わない場合は 6.1 で扱う。
