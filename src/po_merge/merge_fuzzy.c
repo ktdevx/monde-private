@@ -8,8 +8,10 @@
 
 /* 列と 4-gram の列の配列を初めて確保するときの容量 */
 #define MND_MERGE_FUZZY_INITIAL_CAP 4u
+
 /* 比較値のしきい値（最良値の初期値）。この値を超えた候補だけを選ぶ */
 #define MND_MERGE_FUZZY_THRESHOLD 0.6
+
 /* msgctxt を持たない候補と、問い合わせと同じ msgctxt を持つ候補の比較値に加える値 */
 #define MND_MERGE_FUZZY_BONUS 0.00001
 
@@ -50,6 +52,7 @@ static bool grow_capacity(void **items, size_t count, size_t *cap, size_t size)
         {
             return false;
         }
+
         new_cap = *cap * 2;
     }
 
@@ -124,6 +127,7 @@ static bool add_gram(mnd_merge_fuzzy_t *fuzzy, const unsigned char *gram, size_t
     {
         return false;
     }
+
     fuzzy->gram_lists = lists;
 
     if (!mnd_merge_hash_insert(&fuzzy->grams, gram, gram_len, fuzzy->gram_list_count,
@@ -163,6 +167,7 @@ static bool first_gram_end(const unsigned char *s, size_t len, size_t *end)
         pos = next_char(s, len, pos);
         chars++;
     }
+
     *end = pos;
 
     return chars >= MND_MERGE_FUZZY_GRAM_CHARS;
@@ -371,10 +376,12 @@ static void sift_down(size_t *items, size_t start, size_t end, const size_t *cou
         {
             break;
         }
+
         if (((child + 1) < end) && order_before(counts, items[child], items[child + 1]))
         {
             child++;
         }
+
         if (!order_before(counts, items[root], items[child]))
         {
             break;
@@ -438,6 +445,7 @@ static void count_grams(mnd_merge_fuzzy_t *fuzzy, const unsigned char *s, size_t
                     fuzzy->touched[fuzzy->touched_count] = n;
                     fuzzy->touched_count++;
                 }
+
                 fuzzy->counts[n]++;
             }
         }
@@ -472,6 +480,7 @@ static void collect_short(mnd_merge_fuzzy_t *fuzzy, size_t len)
     {
         return;
     }
+
     lower = (size_t)lower_value;
     if ((double)lower < lower_value)
     {
@@ -536,6 +545,7 @@ static bool has_bonus(const mnd_po_entry_t *candidate, const mnd_po_entry_t *que
     {
         return true;
     }
+
     if (!query->has_msgctxt || (query->msgctxt.len != candidate->msgctxt.len))
     {
         return false;

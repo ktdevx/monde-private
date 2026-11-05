@@ -14,7 +14,8 @@
 #define MERGE_HEADER_LANGUAGE 6
 
 /* 既知の項目の名前（表の順と綴り） */
-static const char *const merge_header_names[MERGE_HEADER_FIELD_COUNT] = {
+static const char *const merge_header_names[MERGE_HEADER_FIELD_COUNT] =
+{
     "Project-Id-Version:",
     "Report-Msgid-Bugs-To:",
     "POT-Creation-Date:",
