@@ -92,7 +92,7 @@
   - _Requirements: 9.3_
 
 - [ ] 3. ブロックの段階
-- [ ] 3.1 解析の入口と、段落だけを扱うブロックの段階の骨組みを実装する
+- [x] 3.1 解析の入口と、段落だけを扱うブロックの段階の骨組みを実装する
   - オプション（NULL、開始位置、確保関数、パス）を検査し、内容全体の UTF-8 を検査する。開始位置が長さを超える場合と不正な UTF-8 の場合は、設計のメッセージで診断を返す
   - 開始位置から 1 行ずつ処理し、開いているブロックの配列（再帰なし）と、段落の行の記録、空行による段落の終わり、範囲と行番号の確定を実装する
   - 解析の作業状態とコンテキストの型を共有の内部ヘッダに加える
@@ -220,3 +220,4 @@
 - 2.5: `mnd_md_logical_text` は、内容が空でない行を 1 バイト以上重なるときだけ含め、内容が空の行は `start <= content.start <= end` で含める（リーフの範囲を渡すと最後の空行が残る）。pad は `start <= content.start` のときだけ補う。`mnd_buf` は malloc を直接使うため、Text のメモリ不足はテストできない。
 - 2.6: 範囲の検査は `mnd_md_tree_check(doc, &result)`（`result` は NULL 可）と、失敗時に NAOS_NOTE を出す `mnd_md_tree_check_note(doc)`（`tests/markdown/tree_check.h`）。`eol_len` は物理的な行の行末記号と一致すること、根は DOCUMENT で範囲の終わりが len であることも検査する。
 - 2.7: HTML の正規化は `mnd_md_html_normalize(html, len, &out)`（`tests/markdown/html_normalize.h`）。Python 3.13 の HTMLParser の流れを移植したもので、実体名は HTML5 の表で文字に戻す（normalize.py との設計どおりの違い）。
+- 3.1: 解析の作業状態は `md_internal.h` の `mnd_md_parser_t`（開いているブロックの配列 `open`、リーフの行の作業用配列 `leaf_lines`）。ブロックの段階は `mnd_md_block_run`、`match_open_blocks` は種類ごとの switch で、3.2・3.3・5.1 はそこに case を足す。`mnd_md_parse` は `mnd_md_block_run` の false を一律にメモリ不足として扱うため、5.1 で方言の規則の失敗を加えるときは別の経路が要る。行番号は `mnd_md_parser_line_of`、ノードの行番号は `mnd_md_parser_set_node_lines`。
