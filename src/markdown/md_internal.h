@@ -106,6 +106,28 @@ void mnd_md_array_free(mnd_md_array_t *array);
 /* 文書（md_node.c） */
 
 /*
+ * リンク参照定義の表の要素（md_linkref.c）。def が NULL なら空き。
+ * hash と len は正規化したラベル（def->as.link_ref_def.norm_label）のハッシュ値とバイト数
+ */
+typedef struct mnd_md_linkref_slot
+{
+    size_t hash;
+    size_t len;
+    const mnd_md_node_t *def;
+} mnd_md_linkref_slot_t;
+
+/*
+ * リンク参照定義の表（正規化したラベルのハッシュ表。開番地法）。要素の配列は文書のアリーナに確保し、
+ * 伸長するときは倍の大きさの配列をアリーナに作り直す。cap は 0 か 2 のべき乗
+ */
+typedef struct mnd_md_linkref_table
+{
+    mnd_md_linkref_slot_t *slots;
+    size_t cap;
+    size_t count;
+} mnd_md_linkref_table_t;
+
+/*
  * 文書。内容を指すポインタ、根、アリーナを持つ。文書の構造体自体は確保関数から直接確保し、
  * ノード・行の配列・正規化したラベル・方言のデータはアリーナに確保する。
  * 解析の段階で使う値（行番号の表など）は、担当するタスクがここに追加する
@@ -116,6 +138,7 @@ struct mnd_md_doc
     size_t len;
     mnd_md_node_t *root;            /* MND_MD_DOCUMENT */
     mnd_md_arena_t arena;
+    mnd_md_linkref_table_t refs;    /* リンク参照定義の表（ブロックの段階が作る。md_linkref.c） */
 };
 
 /*

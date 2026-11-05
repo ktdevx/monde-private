@@ -505,6 +505,268 @@ NAOS_TEST(block_leaves_interrupt_paragraph)
     mnd_md_doc_free(doc);
 }
 
+/* span が data の中で expected を指すことを確かめる */
+static void check_span_text(const char *data, mnd_span_t span, const char *expected)
+{
+    NAOS_REQUIRE_TRUE(span.start <= span.end);
+    NAOS_CHECK_MEM_EQ(data + span.start, span.end - span.start, expected, strlen(expected));
+}
+
+/*
+ * node がリンク参照定義で、ラベル・リンク先・タイトルの範囲が data の中でそれぞれの文字列を指すことを確かめる
+ * （title が NULL ならタイトルがない）
+ */
+static void check_def(const char *data, const mnd_md_node_t *node, const char *label, const char *dest,
+                      bool angle, const char *title, char delim)
+{
+    const mnd_md_link_ref_def_t *def = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(node);
+    NAOS_REQUIRE_INT_EQ((int)MND_MD_LINK_REF_DEF, (int)node->kind);
+    def = &node->as.link_ref_def;
+    check_span_text(data, def->label, label);
+    check_span_text(data, def->dest, dest);
+    NAOS_CHECK_TRUE(def->dest_angle == angle);
+    NAOS_CHECK_NOT_NULL(def->norm_label);
+    NAOS_CHECK_NULL(node->first_child);
+    NAOS_REQUIRE_UINT_GT(node->line_count, 0);
+    if (title == NULL)
+    {
+        NAOS_CHECK_FALSE(def->has_title);
+    }
+    else
+    {
+        NAOS_CHECK_TRUE(def->has_title);
+        check_span_text(data, def->title, title);
+        NAOS_CHECK_INT_EQ((int)delim, (int)def->title_delim);
+    }
+}
+
+/* 2.8: 段落の先頭の定義 2 つは段落の前の兄弟になり、段落の範囲と行は残りの行だけになる */
+NAOS_TEST(block_link_ref_defs_before_paragraph)
+{
+    static const char data[] = "[a]: /u\n[b]: <v w> 'T'\nrest\nmore\n";
+    mnd_md_doc_t *doc = parse_ok(data);
+    const mnd_md_node_t *root = NULL;
+    const mnd_md_node_t *a = NULL;
+    const mnd_md_node_t *b = NULL;
+    const mnd_md_node_t *para = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    root = mnd_md_doc_root(doc);
+    NAOS_REQUIRE_UINT_EQ(3, child_count(root));
+    a = child_at(root, 0);
+    b = child_at(root, 1);
+    para = child_at(root, 2);
+    check_def(data, a, "a", "/u", false, NULL, 0);
+    NAOS_CHECK_STR_EQ("a", a->as.link_ref_def.norm_label);
+    NAOS_CHECK_UINT_EQ(0, a->span.start);
+    NAOS_CHECK_UINT_EQ(7, a->span.end);
+    NAOS_CHECK_UINT_EQ(1, a->start_line);
+    NAOS_CHECK_UINT_EQ(1, a->end_line);
+    NAOS_REQUIRE_UINT_EQ(1, a->line_count);
+    NAOS_CHECK_UINT_EQ(0, a->lines[0].content.start);
+    NAOS_CHECK_UINT_EQ(7, a->lines[0].content.end);
+    NAOS_CHECK_UINT_EQ(1, a->lines[0].eol_len);
+    check_def(data, b, "b", "v w", true, "T", '\'');
+    NAOS_CHECK_UINT_EQ(8, b->span.start);
+    NAOS_CHECK_UINT_EQ(22, b->span.end);
+    NAOS_CHECK_UINT_EQ(2, b->start_line);
+    NAOS_REQUIRE_UINT_EQ(1, b->line_count);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_CHECK_INT_EQ((int)MND_MD_PARAGRAPH, (int)para->kind);
+    NAOS_CHECK_UINT_EQ(23, para->span.start);
+    NAOS_CHECK_UINT_EQ(32, para->span.end);
+    NAOS_CHECK_UINT_EQ(3, para->start_line);
+    NAOS_CHECK_UINT_EQ(4, para->end_line);
+    NAOS_REQUIRE_UINT_EQ(2, para->line_count);
+    NAOS_CHECK_UINT_EQ(23, para->lines[0].content.start);
+    NAOS_CHECK_UINT_EQ(3, para->lines[0].line);
+    NAOS_CHECK_UINT_EQ(28, para->lines[1].content.start);
+    mnd_md_doc_free(doc);
+
+    /* 定義は段落の先頭だけ。段落の途中の定義の形の行は段落の一部 */
+    doc = parse_ok("para\n[a]: /u\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    root = mnd_md_doc_root(doc);
+    NAOS_REQUIRE_UINT_EQ(1, child_count(root));
+    NAOS_CHECK_INT_EQ((int)MND_MD_PARAGRAPH, (int)root->first_child->kind);
+    NAOS_CHECK_UINT_EQ(2, root->first_child->line_count);
+    mnd_md_doc_free(doc);
+}
+
+/* 2.8: 定義だけの段落は取り除かれる（文書、引用、リスト項目の中） */
+NAOS_TEST(block_link_ref_defs_only_paragraph)
+{
+    static const mnd_md_kind_t kinds[] = { MND_MD_LINK_REF_DEF, MND_MD_LINK_REF_DEF, MND_MD_PARAGRAPH };
+    static const char quoted[] = "> [a]: /u\n>\n> [b]:\n> /v\n";
+    mnd_md_doc_t *doc = NULL;
+    const mnd_md_node_t *quote = NULL;
+    const mnd_md_node_t *item = NULL;
+
+    check_root_kinds("[a]: /u\n[b]: /v\n\npara\n", kinds, sizeof(kinds) / sizeof(kinds[0]));
+
+    doc = parse_ok(quoted);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    quote = mnd_md_doc_root(doc)->first_child;
+    NAOS_REQUIRE_NOT_NULL(quote);
+    NAOS_REQUIRE_INT_EQ((int)MND_MD_BLOCK_QUOTE, (int)quote->kind);
+    NAOS_REQUIRE_UINT_EQ(2, child_count(quote));
+    check_def(quoted, quote->first_child, "a", "/u", false, NULL, 0);
+    check_def(quoted, quote->last_child, "b", "/v", false, NULL, 0);
+    /* リンク先が次の行にある定義は 2 行。行のプレフィックスは `> ` */
+    NAOS_REQUIRE_UINT_EQ(2, quote->last_child->line_count);
+    NAOS_CHECK_UINT_EQ(19, quote->last_child->lines[1].prefix.start);
+    NAOS_CHECK_UINT_EQ(21, quote->last_child->lines[1].content.start);
+    NAOS_CHECK_UINT_EQ(3, quote->last_child->start_line);
+    NAOS_CHECK_UINT_EQ(4, quote->last_child->end_line);
+    NAOS_CHECK_UINT_EQ(sizeof(quoted) - 2, quote->span.end);
+    mnd_md_doc_free(doc);
+
+    doc = parse_ok("- [a]: /u\n- b\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    item = mnd_md_doc_root(doc)->first_child->first_child;
+    NAOS_REQUIRE_NOT_NULL(item);
+    NAOS_REQUIRE_UINT_EQ(1, child_count(item));
+    NAOS_CHECK_INT_EQ((int)MND_MD_LINK_REF_DEF, (int)item->first_child->kind);
+    NAOS_CHECK_UINT_EQ(9, item->span.end);
+    mnd_md_doc_free(doc);
+}
+
+/* 2.8: Setext 見出しに変わる段落でも、先に定義を取り出す。行が残らなければ見出しにならない */
+NAOS_TEST(block_link_ref_def_before_setext_heading)
+{
+    static const char data[] = "[a]: /u\nHead\n===\n";
+    static const mnd_md_kind_t para_kinds[] = { MND_MD_LINK_REF_DEF, MND_MD_PARAGRAPH };
+    static const mnd_md_kind_t break_kinds[] = { MND_MD_LINK_REF_DEF, MND_MD_THEMATIC_BREAK };
+    mnd_md_doc_t *doc = parse_ok(data);
+    const mnd_md_node_t *root = NULL;
+    const mnd_md_node_t *heading = NULL;
+    const mnd_md_node_t *quote = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    root = mnd_md_doc_root(doc);
+    NAOS_REQUIRE_UINT_EQ(2, child_count(root));
+    check_def(data, root->first_child, "a", "/u", false, NULL, 0);
+    heading = root->last_child;
+    NAOS_REQUIRE_INT_EQ((int)MND_MD_HEADING, (int)heading->kind);
+    NAOS_CHECK_TRUE(heading->as.heading.setext);
+    NAOS_CHECK_INT_EQ(1, heading->as.heading.level);
+    check_span_text(data, heading->as.heading.content, "Head");
+    NAOS_CHECK_UINT_EQ(8, heading->span.start);
+    NAOS_CHECK_UINT_EQ(16, heading->span.end);
+    NAOS_CHECK_UINT_EQ(2, heading->start_line);
+    NAOS_REQUIRE_UINT_EQ(1, heading->line_count);
+    NAOS_CHECK_UINT_EQ(8, heading->lines[0].content.start);
+    mnd_md_doc_free(doc);
+
+    /* 定義だけの段落の下の `===` は段落、`---` はテーマ区切り */
+    check_root_kinds("[a]: /u\n===\n", para_kinds, 2);
+    check_root_kinds("[a]: /u\n---\n", break_kinds, 2);
+
+    doc = parse_ok("> [a]: /u\n> ===\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    quote = mnd_md_doc_root(doc)->first_child;
+    NAOS_REQUIRE_NOT_NULL(quote);
+    NAOS_REQUIRE_UINT_EQ(2, child_count(quote));
+    NAOS_CHECK_INT_EQ((int)MND_MD_LINK_REF_DEF, (int)quote->first_child->kind);
+    NAOS_CHECK_INT_EQ((int)MND_MD_PARAGRAPH, (int)quote->last_child->kind);
+    NAOS_CHECK_FALSE(quote->last_child->lines[0].lazy);
+    mnd_md_doc_free(doc);
+}
+
+/* 2.7: 3 種類のタイトル、行をまたぐタイトル、山括弧のリンク先、行をまたぐラベル */
+NAOS_TEST(block_link_ref_def_titles_and_destinations)
+{
+    static const char data[] =
+        "[a]: /u \"t1\"\n"
+        "[b]: /u 't2'\n"
+        "[c]: /u (t3)\n"
+        "[d]:\n  /u\n  \"multi\nline\"\n"
+        "[e]: <>\n"
+        "[F\noo]: /a(b)c\\)d \"q\\\"\"\n";
+    mnd_md_doc_t *doc = parse_ok(data);
+    const mnd_md_node_t *root = NULL;
+    const mnd_md_node_t *d = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    root = mnd_md_doc_root(doc);
+    NAOS_REQUIRE_UINT_EQ(6, child_count(root));
+    check_def(data, child_at(root, 0), "a", "/u", false, "t1", '"');
+    check_def(data, child_at(root, 1), "b", "/u", false, "t2", '\'');
+    check_def(data, child_at(root, 2), "c", "/u", false, "t3", '(');
+    d = child_at(root, 3);
+    check_def(data, d, "d", "/u", false, "multi\nline", '"');
+    NAOS_CHECK_UINT_EQ(4, d->line_count);
+    NAOS_CHECK_UINT_EQ(4, d->start_line);
+    NAOS_CHECK_UINT_EQ(7, d->end_line);
+    check_def(data, child_at(root, 4), "e", "", true, NULL, 0);
+    check_def(data, child_at(root, 5), "F\noo", "/a(b)c\\)d", false, "q\\\"", '"');
+    NAOS_CHECK_STR_EQ("f oo", child_at(root, 5)->as.link_ref_def.norm_label);
+    mnd_md_doc_free(doc);
+}
+
+/* 2.7: 定義にならない形（段落のまま）と、タイトルを諦めて定義になる形 */
+NAOS_TEST(block_link_ref_def_rejections)
+{
+    static const mnd_md_kind_t para[] = { MND_MD_PARAGRAPH };
+    static const mnd_md_kind_t def_para[] = { MND_MD_LINK_REF_DEF, MND_MD_PARAGRAPH };
+    static const char *const not_defs[] = {
+        "[a]:\n",               /* リンク先がない */
+        "[a]: /u 'x' y\n",      /* タイトルの後ろに文字 */
+        "[a]: /u y\n",          /* リンク先の後ろに文字（空白のあとのタイトルでない） */
+        "[]: /u\n",             /* 空のラベル */
+        "[ \t]: /u\n",          /* 空白だけのラベル */
+        "[a]b]: /u\n",          /* ラベルの後ろが `:` でない */
+        "[a[b]: /u\n",          /* エスケープされない `[` */
+        "[a]: <b\n",            /* 閉じない山括弧 */
+        "[a]: <b\nc>\n",        /* 山括弧の中の改行 */
+        "[a]: <b>c\n",          /* 山括弧の後ろに文字 */
+        "[a]: /u(\n",           /* 釣り合わない括弧 */
+        "[a] : /u\n",           /* `]` と `:` の間の空白 */
+        "    [a]: /u\n",        /* インデントコード */
+        "[a]: /u 'x\n\ny'\n",   /* タイトルの中の空行（段落が終わる） */
+    };
+    size_t i = 0;
+    char label[1100];
+    size_t n = 0;
+
+    for (i = 0; i < sizeof(not_defs) / sizeof(not_defs[0]); i++)
+    {
+        mnd_md_doc_t *doc = parse_ok(not_defs[i]);
+
+        NAOS_REQUIRE_NOT_NULL(doc);
+        NAOS_CHECK_INT_EQ((int)((i == 12) ? MND_MD_CODE_BLOCK : MND_MD_PARAGRAPH),
+                          (int)mnd_md_doc_root(doc)->first_child->kind);
+        mnd_md_doc_free(doc);
+    }
+
+    /* 次の行のタイトルの後ろに文字があれば、タイトルのない定義と段落 */
+    check_root_kinds("[a]: /u\n'x' y\n", def_para, 2);
+    check_root_kinds("[a]: /u\n\"\"x\n", def_para, 2);
+    /* 閉じないタイトルが次の行から始まる */
+    check_root_kinds("[a]: /u\n'x\n", def_para, 2);
+
+    /* ラベルは 999 文字まで（`ä` は 2 バイトでも 1 文字） */
+    label[0] = '[';
+    n = 1;
+    for (i = 0; i < 998; i++)
+    {
+        label[n++] = 'x';
+    }
+    label[n++] = '\xC3';
+    label[n++] = '\xA4';
+    memcpy(label + n, "]: /u\n", 7);
+    {
+        static const mnd_md_kind_t def_only[] = { MND_MD_LINK_REF_DEF };
+
+        check_root_kinds(label, def_only, 1);
+    }
+    memmove(label + 2, label + 1, n + 6);
+    label[1] = 'y';
+    check_root_kinds(label, para, 1);
+}
+
 NAOS_SUITE(block,
     NAOS_ADD_TEST(block_list_marker_kinds),
     NAOS_ADD_TEST(block_list_start_numbers),
@@ -522,5 +784,10 @@ NAOS_SUITE(block,
     NAOS_ADD_TEST(block_indented_code),
     NAOS_ADD_TEST(block_html_block_types),
     NAOS_ADD_TEST(block_html_block_interrupting_paragraph),
-    NAOS_ADD_TEST(block_leaves_interrupt_paragraph)
+    NAOS_ADD_TEST(block_leaves_interrupt_paragraph),
+    NAOS_ADD_TEST(block_link_ref_defs_before_paragraph),
+    NAOS_ADD_TEST(block_link_ref_defs_only_paragraph),
+    NAOS_ADD_TEST(block_link_ref_def_before_setext_heading),
+    NAOS_ADD_TEST(block_link_ref_def_titles_and_destinations),
+    NAOS_ADD_TEST(block_link_ref_def_rejections)
 )

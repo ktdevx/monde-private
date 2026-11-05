@@ -5,6 +5,7 @@
 #include "markdown/md_html.h"
 #include "markdown/md_internal.h"
 #include "markdown/md_lines.h"
+#include "markdown/md_linkref.h"
 #include "markdown/md_scan.h"
 
 #include <stdbool.h>
@@ -207,22 +208,67 @@ static bool line_content_is_blank(const mnd_md_parser_t *parser, const mnd_md_li
 }
 
 /*
+ * 開いている段落 node（最も内側）の行（leaf_lines）の先頭からリンク参照定義を取り出す（LinkRef。2.8）。
+ * 定義のノードは node の前の兄弟になり、使った行を leaf_lines から除き、node の範囲の開始を残りの最初の行の
+ * 内容の開始にする。段落を閉じるときと、Setext の下線で見出しに変える前に呼ぶ。
+ * 段落に行が残れば *remains を真にする（残らなければ、呼び出し側が段落を取り除く）。メモリ不足なら false
+ */
+static bool paragraph_take_definitions(mnd_md_parser_t *parser, mnd_md_node_t *node, bool *remains)
+{
+    mnd_md_line_t *lines = (mnd_md_line_t *)parser->leaf_lines.items;
+    size_t count = parser->leaf_lines.count;
+    size_t taken = 0;
+
+    if (!mnd_md_linkref_take(parser, node, lines, count, &taken))
+    {
+        return false;
+    }
+    if (taken > 0)
+    {
+        memmove(lines, lines + taken, (count - taken) * sizeof(*lines));
+        parser->leaf_lines.count = count - taken;
+        if (parser->leaf_lines.count > 0)
+        {
+            node->span.start = lines[0].content.start;
+        }
+    }
+    *remains = (parser->leaf_lines.count > 0);
+
+    return true;
+}
+
+/*
  * 閉じるリーフの行を、作業用の配列から文書のアリーナへ移して node->lines に設定し、範囲を確定する
  * （範囲の規則）。インデントコードブロックは末尾の空行を行に含めない。段落・インデントコード・
  * HTML ブロックの範囲は、最初の行の内容の開始から最後の行の内容の終わりまで。閉じフェンスのない
  * フェンスコードブロックは、最後の行の内容の終わりまで（行がなければ開きフェンスの行の終わりのまま）。
  * 見出し・テーマ区切り・閉じたフェンスコードブロックの範囲は、開始のときに確定している。
+ * 段落は、先にリンク参照定義を取り出し、行が残らなければ木から取り除く。
  * メモリ不足なら false
  */
 static bool leaf_finalize(mnd_md_parser_t *parser, mnd_md_node_t *node)
 {
-    const mnd_md_line_t *items = (const mnd_md_line_t *)parser->leaf_lines.items;
+    const mnd_md_line_t *items = NULL;
     const mnd_md_line_t *first = NULL;
     const mnd_md_line_t *last = NULL;
     mnd_md_line_t *lines = NULL;
-    size_t count = parser->leaf_lines.count;
+    size_t count = 0;
     bool fenced = ((node->kind == MND_MD_CODE_BLOCK) && node->as.code_block.fenced);
+    bool remains = false;
 
+    if (node->kind == MND_MD_PARAGRAPH)
+    {
+        if (!paragraph_take_definitions(parser, node, &remains))
+        {
+            return false;
+        }
+        if (!remains)
+        {
+            mnd_md_node_unlink(node);
+        }
+    }
+    items = (const mnd_md_line_t *)parser->leaf_lines.items;
+    count = parser->leaf_lines.count;
     if ((node->kind == MND_MD_CODE_BLOCK) && !fenced)
     {
         while ((count > 0) && line_content_is_blank(parser, &items[count - 1]))
@@ -732,20 +778,9 @@ static bool start_thematic_break(mnd_md_parser_t *parser, const block_line_t *li
 }
 
 /*
- * Setext の下線で見出しに変える前に、開いている段落の先頭からリンク参照定義を取り出す位置
- * （定義の解析は 3.4 でここに加える。段落を閉じるときの取り出しと同じ処理を使う）。
- * 段落に行が残れば *remains を真にする。メモリ不足なら false
- */
-static bool paragraph_take_definitions(mnd_md_parser_t *parser, bool *remains)
-{
-    *remains = (parser->leaf_lines.count > 0);
-
-    return true;
-}
-
-/*
  * 最も内側の開いている段落（すべてのブロックを照合できた）を、Setext 見出しに変えて閉じる。
- * 段落の先頭のリンク参照定義を先に取り出し、行が残らなければ変えずに *converted を偽にする。
+ * 段落の先頭のリンク参照定義を先に取り出し、行が残らなければ段落を木と開いているブロックの配列から
+ * 取り除いて *converted を偽にする。
  * 範囲は最初の行の内容の開始から下線の行の終わりまで、内容は下線を除く行の末尾の空白を除いた範囲
  * （3.4、3.5）。下線の行は行に含めない。メモリ不足なら false
  */
@@ -759,12 +794,15 @@ static bool start_setext_heading(mnd_md_parser_t *parser, const block_line_t *li
     bool remains = false;
 
     *converted = false;
-    if (!paragraph_take_definitions(parser, &remains))
+    if (!paragraph_take_definitions(parser, node, &remains))
     {
         return false;
     }
     if (!remains)
     {
+        /* 段落の位置には定義のノードが残る。段落は空行で終わっていないので、親の記録は変わらない */
+        mnd_md_node_unlink(node);
+        mnd_md_array_pop(&parser->open);
         return true;
     }
     lines = (const mnd_md_line_t *)parser->leaf_lines.items;
@@ -1005,8 +1043,6 @@ static bool process_line(mnd_md_parser_t *parser, const mnd_md_phys_line_t *phys
 {
     block_line_t line;
     size_t matched = 0;
-    size_t count = 0;
-    bool tip_is_paragraph = false;
     bool fence_closed = false;
     bool started = false;
     bool done = false;
@@ -1029,9 +1065,6 @@ static bool process_line(mnd_md_parser_t *parser, const mnd_md_phys_line_t *phys
         record_blank_line(parser, &line);
         return true;
     }
-    count = open_count(parser);
-    tip_is_paragraph = (open_tip(parser)->kind == MND_MD_PARAGRAPH);
-
     /* 3: 新しいブロックの開始 */
     if (!try_block_starts(parser, &line, &matched, &started, &done))
     {
@@ -1046,9 +1079,11 @@ static bool process_line(mnd_md_parser_t *parser, const mnd_md_phys_line_t *phys
 
     /*
      * 4: 新しいブロックが始まらず、照合できなかったブロックがあり、最も内側が段落で、空行でなければ、
-     * 遅延継続行としてその段落に加える（段落の行は先頭の空白を除く）
+     * 遅延継続行としてその段落に加える（段落の行は先頭の空白を除く）。開始を試す間に開いているブロックが
+     * 変わるのは、定義だけの段落を Setext の下線の前で取り除いたときだけなので、現在の状態で判定する
      */
-    if (!started && (matched < count) && !line.indent.blank && tip_is_paragraph)
+    if (!started && (matched < open_count(parser)) && !line.indent.blank
+        && (open_tip(parser)->kind == MND_MD_PARAGRAPH))
     {
         return leaf_add_line(parser, &line, line.indent.pos, line.phys.line_end, 0, true);
     }
