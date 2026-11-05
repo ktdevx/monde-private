@@ -1,7 +1,8 @@
-/* BlockParser: コンテナの照合、ブロックの開始、遅延継続行、閉じる処理、範囲の確定 */
+/* BlockParser: コンテナの照合、コンテナとリーフの開始、遅延継続行、閉じる処理、範囲の確定 */
 
 #include "markdown/md.h"
 #include "markdown/md_block.h"
+#include "markdown/md_html.h"
 #include "markdown/md_internal.h"
 #include "markdown/md_lines.h"
 #include "markdown/md_scan.h"
@@ -68,15 +69,35 @@ static bool is_space_or_tab(char c)
     return ((c == ' ') || (c == '\t'));
 }
 
-/* 行を受け付けるリーフか（開いているリーフの行は leaf_lines に記録する） */
+/* リーフか（閉じるときに leaf_finalize で行と範囲を確定する。開いているリーフの行は leaf_lines に記録する） */
 static bool is_leaf(const mnd_md_node_t *node)
 {
-    return node->kind == MND_MD_PARAGRAPH;
+    switch (node->kind)
+    {
+    case MND_MD_PARAGRAPH:
+    case MND_MD_HEADING:
+    case MND_MD_THEMATIC_BREAK:
+    case MND_MD_CODE_BLOCK:
+    case MND_MD_HTML_BLOCK:
+        return true;
+    default:
+        return false;
+    }
+}
+
+/*
+ * 行をそのまま受け付けるリーフか（コードブロック、HTML ブロック）。
+ * 最後に照合したブロックがこれらなら、新しいブロックの開始を試さない
+ */
+static bool accepts_lines(const mnd_md_node_t *node)
+{
+    return ((node->kind == MND_MD_CODE_BLOCK) || (node->kind == MND_MD_HTML_BLOCK));
 }
 
 /*
  * parent の種類のブロックが、child の種類のブロックを子に持てるか。
- * 文書・引用・リスト項目はリスト項目以外を、リストはリスト項目だけを持ち、リーフは子を持たない
+ * 文書・引用・リスト項目はリスト項目以外（リーフを含む）を、リストはリスト項目だけを持ち、
+ * リーフ（段落、見出し、テーマ区切り、コードブロック、HTML ブロック）は子を持たない
  */
 static bool can_contain(mnd_md_kind_t parent, mnd_md_kind_t child)
 {
@@ -146,10 +167,10 @@ static size_t line_trimmed_end(const mnd_md_parser_t *parser, const block_line_t
 
 /*
  * 開いているリーフに行を 1 つ記録する。prefix は物理的な行の先頭から content_start まで、
- * content は content_start から行末記号の直前まで。メモリ不足なら false
+ * content は content_start から content_end まで（ATX 見出し以外は行末記号の直前）。メモリ不足なら false
  */
 static bool leaf_add_line(mnd_md_parser_t *parser, const block_line_t *line, size_t content_start,
-                          size_t pad, bool lazy)
+                          size_t content_end, size_t pad, bool lazy)
 {
     mnd_md_line_t *rec = (mnd_md_line_t *)mnd_md_array_push(&parser->leaf_lines);
 
@@ -161,7 +182,7 @@ static bool leaf_add_line(mnd_md_parser_t *parser, const block_line_t *line, siz
     rec->prefix.start = line->phys.line_start;
     rec->prefix.end = content_start;
     rec->content.start = content_start;
-    rec->content.end = line->phys.line_end;
+    rec->content.end = content_end;
     rec->pad = (unsigned char)pad;
     rec->eol_len = (unsigned char)line->phys.eol_len;
     rec->lazy = lazy;
@@ -169,17 +190,46 @@ static bool leaf_add_line(mnd_md_parser_t *parser, const block_line_t *line, siz
     return true;
 }
 
+/* 行の内容が空白とタブだけ（空を含む）か */
+static bool line_content_is_blank(const mnd_md_parser_t *parser, const mnd_md_line_t *line)
+{
+    size_t i = 0;
+
+    for (i = line->content.start; i < line->content.end; i++)
+    {
+        if (!is_space_or_tab(parser->data[i]))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 /*
- * 閉じるリーフの行を、作業用の配列から文書のアリーナへ移して node->lines に設定する。
- * 範囲は最初の行の内容の開始から最後の行の内容の終わりまで（リーフの範囲の規則）。メモリ不足なら false
+ * 閉じるリーフの行を、作業用の配列から文書のアリーナへ移して node->lines に設定し、範囲を確定する
+ * （範囲の規則）。インデントコードブロックは末尾の空行を行に含めない。段落・インデントコード・
+ * HTML ブロックの範囲は、最初の行の内容の開始から最後の行の内容の終わりまで。閉じフェンスのない
+ * フェンスコードブロックは、最後の行の内容の終わりまで（行がなければ開きフェンスの行の終わりのまま）。
+ * 見出し・テーマ区切り・閉じたフェンスコードブロックの範囲は、開始のときに確定している。
+ * メモリ不足なら false
  */
 static bool leaf_finalize(mnd_md_parser_t *parser, mnd_md_node_t *node)
 {
+    const mnd_md_line_t *items = (const mnd_md_line_t *)parser->leaf_lines.items;
     const mnd_md_line_t *first = NULL;
     const mnd_md_line_t *last = NULL;
     mnd_md_line_t *lines = NULL;
     size_t count = parser->leaf_lines.count;
+    bool fenced = ((node->kind == MND_MD_CODE_BLOCK) && node->as.code_block.fenced);
 
+    if ((node->kind == MND_MD_CODE_BLOCK) && !fenced)
+    {
+        while ((count > 0) && line_content_is_blank(parser, &items[count - 1]))
+        {
+            count--;
+        }
+    }
     if (count > 0)
     {
         lines = (mnd_md_line_t *)mnd_md_arena_alloc_array(&parser->doc->arena, count, sizeof(*lines));
@@ -187,11 +237,30 @@ static bool leaf_finalize(mnd_md_parser_t *parser, mnd_md_node_t *node)
         {
             return false;
         }
-        memcpy(lines, parser->leaf_lines.items, count * sizeof(*lines));
+        memcpy(lines, items, count * sizeof(*lines));
         first = &lines[0];
         last = &lines[count - 1];
-        node->span.start = first->content.start;
-        node->span.end = last->content.end;
+        switch (node->kind)
+        {
+        case MND_MD_PARAGRAPH:
+        case MND_MD_HTML_BLOCK:
+            node->span.start = first->content.start;
+            node->span.end = last->content.end;
+            break;
+        case MND_MD_CODE_BLOCK:
+            if (!fenced)
+            {
+                node->span.start = first->content.start;
+                node->span.end = last->content.end;
+            }
+            else if (!node->as.code_block.closed)
+            {
+                node->span.end = last->content.end;
+            }
+            break;
+        default:
+            break;
+        }
     }
     node->lines = lines;
     node->line_count = count;
@@ -323,10 +392,53 @@ static void line_consume_block_quote_marker(const mnd_md_parser_t *parser, block
 }
 
 /*
- * 開いているブロックを根の次から順に、現在の行と照合する。照合できたブロックの数（根を含む）を返す。
- * 照合できたコンテナが使ったバイトの分だけ line->cur を進め、line->indent を更新する
+ * 開いているフェンスコードブロック node と現在の行を照合する（常に照合できる）。
+ * 閉じフェンスなら、閉じたことと範囲の終わり（閉じフェンスの行の終わり）を記録して *closed を真にする。
+ * そうでなければ、開きフェンスのインデントの桁数までの空白を使う（4.6）
  */
-static size_t match_open_blocks(mnd_md_parser_t *parser, block_line_t *line)
+static void match_fenced_code(const mnd_md_parser_t *parser, block_line_t *line, mnd_md_node_t *node,
+                              bool *closed)
+{
+    const mnd_md_code_block_t *code = &node->as.code_block;
+
+    if (!line->indent.blank && (line->indent.indent < BLOCK_CODE_INDENT)
+        && mnd_md_scan_close_fence(parser->data, line->indent.pos, line->phys.line_end,
+                                   code->fence_char, code->fence_len))
+    {
+        node->as.code_block.closed = true;
+        node->span.end = line->phys.line_end;
+        *closed = true;
+        return;
+    }
+    line_skip_columns(parser, line, code->fence_indent);
+}
+
+/*
+ * 開いているインデントコードブロックと現在の行を照合する。4 桁以上のインデントなら 4 桁を使い（4.7）、
+ * 4 桁に満たない空行なら行の空白をすべて使う。それ以外は照合できない
+ */
+static bool match_indented_code(const mnd_md_parser_t *parser, block_line_t *line)
+{
+    if (line->indent.indent >= BLOCK_CODE_INDENT)
+    {
+        line_skip_columns(parser, line, BLOCK_CODE_INDENT);
+        return true;
+    }
+    if (line->indent.blank)
+    {
+        line_advance_to_nonspace(parser, line);
+        return true;
+    }
+
+    return false;
+}
+
+/*
+ * 開いているブロックを根の次から順に、現在の行と照合する。照合できたブロックの数（根を含む）を返す。
+ * 照合できたコンテナが使ったバイトの分だけ line->cur を進め、line->indent を更新する。
+ * 行が閉じフェンスなら *fence_closed を真にする（行はそこで使い終わる）
+ */
+static size_t match_open_blocks(mnd_md_parser_t *parser, block_line_t *line, bool *fence_closed)
 {
     size_t matched = 1;
     size_t i = 0;
@@ -375,6 +487,22 @@ static size_t match_open_blocks(mnd_md_parser_t *parser, block_line_t *line)
         case MND_MD_PARAGRAPH:
             /* 段落は空行で終わる */
             ok = !line->indent.blank;
+            break;
+        case MND_MD_CODE_BLOCK:
+            if (node->as.code_block.fenced)
+            {
+                match_fenced_code(parser, line, entry->node, fence_closed);
+                ok = true;
+            }
+            else
+            {
+                ok = match_indented_code(parser, line);
+            }
+            break;
+        case MND_MD_HTML_BLOCK:
+            /* 種類 6 と 7 は空行で終わる。種類 1〜5 の終了条件は、行を加えたあとに判定する */
+            ok = !(line->indent.blank
+                   && ((node->as.html_block.type == 6) || (node->as.html_block.type == 7)));
             break;
         default:
             ok = false;
@@ -474,20 +602,217 @@ static bool start_list_item(mnd_md_parser_t *parser, block_line_t *line,
 }
 
 /*
+ * 照合できなかったブロックを閉じ、kind の種類のリーフを span の範囲で開く。
+ * *matched を開いているブロックの数にする。新しいリーフのノードを返す。メモリ不足なら NULL
+ */
+static mnd_md_node_t *start_leaf(mnd_md_parser_t *parser, mnd_md_kind_t kind, mnd_span_t span,
+                                 size_t *matched)
+{
+    mnd_md_open_block_t *entry = NULL;
+
+    if (!close_to(parser, *matched))
+    {
+        return NULL;
+    }
+    entry = add_block(parser, kind, span);
+    if (entry == NULL)
+    {
+        return NULL;
+    }
+    *matched = open_count(parser);
+
+    return entry->node;
+}
+
+/*
+ * インデントコードブロックを開く。コードブロックの 4 桁を使い（タブの一部なら pad に残す。4.5、4.7）、
+ * 行は手順 5 で加える。メモリ不足なら false
+ */
+static bool start_indented_code(mnd_md_parser_t *parser, block_line_t *line, size_t *matched)
+{
+    mnd_md_node_t *node = NULL;
+    mnd_span_t span;
+
+    line_skip_columns(parser, line, BLOCK_CODE_INDENT);
+    span.start = line->cur.pos;
+    span.end = line->cur.pos;
+    node = start_leaf(parser, MND_MD_CODE_BLOCK, span, matched);
+    if (node == NULL)
+    {
+        return false;
+    }
+    node->as.code_block.fenced = false;
+
+    return true;
+}
+
+/*
+ * ATX 見出しを開き、見出しの内容を行として加えて閉じる。範囲は最初の `#` から行の終わりまで
+ * （3.4、3.5）。メモリ不足なら false
+ */
+static bool start_atx_heading(mnd_md_parser_t *parser, const block_line_t *line,
+                              const mnd_md_heading_t *heading, size_t *matched)
+{
+    mnd_md_node_t *node = NULL;
+    mnd_span_t span;
+
+    span.start = line->indent.pos;
+    span.end = line->phys.line_end;
+    node = start_leaf(parser, MND_MD_HEADING, span, matched);
+    if (node == NULL)
+    {
+        return false;
+    }
+    node->as.heading = *heading;
+    if (!leaf_add_line(parser, line, heading->content.start, heading->content.end, 0, false))
+    {
+        return false;
+    }
+
+    return close_tip(parser);
+}
+
+/*
+ * フェンスコードブロックを開く。開きフェンスの行は内容の行に含めない（4.6）。範囲は開きフェンスから
+ * 行の終わりまでで、続く行と閉じフェンスで広げる。メモリ不足なら false
+ */
+static bool start_fenced_code(mnd_md_parser_t *parser, const block_line_t *line,
+                              const mnd_md_code_block_t *fence, size_t *matched)
+{
+    mnd_md_node_t *node = NULL;
+    mnd_span_t span;
+
+    span.start = line->indent.pos;
+    span.end = line->phys.line_end;
+    node = start_leaf(parser, MND_MD_CODE_BLOCK, span, matched);
+    if (node == NULL)
+    {
+        return false;
+    }
+    node->as.code_block = *fence;
+    node->as.code_block.fence_indent = line->indent.indent;
+
+    return true;
+}
+
+/* HTML ブロックを開く。行は、コンテナのプレフィックスの直後から手順 5 で加える。メモリ不足なら false */
+static bool start_html_block(mnd_md_parser_t *parser, const block_line_t *line, int type,
+                             size_t *matched)
+{
+    mnd_md_node_t *node = NULL;
+    mnd_span_t span;
+
+    span.start = line->cur.pos;
+    span.end = line->cur.pos;
+    node = start_leaf(parser, MND_MD_HTML_BLOCK, span, matched);
+    if (node == NULL)
+    {
+        return false;
+    }
+    node->as.html_block.type = type;
+
+    return true;
+}
+
+/*
+ * テーマ区切りを開いて閉じる。範囲は最初の記号から行の終わりまで。行は持たない。メモリ不足なら false
+ */
+static bool start_thematic_break(mnd_md_parser_t *parser, const block_line_t *line, size_t *matched)
+{
+    mnd_span_t span;
+
+    span.start = line->indent.pos;
+    span.end = line->phys.line_end;
+    if (start_leaf(parser, MND_MD_THEMATIC_BREAK, span, matched) == NULL)
+    {
+        return false;
+    }
+
+    return close_tip(parser);
+}
+
+/*
+ * Setext の下線で見出しに変える前に、開いている段落の先頭からリンク参照定義を取り出す位置
+ * （定義の解析は 3.4 でここに加える。段落を閉じるときの取り出しと同じ処理を使う）。
+ * 段落に行が残れば *remains を真にする。メモリ不足なら false
+ */
+static bool paragraph_take_definitions(mnd_md_parser_t *parser, bool *remains)
+{
+    *remains = (parser->leaf_lines.count > 0);
+
+    return true;
+}
+
+/*
+ * 最も内側の開いている段落（すべてのブロックを照合できた）を、Setext 見出しに変えて閉じる。
+ * 段落の先頭のリンク参照定義を先に取り出し、行が残らなければ変えずに *converted を偽にする。
+ * 範囲は最初の行の内容の開始から下線の行の終わりまで、内容は下線を除く行の末尾の空白を除いた範囲
+ * （3.4、3.5）。下線の行は行に含めない。メモリ不足なら false
+ */
+static bool start_setext_heading(mnd_md_parser_t *parser, const block_line_t *line, int level,
+                                 bool *converted)
+{
+    mnd_md_node_t *node = open_tip(parser);
+    const mnd_md_line_t *lines = NULL;
+    const mnd_md_line_t *last = NULL;
+    size_t content_end = 0;
+    bool remains = false;
+
+    *converted = false;
+    if (!paragraph_take_definitions(parser, &remains))
+    {
+        return false;
+    }
+    if (!remains)
+    {
+        return true;
+    }
+    lines = (const mnd_md_line_t *)parser->leaf_lines.items;
+    last = &lines[parser->leaf_lines.count - 1];
+    content_end = last->content.end;
+    while ((content_end > last->content.start) && is_space_or_tab(parser->data[content_end - 1]))
+    {
+        content_end--;
+    }
+    node->kind = MND_MD_HEADING;
+    node->as.heading.level = level;
+    node->as.heading.setext = true;
+    node->as.heading.content.start = lines[0].content.start;
+    node->as.heading.content.end = content_end;
+    node->span.start = lines[0].content.start;
+    node->span.end = line->phys.line_end;
+    *converted = true;
+
+    return close_tip(parser);
+}
+
+/*
  * 照合できたブロックの中で、新しいブロックの開始を試す（設計の「ブロックの段階」の 3）。
- * コンテナが開始したら、行の残りで続けて試す。何か開始したら *started を真にする。
+ * コンテナが開始したら、行の残りで続けて試す。何か開始したら *started を真にし、行を使い終わる
+ * リーフ（ATX 見出し、Setext 見出し、テーマ区切り、開きフェンス）なら *done も真にする。
  * *matched は、開始したときに開いているブロックの数になる。メモリ不足なら false
  */
 static bool try_block_starts(mnd_md_parser_t *parser, block_line_t *line, size_t *matched,
-                             bool *started)
+                             bool *started, bool *done)
 {
     mnd_md_scan_list_marker_t marker;
+    mnd_md_heading_t heading;
+    mnd_md_code_block_t fence;
+    mnd_md_html_start_t html;
+    int level = 0;
 
     for (;;)
     {
         const mnd_md_node_t *container = open_node(parser, *matched - 1);
+        const char *data = parser->data;
+        size_t pos = line->indent.pos;
+        size_t end = line->phys.line_end;
 
-        /* 3.3: container が行を受け付けるリーフ（コードブロック、HTML ブロック）なら、ここで止める */
+        if (accepts_lines(container))
+        {
+            /* コードブロックと HTML ブロックの中では、ブロックは始まらない */
+            break;
+        }
         if (line->indent.blank)
         {
             /* 空行からはブロックが始まらない */
@@ -495,7 +820,15 @@ static bool try_block_starts(mnd_md_parser_t *parser, block_line_t *line, size_t
         }
         if (line->indent.indent >= BLOCK_CODE_INDENT)
         {
-            /* 3.3: 最も内側の開いているブロックが段落でなければ、インデントコードブロックを開く */
+            /* 最も内側の開いているブロックが段落でなければ（遅延継続行でもなければ）、インデントコード */
+            if (open_tip(parser)->kind != MND_MD_PARAGRAPH)
+            {
+                if (!start_indented_code(parser, line, matched))
+                {
+                    return false;
+                }
+                *started = true;
+            }
             break;
         }
         /* 5.1: 方言のブロックの規則を登録順に試す */
@@ -508,13 +841,63 @@ static bool try_block_starts(mnd_md_parser_t *parser, block_line_t *line, size_t
             *started = true;
             continue;
         }
-        /* 3.3: ATX 見出し、フェンス、HTML ブロック、Setext の下線、テーマ区切りをこの順に試す */
-        if (mnd_md_scan_list_marker(parser->data, line->indent.pos, line->phys.line_end, &marker))
+        memset(&heading, 0, sizeof(heading));
+        if (mnd_md_scan_atx_heading(data, pos, end, &heading))
+        {
+            *started = true;
+            *done = true;
+            return start_atx_heading(parser, line, &heading, matched);
+        }
+        memset(&fence, 0, sizeof(fence));
+        if (mnd_md_scan_open_fence(data, pos, end, &fence))
+        {
+            *started = true;
+            *done = true;
+            return start_fenced_code(parser, line, &fence, matched);
+        }
+        /* 種類 7 は、段落（遅延継続行の候補を含む）を中断しない */
+        if (mnd_md_html_block_start(data, pos, end, &html)
+            && (html.interrupts_paragraph || (open_tip(parser)->kind != MND_MD_PARAGRAPH)))
+        {
+            *started = true;
+            return start_html_block(parser, line, html.type, matched);
+        }
+        if (container->kind == MND_MD_PARAGRAPH)
+        {
+            level = mnd_md_scan_setext_underline(data, pos, end);
+            if (level > 0)
+            {
+                bool converted = false;
+
+                if (!start_setext_heading(parser, line, level, &converted))
+                {
+                    return false;
+                }
+                if (converted)
+                {
+                    *started = true;
+                    *done = true;
+                    return true;
+                }
+                /* 段落がすべて定義だったので見出しにならない。ほかのブロックの開始を続けて試す */
+                if (*matched > open_count(parser))
+                {
+                    *matched = open_count(parser);
+                }
+            }
+        }
+        if (mnd_md_scan_thematic_break(data, pos, end, NULL))
+        {
+            *started = true;
+            *done = true;
+            return start_thematic_break(parser, line, matched);
+        }
+        if (mnd_md_scan_list_marker(data, pos, end, &marker))
         {
             /* 段落を中断できるのは、空でなく、順序付きなら開始番号が 1 の項目だけ */
             bool interrupts = (!marker.rest_blank && (!marker.ordered || (marker.start == 1UL)));
 
-            if ((container->kind != MND_MD_PARAGRAPH) || interrupts)
+            if ((open_node(parser, *matched - 1)->kind != MND_MD_PARAGRAPH) || interrupts)
             {
                 if (!start_list_item(parser, line, &marker, matched))
                 {
@@ -533,8 +916,8 @@ static bool try_block_starts(mnd_md_parser_t *parser, block_line_t *line, size_t
 /*
  * 照合できなかったブロックを閉じたあと、空行を記録する（タイトとルーズの判定）。
  * 空行なら最も内側のブロックの最後の子が空行で終わるとし、最も内側のブロックから根まで、
- * 最後の行が空行かどうかを設定する。引用と、この行で始まった子のないリスト項目は、空行で終わったとしない
- * （3.3: フェンスコードブロックも同じ）
+ * 最後の行が空行かどうかを設定する。引用、フェンスコードブロック、この行で始まった子のないリスト項目は、
+ * 空行で終わったとしない
  */
 static void record_blank_line(mnd_md_parser_t *parser, const block_line_t *line)
 {
@@ -549,7 +932,8 @@ static void record_blank_line(mnd_md_parser_t *parser, const block_line_t *line)
     {
         tip_entry->last_child_blank = true;
     }
-    if (node->kind == MND_MD_BLOCK_QUOTE)
+    if ((node->kind == MND_MD_BLOCK_QUOTE)
+        || ((node->kind == MND_MD_CODE_BLOCK) && node->as.code_block.fenced))
     {
         last_line_blank = false;
     }
@@ -589,6 +973,33 @@ static bool open_paragraph(mnd_md_parser_t *parser, const block_line_t *line)
     return (add_block(parser, MND_MD_PARAGRAPH, span) != NULL);
 }
 
+/*
+ * 最も内側の開いているリーフ（コードブロック、HTML ブロック）に、コンテナと自身が使ったバイトの後ろから
+ * 行を加える（タブの一部を使ったなら pad を記録する）。HTML ブロックの種類 1〜5 は、行が終了条件を
+ * 満たせば閉じる。メモリ不足なら false
+ */
+static bool add_line_to_code_or_html(mnd_md_parser_t *parser, const block_line_t *line)
+{
+    const mnd_md_node_t *tip = open_tip(parser);
+    int type = 0;
+
+    if (!leaf_add_line(parser, line, line->cur.pos, line->phys.line_end, line->cur.pad, false))
+    {
+        return false;
+    }
+    if (tip->kind == MND_MD_HTML_BLOCK)
+    {
+        type = tip->as.html_block.type;
+        if ((type >= 1) && (type <= 5)
+            && mnd_md_html_block_end(parser->data, line->cur.pos, line->phys.line_end, type))
+        {
+            return close_tip(parser);
+        }
+    }
+
+    return true;
+}
+
 /* 物理的な行を 1 つ処理する（ブロックの段階の 1 行の処理）。メモリ不足なら false */
 static bool process_line(mnd_md_parser_t *parser, const mnd_md_phys_line_t *phys)
 {
@@ -596,7 +1007,9 @@ static bool process_line(mnd_md_parser_t *parser, const mnd_md_phys_line_t *phys
     size_t matched = 0;
     size_t count = 0;
     bool tip_is_paragraph = false;
+    bool fence_closed = false;
     bool started = false;
+    bool done = false;
 
     line.phys = *phys;
     line.cur.pos = phys->line_start;
@@ -605,14 +1018,30 @@ static bool process_line(mnd_md_parser_t *parser, const mnd_md_phys_line_t *phys
     line_scan_indent(parser, &line);
 
     /* 2: 開いているブロックの照合 */
-    matched = match_open_blocks(parser, &line);
+    matched = match_open_blocks(parser, &line, &fence_closed);
+    if (fence_closed)
+    {
+        /* 閉じフェンスの行: フェンスコードブロック（最も内側）を閉じ、行を使い終わる */
+        if (!close_tip(parser))
+        {
+            return false;
+        }
+        record_blank_line(parser, &line);
+        return true;
+    }
     count = open_count(parser);
     tip_is_paragraph = (open_tip(parser)->kind == MND_MD_PARAGRAPH);
 
     /* 3: 新しいブロックの開始 */
-    if (!try_block_starts(parser, &line, &matched, &started))
+    if (!try_block_starts(parser, &line, &matched, &started, &done))
     {
         return false;
+    }
+    if (done)
+    {
+        /* 行を使い終わるリーフが始まった */
+        record_blank_line(parser, &line);
+        return true;
     }
 
     /*
@@ -621,18 +1050,25 @@ static bool process_line(mnd_md_parser_t *parser, const mnd_md_phys_line_t *phys
      */
     if (!started && (matched < count) && !line.indent.blank && tip_is_paragraph)
     {
-        return leaf_add_line(parser, &line, line.indent.pos, 0, true);
+        return leaf_add_line(parser, &line, line.indent.pos, line.phys.line_end, 0, true);
     }
 
-    /* 5: 照合できなかったブロックを閉じ、空行を記録し、行を段落に加えるか新しい段落を開く */
+    /*
+     * 5: 照合できなかったブロックを閉じ、空行を記録し、行をリーフ（段落、コードブロック、HTML ブロック）に
+     * 加えるか新しい段落を開く
+     */
     if (!close_to(parser, matched))
     {
         return false;
     }
     record_blank_line(parser, &line);
+    if (accepts_lines(open_tip(parser)))
+    {
+        return add_line_to_code_or_html(parser, &line);
+    }
     if (open_tip(parser)->kind == MND_MD_PARAGRAPH)
     {
-        return leaf_add_line(parser, &line, line.indent.pos, 0, false);
+        return leaf_add_line(parser, &line, line.indent.pos, line.phys.line_end, 0, false);
     }
     if (line.indent.blank)
     {
@@ -643,7 +1079,7 @@ static bool process_line(mnd_md_parser_t *parser, const mnd_md_phys_line_t *phys
         return false;
     }
 
-    return leaf_add_line(parser, &line, line.indent.pos, 0, false);
+    return leaf_add_line(parser, &line, line.indent.pos, line.phys.line_end, 0, false);
 }
 
 bool mnd_md_block_run(mnd_md_parser_t *parser)

@@ -157,10 +157,139 @@ NAOS_TEST(lines_block_quote_followed_by_tab)
     mnd_md_doc_free(doc);
 }
 
+/* 4.6: 開きフェンスのインデントが 2 なら、各行から 2 桁までの空白を除く。フェンスの行は行に入らない */
+NAOS_TEST(lines_fenced_code_with_indented_fence)
+{
+    mnd_md_doc_t *doc = parse_ok("  ```\n  a\n b\nc\n    d\n  ```\n");
+    const mnd_md_node_t *code = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    code = mnd_md_doc_root(doc)->first_child;
+    NAOS_REQUIRE_NOT_NULL(code);
+    NAOS_REQUIRE_INT_EQ((int)MND_MD_CODE_BLOCK, (int)code->kind);
+    NAOS_CHECK_UINT_EQ(2, code->as.code_block.fence_indent);
+    NAOS_REQUIRE_UINT_EQ(4, code->line_count);
+    check_line(&code->lines[0], 2, 6, 8, 9, 0, 1, false);
+    check_line(&code->lines[1], 3, 10, 11, 12, 0, 1, false);
+    check_line(&code->lines[2], 4, 13, 13, 14, 0, 1, false);
+    check_line(&code->lines[3], 5, 15, 17, 20, 0, 1, false);
+    check_logical_text(doc, code, "a\nb\nc\n  d");
+    mnd_md_doc_free(doc);
+}
+
+/* 4.7: インデントコードは 4 桁をプレフィックスに入れる。4 桁に満たない空行は空白をすべて除く */
+NAOS_TEST(lines_indented_code_blank_lines)
+{
+    mnd_md_doc_t *doc = parse_ok("    a\n  \n    b\n");
+    const mnd_md_node_t *code = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    code = mnd_md_doc_root(doc)->first_child;
+    NAOS_REQUIRE_NOT_NULL(code);
+    NAOS_REQUIRE_INT_EQ((int)MND_MD_CODE_BLOCK, (int)code->kind);
+    NAOS_REQUIRE_UINT_EQ(3, code->line_count);
+    check_line(&code->lines[0], 1, 0, 4, 5, 0, 1, false);
+    check_line(&code->lines[1], 2, 6, 8, 8, 0, 1, false);
+    check_line(&code->lines[2], 3, 9, 13, 14, 0, 1, false);
+    check_logical_text(doc, code, "a\n\nb");
+    mnd_md_doc_free(doc);
+
+    /* 4 桁を超える空行は、4 桁を除いた残りの空白が内容になる */
+    doc = parse_ok("    a\n      \n    b\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    code = mnd_md_doc_root(doc)->first_child;
+    NAOS_REQUIRE_NOT_NULL(code);
+    NAOS_REQUIRE_UINT_EQ(3, code->line_count);
+    check_line(&code->lines[1], 2, 6, 10, 12, 0, 1, false);
+    check_logical_text(doc, code, "a\n  \nb");
+    mnd_md_doc_free(doc);
+}
+
+/* 4.5、4.7: コンテナがタブの一部を使ったあとのインデントコードは、残りの桁を pad に入れる */
+NAOS_TEST(lines_indented_code_pad_after_tab)
+{
+    static const char *const inputs[] = { "-\t\tfoo\n", ">\t\tfoo\n" };
+    size_t i = 0;
+
+    for (i = 0; i < (sizeof(inputs) / sizeof(inputs[0])); i++)
+    {
+        mnd_md_doc_t *doc = parse_ok(inputs[i]);
+        const mnd_md_node_t *code = NULL;
+
+        NAOS_REQUIRE_NOT_NULL(doc);
+        code = mnd_md_doc_root(doc)->first_child;
+        while ((code != NULL) && (code->kind != MND_MD_CODE_BLOCK))
+        {
+            code = code->first_child;
+        }
+        NAOS_REQUIRE_NOT_NULL(code);
+        NAOS_CHECK_FALSE(code->as.code_block.fenced);
+        NAOS_REQUIRE_UINT_EQ(1, code->line_count);
+        check_line(&code->lines[0], 1, 0, 3, 6, 2, 1, false);
+        check_logical_text(doc, code, "  foo");
+        mnd_md_doc_free(doc);
+    }
+}
+
+/* 4.3: CRLF の行の eol_len は 2 で、内容に CR が入らない */
+NAOS_TEST(lines_crlf_eol_len)
+{
+    mnd_md_doc_t *doc = parse_ok("# a\r\n```\r\nb\r\n```\r\n    c\r\n");
+    const mnd_md_node_t *node = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    node = mnd_md_doc_root(doc)->first_child;
+    NAOS_REQUIRE_NOT_NULL(node);
+    NAOS_REQUIRE_INT_EQ((int)MND_MD_HEADING, (int)node->kind);
+    NAOS_REQUIRE_UINT_EQ(1, node->line_count);
+    check_line(&node->lines[0], 1, 0, 2, 3, 0, 2, false);
+    node = node->next;
+    NAOS_REQUIRE_NOT_NULL(node);
+    NAOS_REQUIRE_INT_EQ((int)MND_MD_CODE_BLOCK, (int)node->kind);
+    NAOS_CHECK_UINT_EQ(5, node->span.start);
+    NAOS_CHECK_UINT_EQ(16, node->span.end);
+    NAOS_REQUIRE_UINT_EQ(1, node->line_count);
+    check_line(&node->lines[0], 3, 10, 10, 11, 0, 2, false);
+    node = node->next;
+    NAOS_REQUIRE_NOT_NULL(node);
+    NAOS_REQUIRE_INT_EQ((int)MND_MD_CODE_BLOCK, (int)node->kind);
+    NAOS_REQUIRE_UINT_EQ(1, node->line_count);
+    check_line(&node->lines[0], 5, 18, 22, 23, 0, 2, false);
+    check_logical_text(doc, node, "c");
+    mnd_md_doc_free(doc);
+}
+
+/* 4.1、4.2: ATX 見出しの行の内容は見出しの内容。HTML ブロックの行はコンテナのプレフィックスの直後から */
+NAOS_TEST(lines_heading_and_html_block)
+{
+    mnd_md_doc_t *doc = parse_ok("## foo ##\n> <div>\n> x\n");
+    const mnd_md_node_t *node = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    node = mnd_md_doc_root(doc)->first_child;
+    NAOS_REQUIRE_NOT_NULL(node);
+    NAOS_REQUIRE_INT_EQ((int)MND_MD_HEADING, (int)node->kind);
+    NAOS_REQUIRE_UINT_EQ(1, node->line_count);
+    check_line(&node->lines[0], 1, 0, 3, 6, 0, 1, false);
+    node = node->next->first_child;
+    NAOS_REQUIRE_NOT_NULL(node);
+    NAOS_REQUIRE_INT_EQ((int)MND_MD_HTML_BLOCK, (int)node->kind);
+    NAOS_REQUIRE_UINT_EQ(2, node->line_count);
+    check_line(&node->lines[0], 2, 10, 12, 17, 0, 1, false);
+    check_line(&node->lines[1], 3, 18, 20, 21, 0, 1, false);
+    check_logical_text(doc, node, "<div>\nx");
+    mnd_md_doc_free(doc);
+}
+
 NAOS_SUITE(lines,
     NAOS_ADD_TEST(lines_paragraph_in_item_in_block_quote),
     NAOS_ADD_TEST(lines_paragraph_extra_indent_in_item),
     NAOS_ADD_TEST(lines_lazy_continuation_flagged),
     NAOS_ADD_TEST(lines_list_marker_followed_by_tab),
-    NAOS_ADD_TEST(lines_block_quote_followed_by_tab)
+    NAOS_ADD_TEST(lines_block_quote_followed_by_tab),
+    NAOS_ADD_TEST(lines_fenced_code_with_indented_fence),
+    NAOS_ADD_TEST(lines_indented_code_blank_lines),
+    NAOS_ADD_TEST(lines_indented_code_pad_after_tab),
+    NAOS_ADD_TEST(lines_crlf_eol_len),
+    NAOS_ADD_TEST(lines_heading_and_html_block)
 )

@@ -289,6 +289,222 @@ NAOS_TEST(block_lazy_continuation)
     mnd_md_doc_free(doc);
 }
 
+/* data の根の子の種類が kinds（count 個）と一致することを確かめる */
+static void check_root_kinds(const char *data, const mnd_md_kind_t *kinds, size_t count)
+{
+    mnd_md_doc_t *doc = parse_ok(data);
+    const mnd_md_node_t *root = NULL;
+    size_t i = 0;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    root = mnd_md_doc_root(doc);
+    NAOS_CHECK_UINT_EQ(count, child_count(root));
+    for (i = 0; (i < count) && (child_at(root, i) != NULL); i++)
+    {
+        NAOS_CHECK_INT_EQ((int)kinds[i], (int)child_at(root, i)->kind);
+    }
+    mnd_md_doc_free(doc);
+}
+
+/* 2.2、2.3: ATX 見出しのレベル 1〜6。7 個の `#` は段落になる */
+NAOS_TEST(block_atx_heading_levels)
+{
+    mnd_md_doc_t *doc = parse_ok("# a\n## b\n### c\n#### d\n##### e\n###### f\n####### g\n");
+    const mnd_md_node_t *root = NULL;
+    const mnd_md_node_t *heading = NULL;
+    int level = 0;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    root = mnd_md_doc_root(doc);
+    NAOS_REQUIRE_UINT_EQ(7, child_count(root));
+    for (level = 1; level <= 6; level++)
+    {
+        heading = child_at(root, (size_t)(level - 1));
+        NAOS_CHECK_INT_EQ((int)MND_MD_HEADING, (int)heading->kind);
+        NAOS_CHECK_INT_EQ(level, heading->as.heading.level);
+        NAOS_CHECK_FALSE(heading->as.heading.setext);
+        NAOS_CHECK_UINT_EQ(1, heading->line_count);
+    }
+    NAOS_CHECK_INT_EQ((int)MND_MD_PARAGRAPH, (int)child_at(root, 6)->kind);
+    mnd_md_doc_free(doc);
+}
+
+/* 2.3: Setext 見出しの `=`（レベル 1）と `-`（レベル 2）。2 行の内容を持てる */
+NAOS_TEST(block_setext_headings)
+{
+    mnd_md_doc_t *doc = parse_ok("a\n===\nb\nc\n---\n");
+    const mnd_md_node_t *root = NULL;
+    const mnd_md_node_t *heading = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    root = mnd_md_doc_root(doc);
+    NAOS_REQUIRE_UINT_EQ(2, child_count(root));
+    heading = child_at(root, 0);
+    NAOS_CHECK_INT_EQ((int)MND_MD_HEADING, (int)heading->kind);
+    NAOS_CHECK_INT_EQ(1, heading->as.heading.level);
+    NAOS_CHECK_TRUE(heading->as.heading.setext);
+    NAOS_CHECK_UINT_EQ(1, heading->line_count);
+    heading = child_at(root, 1);
+    NAOS_CHECK_INT_EQ((int)MND_MD_HEADING, (int)heading->kind);
+    NAOS_CHECK_INT_EQ(2, heading->as.heading.level);
+    NAOS_CHECK_TRUE(heading->as.heading.setext);
+    NAOS_CHECK_UINT_EQ(2, heading->line_count);
+    mnd_md_doc_free(doc);
+
+    /* 遅延継続行の `===` は下線にならない。段落のない `---` はテーマ区切り */
+    doc = parse_ok("> a\n===\n---\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    root = mnd_md_doc_root(doc);
+    NAOS_REQUIRE_UINT_EQ(2, child_count(root));
+    NAOS_CHECK_INT_EQ((int)MND_MD_PARAGRAPH, (int)root->first_child->first_child->kind);
+    NAOS_CHECK_UINT_EQ(2, root->first_child->first_child->line_count);
+    NAOS_CHECK_INT_EQ((int)MND_MD_THEMATIC_BREAK, (int)child_at(root, 1)->kind);
+    mnd_md_doc_free(doc);
+}
+
+/* 2.2: テーマ区切りは段落を中断し、リスト記号より先に判定する */
+NAOS_TEST(block_thematic_breaks)
+{
+    static const mnd_md_kind_t kinds[] = {
+        MND_MD_PARAGRAPH, MND_MD_THEMATIC_BREAK, MND_MD_THEMATIC_BREAK, MND_MD_THEMATIC_BREAK,
+        MND_MD_LIST
+    };
+
+    check_root_kinds("a\n***\n- - -\n___\n- b\n", kinds, sizeof(kinds) / sizeof(kinds[0]));
+}
+
+/* 2.5: バッククォートと `~` のフェンス、長さ 3 と 5、情報文字列、閉じフェンスの有無 */
+NAOS_TEST(block_fenced_code)
+{
+    mnd_md_doc_t *doc = parse_ok("```ruby  x\na\n```\n~~~~~\nb\n~~~\nc\n");
+    const mnd_md_node_t *root = NULL;
+    const mnd_md_node_t *code = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    root = mnd_md_doc_root(doc);
+    NAOS_REQUIRE_UINT_EQ(2, child_count(root));
+    code = child_at(root, 0);
+    NAOS_CHECK_INT_EQ((int)MND_MD_CODE_BLOCK, (int)code->kind);
+    NAOS_CHECK_TRUE(code->as.code_block.fenced);
+    NAOS_CHECK_INT_EQ((int)'`', (int)code->as.code_block.fence_char);
+    NAOS_CHECK_UINT_EQ(3, code->as.code_block.fence_len);
+    NAOS_CHECK_UINT_EQ(0, code->as.code_block.fence_indent);
+    NAOS_CHECK_TRUE(code->as.code_block.has_info);
+    NAOS_CHECK_UINT_EQ(3, code->as.code_block.info.start);
+    NAOS_CHECK_UINT_EQ(10, code->as.code_block.info.end);
+    NAOS_CHECK_TRUE(code->as.code_block.closed);
+    NAOS_CHECK_UINT_EQ(1, code->line_count);
+
+    /* 短い閉じフェンスは閉じない。閉じフェンスがないまま文書が終わる */
+    code = child_at(root, 1);
+    NAOS_CHECK_INT_EQ((int)MND_MD_CODE_BLOCK, (int)code->kind);
+    NAOS_CHECK_TRUE(code->as.code_block.fenced);
+    NAOS_CHECK_INT_EQ((int)'~', (int)code->as.code_block.fence_char);
+    NAOS_CHECK_UINT_EQ(5, code->as.code_block.fence_len);
+    NAOS_CHECK_FALSE(code->as.code_block.has_info);
+    NAOS_CHECK_FALSE(code->as.code_block.closed);
+    NAOS_CHECK_UINT_EQ(3, code->line_count);
+    mnd_md_doc_free(doc);
+
+    /* 内容のないフェンス */
+    doc = parse_ok("````\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    code = mnd_md_doc_root(doc)->first_child;
+    NAOS_REQUIRE_NOT_NULL(code);
+    NAOS_CHECK_INT_EQ((int)MND_MD_CODE_BLOCK, (int)code->kind);
+    NAOS_CHECK_UINT_EQ(4, code->as.code_block.fence_len);
+    NAOS_CHECK_FALSE(code->as.code_block.closed);
+    NAOS_CHECK_UINT_EQ(0, code->line_count);
+    mnd_md_doc_free(doc);
+}
+
+/* 2.2: インデントコードブロックは段落を中断しない */
+NAOS_TEST(block_indented_code)
+{
+    static const mnd_md_kind_t code_kinds[] = { MND_MD_CODE_BLOCK, MND_MD_PARAGRAPH };
+    static const mnd_md_kind_t para_kinds[] = { MND_MD_PARAGRAPH };
+    mnd_md_doc_t *doc = parse_ok("    a\n\n    b\nc\n");
+    const mnd_md_node_t *code = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    code = mnd_md_doc_root(doc)->first_child;
+    NAOS_REQUIRE_NOT_NULL(code);
+    NAOS_CHECK_INT_EQ((int)MND_MD_CODE_BLOCK, (int)code->kind);
+    NAOS_CHECK_FALSE(code->as.code_block.fenced);
+    NAOS_CHECK_UINT_EQ(3, code->line_count);
+    mnd_md_doc_free(doc);
+
+    check_root_kinds("    a\nb\n", code_kinds, 2);
+    check_root_kinds("a\n    b\n", para_kinds, 1);
+}
+
+/* html_block の種類を 1 つ持つ文書であることと、行の数を確かめる */
+static void check_html_block(const char *data, int type, size_t line_count)
+{
+    mnd_md_doc_t *doc = parse_ok(data);
+    const mnd_md_node_t *html = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    html = mnd_md_doc_root(doc)->first_child;
+    NAOS_REQUIRE_NOT_NULL(html);
+    NAOS_CHECK_INT_EQ((int)MND_MD_HTML_BLOCK, (int)html->kind);
+    NAOS_CHECK_INT_EQ(type, html->as.html_block.type);
+    NAOS_CHECK_UINT_EQ(line_count, html->line_count);
+    mnd_md_doc_free(doc);
+}
+
+/* 2.6: HTML ブロックの開始条件の種類 1〜7。1〜5 は終了条件の行まで、6 と 7 は空行まで */
+NAOS_TEST(block_html_block_types)
+{
+    check_html_block("<script>\nx\n</script>\ny\n", 1, 3);
+    check_html_block("<!-- a\n\nb -->\ny\n", 2, 3);
+    check_html_block("<?php\n?>\ny\n", 3, 2);
+    check_html_block("<!DOCTYPE html>\ny\n", 4, 1);
+    check_html_block("<![CDATA[\nx\n]]>\ny\n", 5, 3);
+    check_html_block("<div>\n*x*\n\ny\n", 6, 2);
+    check_html_block("<custom-tag>\nx\n\ny\n", 7, 2);
+}
+
+/* 2.6: 種類 7 は段落を中断せず、種類 1〜6 は中断する */
+NAOS_TEST(block_html_block_interrupting_paragraph)
+{
+    static const mnd_md_kind_t para_kinds[] = { MND_MD_PARAGRAPH };
+    static const mnd_md_kind_t quote_kinds[] = { MND_MD_BLOCK_QUOTE };
+    static const mnd_md_kind_t html_kinds[] = { MND_MD_PARAGRAPH, MND_MD_HTML_BLOCK };
+
+    check_root_kinds("a\n<custom-tag>\n", para_kinds, 1);
+    /* 遅延継続行の候補の段落も中断しない */
+    check_root_kinds("> a\n<custom-tag>\n", quote_kinds, 1);
+    check_root_kinds("a\n<div>\n", html_kinds, 2);
+}
+
+/* 2.2: ATX 見出し・フェンス・HTML ブロックは段落を中断する。コンテナの中のリーフ */
+NAOS_TEST(block_leaves_interrupt_paragraph)
+{
+    static const mnd_md_kind_t kinds[] = {
+        MND_MD_PARAGRAPH, MND_MD_HEADING, MND_MD_PARAGRAPH, MND_MD_CODE_BLOCK
+    };
+    mnd_md_doc_t *doc = NULL;
+    const mnd_md_node_t *quote = NULL;
+
+    check_root_kinds("a\n# b\nc\n```\nd\n", kinds, sizeof(kinds) / sizeof(kinds[0]));
+
+    doc = parse_ok("> ```\n> a\n\n- # b\n\n      c\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    quote = mnd_md_doc_root(doc)->first_child;
+    NAOS_REQUIRE_INT_EQ((int)MND_MD_BLOCK_QUOTE, (int)quote->kind);
+    NAOS_REQUIRE_NOT_NULL(quote->first_child);
+    NAOS_CHECK_INT_EQ((int)MND_MD_CODE_BLOCK, (int)quote->first_child->kind);
+    NAOS_CHECK_UINT_EQ(1, quote->first_child->line_count);
+    NAOS_REQUIRE_NOT_NULL(quote->next);
+    NAOS_REQUIRE_INT_EQ((int)MND_MD_LIST, (int)quote->next->kind);
+    NAOS_REQUIRE_UINT_EQ(2, child_count(quote->next->first_child));
+    NAOS_CHECK_INT_EQ((int)MND_MD_HEADING, (int)quote->next->first_child->first_child->kind);
+    NAOS_CHECK_INT_EQ((int)MND_MD_CODE_BLOCK, (int)child_at(quote->next->first_child, 1)->kind);
+    NAOS_CHECK_FALSE(quote->next->as.list.tight);
+    mnd_md_doc_free(doc);
+}
+
 NAOS_SUITE(block,
     NAOS_ADD_TEST(block_list_marker_kinds),
     NAOS_ADD_TEST(block_list_start_numbers),
@@ -298,5 +514,13 @@ NAOS_SUITE(block,
     NAOS_ADD_TEST(block_list_nested_tightness),
     NAOS_ADD_TEST(block_containers_hold_children_in_order),
     NAOS_ADD_TEST(block_list_item_needs_content_indent),
-    NAOS_ADD_TEST(block_lazy_continuation)
+    NAOS_ADD_TEST(block_lazy_continuation),
+    NAOS_ADD_TEST(block_atx_heading_levels),
+    NAOS_ADD_TEST(block_setext_headings),
+    NAOS_ADD_TEST(block_thematic_breaks),
+    NAOS_ADD_TEST(block_fenced_code),
+    NAOS_ADD_TEST(block_indented_code),
+    NAOS_ADD_TEST(block_html_block_types),
+    NAOS_ADD_TEST(block_html_block_interrupting_paragraph),
+    NAOS_ADD_TEST(block_leaves_interrupt_paragraph)
 )
