@@ -2,6 +2,7 @@
 
 #include "markdown/md.h"
 #include "markdown/md_block.h"
+#include "markdown/md_inline.h"
 #include "markdown/md_internal.h"
 #include "markdown/md_lines.h"
 #include "markdown/md_parse.h"
@@ -120,7 +121,8 @@ bool mnd_md_parse(const char *data, size_t len, const mnd_md_options_t *options,
     mnd_md_array_init(&parser.leaf_lines, sizeof(mnd_md_line_t), parser.allocator);
 
     parser.doc = mnd_md_doc_create(data, len, parser.allocator);
-    if ((parser.doc == NULL) || !parser_build_line_index(&parser) || !mnd_md_block_run(&parser))
+    if ((parser.doc == NULL) || !parser_build_line_index(&parser) || !mnd_md_block_run(&parser)
+        || !mnd_md_inline_run(&parser))
     {
         /* ここまでの失敗はメモリ不足だけである（8.2） */
         parser_discard(&parser);
