@@ -144,14 +144,17 @@ static void check_logical(const mnd_md_doc_t *doc, const mnd_md_node_t *leaf, mn
     mnd_buf_free(&buf);
 }
 
-/* 5.1: テキストだけの段落は 1 つのテキストのノードになり、`*`、`_`、`[`、`]`、`!` もテキストのまま（4.2 まで） */
+/*
+ * 5.1: テキストだけの段落は 1 つのテキストのノードになる。対にならない `*` と `_`、`[`、`]`、`!` もテキストで、
+ * 隣のテキストと 1 つのノードにまとまる（`[` と `]` は 4.3 まで）
+ */
 NAOS_TEST(inline_text)
 {
     static const expected_node_t one[] = { { MND_MD_TEXT, 0, 5 } };
-    static const expected_node_t plain[] = { { MND_MD_TEXT, 0, 14 } };
+    static const expected_node_t plain[] = { { MND_MD_TEXT, 0, 13 } };
 
     check_paragraph("hello\n", one, 1);
-    check_paragraph("*a* _b_ [c]! d\n", plain, 1);
+    check_paragraph("*a b_ [c]! _d\n", plain, 1);
 }
 
 /* 5.1: ソフト改行（前の行の末尾の空白 1 つと行末記号を範囲とする） */
@@ -529,7 +532,7 @@ NAOS_TEST(inline_ranges_with_body_start)
 NAOS_TEST(inline_out_of_memory)
 {
     static const char data[] =
-        "> a `b\n> c` <d\n> e=\"f\"> &amp; \\* <http://x> \n> g  \nh\\\ni\n\n# j `k`\n";
+        "> a `b\n> c` <d\n> e=\"f\"> &amp; \\* <http://x> \n> g  \nh\\\ni\n\n# j `k`\n\n***l** m* _n_ *o\n";
     size_t fail_at = 0;
     size_t failures = 0;
     bool succeeded = false;
@@ -550,6 +553,7 @@ NAOS_TEST(inline_out_of_memory)
             NAOS_REQUIRE_NOT_NULL(doc);
             NAOS_CHECK_TRUE(mnd_md_tree_check_note(doc));
             NAOS_CHECK_NOT_NULL(find_kind(doc, MND_MD_HTML_INLINE));
+            NAOS_CHECK_NOT_NULL(find_kind(doc, MND_MD_STRONG));
             mnd_md_doc_free(doc);
         }
         else
@@ -612,6 +616,248 @@ NAOS_TEST(inline_pathological_unclosed)
     }
 }
 
+/* 強調のノードの種類・範囲・区切り記号の文字・開きと閉じの区切り記号の範囲を確かめる */
+static void check_emph(const mnd_md_node_t *node, mnd_md_kind_t kind, char delim, size_t open_start,
+                       size_t close_end)
+{
+    size_t width = (kind == MND_MD_STRONG) ? 2 : 1;
+
+    NAOS_REQUIRE_NOT_NULL(node);
+    NAOS_CHECK_INT_EQ((int)kind, (int)node->kind);
+    NAOS_CHECK_INT_EQ(delim, node->as.emph.delim);
+    NAOS_CHECK_UINT_EQ(open_start, node->span.start);
+    NAOS_CHECK_UINT_EQ(close_end, node->span.end);
+    NAOS_CHECK_UINT_EQ(open_start, node->as.emph.open.start);
+    NAOS_CHECK_UINT_EQ(open_start + width, node->as.emph.open.end);
+    NAOS_CHECK_UINT_EQ(close_end - width, node->as.emph.close.start);
+    NAOS_CHECK_UINT_EQ(close_end, node->as.emph.close.end);
+    NAOS_CHECK_TRUE(node->lines == NULL);
+}
+
+/* 5.1、5.9: `*a*` と `__a__` の強調と強い強調 */
+NAOS_TEST(inline_emphasis_simple)
+{
+    static const expected_node_t inner_a[] = { { MND_MD_TEXT, 1, 2 } };
+    static const expected_node_t inner_b[] = { { MND_MD_TEXT, 2, 3 } };
+    mnd_md_doc_t *doc = NULL;
+    const mnd_md_node_t *para = NULL;
+
+    doc = parse_ok("*a*\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(1, child_count(para));
+    check_emph(child_at(para, 0), MND_MD_EMPH, '*', 0, 3);
+    check_children(child_at(para, 0), inner_a, 1);
+    NAOS_CHECK_UINT_EQ(1, child_at(para, 0)->start_line);
+    NAOS_CHECK_UINT_EQ(1, child_at(para, 0)->end_line);
+    mnd_md_doc_free(doc);
+
+    doc = parse_ok("__a__\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(1, child_count(para));
+    check_emph(child_at(para, 0), MND_MD_STRONG, '_', 0, 5);
+    check_children(child_at(para, 0), inner_b, 1);
+    mnd_md_doc_free(doc);
+}
+
+/* 5.9: `***a***` は強調の中の強い強調（内側が開きの後ろの 2 つと閉じの前の 2 つを使う） */
+NAOS_TEST(inline_emphasis_triple)
+{
+    static const expected_node_t inner[] = { { MND_MD_TEXT, 3, 4 } };
+    mnd_md_doc_t *doc = parse_ok("***a***\n");
+    const mnd_md_node_t *para = NULL;
+    const mnd_md_node_t *em = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(1, child_count(para));
+    em = child_at(para, 0);
+    check_emph(em, MND_MD_EMPH, '*', 0, 7);
+    NAOS_REQUIRE_UINT_EQ(1, child_count(em));
+    check_emph(child_at(em, 0), MND_MD_STRONG, '*', 1, 6);
+    check_children(child_at(em, 0), inner, 1);
+    mnd_md_doc_free(doc);
+}
+
+/* 5.9: `*a **b** c*` は強調の中に強い強調とテキストを持つ */
+NAOS_TEST(inline_emphasis_nested)
+{
+    static const expected_node_t inner[] = { { MND_MD_TEXT, 5, 6 } };
+    mnd_md_doc_t *doc = parse_ok("*a **b** c*\n");
+    const mnd_md_node_t *para = NULL;
+    const mnd_md_node_t *em = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(1, child_count(para));
+    em = child_at(para, 0);
+    check_emph(em, MND_MD_EMPH, '*', 0, 11);
+    NAOS_REQUIRE_UINT_EQ(3, child_count(em));
+    NAOS_CHECK_INT_EQ((int)MND_MD_TEXT, (int)child_at(em, 0)->kind);
+    NAOS_CHECK_UINT_EQ(1, child_at(em, 0)->span.start);
+    NAOS_CHECK_UINT_EQ(3, child_at(em, 0)->span.end);
+    check_emph(child_at(em, 1), MND_MD_STRONG, '*', 3, 8);
+    check_children(child_at(em, 1), inner, 1);
+    NAOS_CHECK_INT_EQ((int)MND_MD_TEXT, (int)child_at(em, 2)->kind);
+    NAOS_CHECK_UINT_EQ(8, child_at(em, 2)->span.start);
+    NAOS_CHECK_UINT_EQ(10, child_at(em, 2)->span.end);
+    mnd_md_doc_free(doc);
+}
+
+/*
+ * 5.9: 強調にならない例。`_` の単語の中（`_a_b`）、句読点の隣接（`a*"b"*`）、Unicode の句読点（S の `£`）、
+ * Unicode の空白（Zs の U+00A0 とタブ）の隣。区切り記号は隣のテキストと 1 つのテキストになる
+ */
+NAOS_TEST(inline_emphasis_not_formed)
+{
+    static const expected_node_t intraword[] = { { MND_MD_TEXT, 0, 4 } };
+    static const expected_node_t punct[] = { { MND_MD_TEXT, 0, 6 } };
+    static const expected_node_t pound[] = { { MND_MD_TEXT, 0, 7 } };
+    static const expected_node_t nbsp[] = { { MND_MD_TEXT, 0, 7 } };
+    static const expected_node_t tab[] = { { MND_MD_TEXT, 0, 6 } };
+    static const expected_node_t unclosed[] = { { MND_MD_TEXT, 0, 6 } };
+
+    check_paragraph("_a_b\n", intraword, 1);
+    check_paragraph("a*\"b\"*\n", punct, 1);
+    check_paragraph("*\xC2\xA3*bra\n", pound, 1);
+    check_paragraph("*\xC2\xA0" "a\xC2\xA0*\n", nbsp, 1);
+    check_paragraph("a *\tb*\n", tab, 1);
+    check_paragraph("**a b_\n", unclosed, 1);
+}
+
+/* 5.9: NUL は U+FFFD（句読点）として隣接を判定する（`a*\0b*` は句読点の前の `*` が開きにならない） */
+NAOS_TEST(inline_emphasis_nul_is_punctuation)
+{
+    static const char data[] = "a*\0b*\n";
+    static const expected_node_t plain[] = { { MND_MD_TEXT, 0, 5 } };
+    mnd_md_doc_t *doc = parse_len_ok(data, sizeof(data) - 1);
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    check_children(find_kind(doc, MND_MD_PARAGRAPH), plain, 1);
+    mnd_md_doc_free(doc);
+}
+
+/* 5.9: 句読点の隣でも、開きの前が空白か句読点なら強調になる（`*"b"*`）。`_` の単語の境目（`a _b_ c`） */
+NAOS_TEST(inline_emphasis_punctuation)
+{
+    mnd_md_doc_t *doc = NULL;
+    const mnd_md_node_t *para = NULL;
+
+    doc = parse_ok("*\"b\"*\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(1, child_count(para));
+    check_emph(child_at(para, 0), MND_MD_EMPH, '*', 0, 5);
+    mnd_md_doc_free(doc);
+
+    doc = parse_ok("a _b_ c\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(3, child_count(para));
+    NAOS_CHECK_UINT_EQ(2, child_at(para, 0)->span.end);
+    check_emph(child_at(para, 1), MND_MD_EMPH, '_', 2, 5);
+    NAOS_CHECK_UINT_EQ(5, child_at(para, 2)->span.start);
+    mnd_md_doc_free(doc);
+}
+
+/*
+ * 5.9: 残った区切り記号はテキスト。開きは後ろから、閉じは前から使う（`**a*`、`*a**`）。
+ * 3 の倍数の規則（`*a**b*` は強調の中に `**` が残る）
+ */
+NAOS_TEST(inline_emphasis_leftover_and_rule_of_three)
+{
+    static const expected_node_t merged[] = { { MND_MD_TEXT, 1, 5 } };
+    mnd_md_doc_t *doc = NULL;
+    const mnd_md_node_t *para = NULL;
+
+    doc = parse_ok("**a*\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(2, child_count(para));
+    NAOS_CHECK_INT_EQ((int)MND_MD_TEXT, (int)child_at(para, 0)->kind);
+    NAOS_CHECK_UINT_EQ(0, child_at(para, 0)->span.start);
+    NAOS_CHECK_UINT_EQ(1, child_at(para, 0)->span.end);
+    check_emph(child_at(para, 1), MND_MD_EMPH, '*', 1, 4);
+    mnd_md_doc_free(doc);
+
+    doc = parse_ok("*a**\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(2, child_count(para));
+    check_emph(child_at(para, 0), MND_MD_EMPH, '*', 0, 3);
+    NAOS_CHECK_INT_EQ((int)MND_MD_TEXT, (int)child_at(para, 1)->kind);
+    NAOS_CHECK_UINT_EQ(3, child_at(para, 1)->span.start);
+    NAOS_CHECK_UINT_EQ(4, child_at(para, 1)->span.end);
+    mnd_md_doc_free(doc);
+
+    doc = parse_ok("*a**b*\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(1, child_count(para));
+    check_emph(child_at(para, 0), MND_MD_EMPH, '*', 0, 6);
+    check_children(child_at(para, 0), merged, 1);
+    mnd_md_doc_free(doc);
+}
+
+/* 5.9、5.10: 引用の中で行をまたぐ強調は、途中のプレフィックスと行末記号を範囲に含む。見出しの中の強調 */
+NAOS_TEST(inline_emphasis_across_lines_and_in_heading)
+{
+    mnd_md_doc_t *doc = NULL;
+    const mnd_md_node_t *para = NULL;
+    const mnd_md_node_t *em = NULL;
+
+    doc = parse_ok("> *a\n> b*\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(1, child_count(para));
+    em = child_at(para, 0);
+    check_emph(em, MND_MD_EMPH, '*', 2, 9);
+    NAOS_CHECK_UINT_EQ(1, em->start_line);
+    NAOS_CHECK_UINT_EQ(2, em->end_line);
+    NAOS_REQUIRE_UINT_EQ(3, child_count(em));
+    NAOS_CHECK_INT_EQ((int)MND_MD_SOFT_BREAK, (int)child_at(em, 1)->kind);
+    mnd_md_doc_free(doc);
+
+    doc = parse_ok("# x __y__\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_HEADING);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(2, child_count(para));
+    check_emph(child_at(para, 1), MND_MD_STRONG, '_', 4, 9);
+    mnd_md_doc_free(doc);
+}
+
+/* 8.3: 対にならない区切り記号の繰り返しと、対になる区切り記号の繰り返しで、解析が終わり tree_check を満たすこと */
+NAOS_TEST(inline_pathological_emphasis)
+{
+    static const char *const units[] = { "*a", "a**b", "_a", "*a_", "**a* ", "a***", "*_" };
+    size_t i = 0;
+
+    for (i = 0; i < (sizeof(units) / sizeof(units[0])); i++)
+    {
+        size_t len = 0;
+        char *text = repeat(units[i], PATHOLOGICAL_REPEAT, &len);
+        mnd_md_doc_t *doc = NULL;
+
+        NAOS_REQUIRE_NOT_NULL(text);
+        doc = parse_len_ok(text, len);
+        NAOS_CHECK_NOT_NULL(doc);
+        mnd_md_doc_free(doc);
+        free(text);
+    }
+}
+
 NAOS_SUITE(inline,
     NAOS_ADD_TEST(inline_text),
     NAOS_ADD_TEST(inline_soft_break),
@@ -629,5 +875,14 @@ NAOS_SUITE(inline,
     NAOS_ADD_TEST(inline_in_containers_and_nul),
     NAOS_ADD_TEST(inline_ranges_with_body_start),
     NAOS_ADD_TEST(inline_out_of_memory),
-    NAOS_ADD_TEST(inline_pathological_unclosed)
+    NAOS_ADD_TEST(inline_pathological_unclosed),
+    NAOS_ADD_TEST(inline_emphasis_simple),
+    NAOS_ADD_TEST(inline_emphasis_triple),
+    NAOS_ADD_TEST(inline_emphasis_nested),
+    NAOS_ADD_TEST(inline_emphasis_not_formed),
+    NAOS_ADD_TEST(inline_emphasis_nul_is_punctuation),
+    NAOS_ADD_TEST(inline_emphasis_punctuation),
+    NAOS_ADD_TEST(inline_emphasis_leftover_and_rule_of_three),
+    NAOS_ADD_TEST(inline_emphasis_across_lines_and_in_heading),
+    NAOS_ADD_TEST(inline_pathological_emphasis)
 )

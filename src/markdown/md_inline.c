@@ -1,6 +1,10 @@
-/* InlineParser: インラインの段階（テキスト、エスケープ、実体参照、コードスパン、自動リンク、生の HTML、改行、リンク） */
+/*
+ * InlineParser: インラインの段階（テキスト、エスケープ、実体参照、コードスパン、自動リンク、生の HTML、改行、
+ * 強調の区切り記号、リンク）
+ */
 
 #include "markdown/md.h"
+#include "markdown/md_delim.h"
 #include "markdown/md_entity.h"
 #include "markdown/md_html.h"
 #include "markdown/md_inline.h"
@@ -44,7 +48,7 @@ typedef struct backtick_run
  * 含まないので、text の '\n' は行の境目だけである。段落と見出しの行の pad は 0 なので、補う空白は入れない。
  *
  * 作業用の配列は、すべてのリーフで使い回す（mnd_md_inline_run が最後に解放する）。
- * 区切り記号のスタック（4.2）と角括弧のスタック（4.3）も、ここに加える
+ * 角括弧のスタック（4.3）も、ここに加える
  */
 typedef struct inline_state
 {
@@ -54,6 +58,7 @@ typedef struct inline_state
     mnd_md_array_t line_starts;     /* leaf->lines[i] の内容が text の中で始まる位置（size_t） */
     mnd_md_array_t runs;            /* バッククォートの並び（backtick_run_t。長さ、開始の順に並べる） */
     bool runs_ready;                /* runs をこのリーフについて作った */
+    mnd_md_array_t delims;          /* 区切り記号のスタック（mnd_md_delim_t。md_delim.h） */
     const char *s;                  /* text の先頭 */
     size_t len;                     /* text の長さ */
     size_t pos;                     /* 次に読む位置 */
@@ -118,12 +123,12 @@ static int hex_value(unsigned char c)
 }
 
 /*
- * インラインの特別な文字か（テキストの読み飛ばしを止める文字）。`*`、`_`（4.2）、`[`、`]`、`!`（4.3）と
+ * インラインの特別な文字か（テキストの読み飛ばしを止める文字）。`[`、`]`、`!`（4.3）と
  * 方言の開始文字（5.2）は、それぞれのタスクがここと parse_leaf の分岐に加える
  */
 static bool is_special(unsigned char c)
 {
-    return ((c == '\n') || (c == '\\') || (c == '`') || (c == '&') || (c == '<'));
+    return ((c == '\n') || (c == '\\') || (c == '`') || (c == '&') || (c == '<') || (c == '*') || (c == '_'));
 }
 
 /* 位置の対応 */
@@ -804,7 +809,98 @@ static match_result_t handle_lt(inline_state_t *st, size_t k)
     return MATCH_DONE;
 }
 
+/* 強調の区切り記号 */
+
+/*
+ * text の位置 k（`*` または `_`）。同じ文字の連なりの開きと閉じの可否を判定し（5.9）、どちらかができれば、
+ * 連なりをテキストのノードにして区切り記号のスタックに積む。どちらもできなければ、保留中のテキストに含める。
+ * 連なりは同じ文字だけからなるので、行の境目をまたがない
+ */
+static match_result_t handle_delims(inline_state_t *st, size_t k)
+{
+    unsigned char ch = (unsigned char)st->s[k];
+    size_t end = k;
+    bool can_open = false;
+    bool can_close = false;
+    mnd_md_node_t *node = NULL;
+
+    while ((end < st->len) && ((unsigned char)st->s[end] == ch))
+    {
+        end++;
+    }
+    mnd_md_delim_classify(st->s, st->len, k, end, (ch == '_'), &can_open, &can_close);
+    if (!can_open && !can_close)
+    {
+        text_begin(st, k);
+        st->pos = end;
+
+        return MATCH_DONE;
+    }
+    if (!text_flush(st, k))
+    {
+        return MATCH_OOM;
+    }
+    node = emit_logical(st, MND_MD_TEXT, k, end);
+    if ((node == NULL) || !mnd_md_delim_push(&st->delims, node, ch, end - k, can_open, can_close))
+    {
+        return MATCH_OOM;
+    }
+    st->pos = end;
+
+    return MATCH_DONE;
+}
+
 /* リーフ */
+
+/* 前順で node の部分木の次のノード（root の部分木を出たら NULL） */
+static mnd_md_node_t *next_after_subtree(mnd_md_node_t *node, const mnd_md_node_t *root)
+{
+    while ((node != NULL) && (node != root))
+    {
+        if (node->next != NULL)
+        {
+            return node->next;
+        }
+        node = node->parent;
+    }
+
+    return NULL;
+}
+
+/*
+ * leaf の子孫の、原文で隣り合う（前の終わりが後ろの開始に等しい）テキストの兄弟を 1 つにまとめる。
+ * 区切り記号として積んだが対にならなかった記号や、使い残した記号のテキストを、隣のテキストとつなぐ
+ * （4.1 のテキストと同じく、行の中の最長のテキストにする）。テキストは '\n' を含まないので、
+ * 原文で隣り合うテキストは同じ行にある
+ */
+static void merge_texts(inline_state_t *st, mnd_md_node_t *leaf)
+{
+    mnd_md_node_t *node = leaf->first_child;
+    mnd_md_node_t *next = NULL;
+
+    while (node != NULL)
+    {
+        if (node->kind == MND_MD_TEXT)
+        {
+            next = node->next;
+            while ((next != NULL) && (next->kind == MND_MD_TEXT) && (next->span.start == node->span.end))
+            {
+                node->span.end = next->span.end;
+                mnd_md_node_unlink(next);
+                next = node->next;
+            }
+            mnd_md_parser_set_node_lines(st->parser, node);
+        }
+        if (node->first_child != NULL)
+        {
+            node = node->first_child;
+        }
+        else
+        {
+            node = next_after_subtree(node, leaf);
+        }
+    }
+}
 
 /*
  * leaf の行の内容から論理的な文字列と各行の開始の位置を作る。最後の行の末尾の空白とタブは除く。
@@ -870,6 +966,7 @@ static bool parse_leaf(inline_state_t *st, mnd_md_node_t *leaf)
     st->cdata_fail = NO_POS;
     st->decl_fail = NO_POS;
     st->pos = 0;
+    mnd_md_array_clear(&st->delims);
     if (!build_text(st))
     {
         return false;
@@ -894,6 +991,10 @@ static bool parse_leaf(inline_state_t *st, mnd_md_node_t *leaf)
         case '<':
             result = handle_lt(st, k);
             break;
+        case '*':
+        case '_':
+            result = handle_delims(st, k);
+            break;
         default:
             /* 特別でない文字の並びはまとめてテキストにする */
             text_begin(st, k);
@@ -916,29 +1017,19 @@ static bool parse_leaf(inline_state_t *st, mnd_md_node_t *leaf)
             st->pos = k + 1;
         }
     }
+    if (!text_flush(st, st->len) || !mnd_md_delim_process(st->parser, &st->delims, 0))
+    {
+        return false;
+    }
+    merge_texts(st, leaf);
 
-    return text_flush(st, st->len);
+    return true;
 }
 
 /* インラインを解析するリーフか（段落と見出し。方言の inline_content のリーフは 5.1 が加える） */
 static bool is_inline_leaf(const mnd_md_node_t *node)
 {
     return (((node->kind == MND_MD_PARAGRAPH) || (node->kind == MND_MD_HEADING)) && (node->line_count > 0));
-}
-
-/* 前順で node の部分木の次のノード（root の部分木を出たら NULL） */
-static mnd_md_node_t *next_after_subtree(mnd_md_node_t *node, const mnd_md_node_t *root)
-{
-    while ((node != NULL) && (node != root))
-    {
-        if (node->next != NULL)
-        {
-            return node->next;
-        }
-        node = node->parent;
-    }
-
-    return NULL;
 }
 
 bool mnd_md_inline_run(mnd_md_parser_t *parser)
@@ -953,6 +1044,7 @@ bool mnd_md_inline_run(mnd_md_parser_t *parser)
     mnd_md_array_init(&st.text, 1, parser->allocator);
     mnd_md_array_init(&st.line_starts, sizeof(size_t), parser->allocator);
     mnd_md_array_init(&st.runs, sizeof(backtick_run_t), parser->allocator);
+    mnd_md_array_init(&st.delims, sizeof(mnd_md_delim_t), parser->allocator);
 
     /* 前順に再帰なしでたどる。インラインのリーフの子（作ったインラインのノード）には降りない */
     while (node != NULL)
@@ -979,6 +1071,7 @@ bool mnd_md_inline_run(mnd_md_parser_t *parser)
     mnd_md_array_free(&st.text);
     mnd_md_array_free(&st.line_starts);
     mnd_md_array_free(&st.runs);
+    mnd_md_array_free(&st.delims);
 
     return ok;
 }

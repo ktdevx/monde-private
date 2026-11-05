@@ -133,7 +133,7 @@
   - _Depends: 3.3, 3.4_
   - _Requirements: 5.1, 5.6, 5.7, 5.8, 5.10, 5.11_
 
-- [ ] 4.2 区切り記号の判定と、強調の処理を実装する
+- [x] 4.2 区切り記号の判定と、強調の処理を実装する
   - インラインのカーソルで `*` と `_` の連なりを区切り記号のスタックに積み、リーフの終わりで強調の処理を呼ぶように、インラインの解析に組み込む（インラインと区切り記号の統合を含むタスク）
   - `*` と `_` の連なりの左右の隣接の判定（Unicode の空白と句読点を使う）と、開き・閉じの可否を実装する
   - spec の process emphasis のとおり、3 の倍数の規則と、区切り記号の種類と長さの組ごとの探索の下限を使って、強調と強い強調のノードを作り、開きと閉じの区切り記号の範囲を記録する。使われなかった区切り記号はテキストとして残す
@@ -225,3 +225,4 @@
 - 3.3: ブロックの開始の順序は `try_block_starts`（インデントコード、方言の規則の位置（5.1）、引用、ATX、フェンス、HTML 1〜7、Setext、テーマ区切り、リスト項目）。Setext に変える前に `paragraph_take_definitions(parser, &remains)` を呼ぶ受け口があり、3.4 が中身を入れる（段落を取り除くときは `try_block_starts` の `*matched` の調整を確かめる）。閉じフェンスのないフェンスコードの範囲は最後の行（空行でもよい）の `line_end` まで。HTML ブロックの範囲はコンテナのプレフィックスの直後（先頭の空白を含む）から。
 - 3.4: 定義の表は `struct mnd_md_doc` の `refs`（オープンアドレス法、スロットは文書のアリーナ）。インラインの段階（4.3）では、ラベルの論理的な文字列を `mnd_md_linkref_normalize` で要素の大きさ 1 の `mnd_md_array_t` に正規化し、`mnd_md_linkref_lookup(doc, items, count)` で引く。ラベルの上限 `MND_MD_LINKREF_LABEL_MAX`（999）は符号位置で数える。正規化はアンエスケープしない。タイトルのない定義の `title` は `dest.end` の空の範囲で `title_delim` は 0。定義だけの段落が `---` の行で取り除かれると、テーマ区切りになる（commonmark.js と同じ）。
 - 4.1: `mnd_md_inline_run(parser)`（md_inline.h）は親へのポインタで前順にたどり、PARAGRAPH と HEADING を解析する。リーフごとの `inline_state_t` の位置は、行の内容をつないだ文字列（行の境目は `\n`、最後の行の末尾の空白とタブを除く）の添え字で、`map_pos`／`map_span` で原文のオフセットに戻す。テキストは [text_start, k) を `text_flush` で出す。4.2・4.3 は `is_special` と `parse_leaf` の switch に文字を足し、スタックを `inline_state_t` に置く。改行の範囲は `lines[i+1].prefix.start` で終わる。注意（6.1）: `mnd_md_logical_text` は行の境目でだけ接する空でない行を含めないため、内容が行の境目で始まるか終わるコードスパンでは境目の `\n` が落ちる。HTML 出力で補うこと。
+- 4.2: Delims の API は `mnd_md_delim_classify`、`mnd_md_delim_push`、`mnd_md_delim_process(parser, stack, stack_bottom)`（処理のあと `stack_bottom` から上のエントリを取り除く）。4.3 はリンクの中身を包んだあとで、角括弧を積んだときの区切り記号の数を `stack_bottom` にして呼ぶ。`openers_bottom` の枠（`BOTTOM_CHARS`、`bottom_index`）は `*` と `_` だけなので、5.2 は方言の区切り記号の文字の枠と `match_delims` の経路（3 の倍数の規則は適用しない）を加える。md_inline.c の `merge_texts` は、リーフの終わりに原文で隣り合うテキストの兄弟をまとめる（使われなかった区切り記号は前後のテキストと 1 つになる）。
