@@ -28,18 +28,18 @@ static size_t mnd_po_write_char_len(unsigned char lead)
     {
         return 1;
     }
-
-    if (lead < 0xE0)
+    else if (lead < 0xE0)
     {
         return 2;
     }
-
-    if (lead < 0xF0)
+    else if (lead < 0xF0)
     {
         return 3;
     }
-
-    return 4;
+    else
+    {
+        return 4;
+    }
 }
 
 /*

@@ -134,18 +134,18 @@ static size_t mnd_po_read_char_len(unsigned char lead)
     {
         return 1;
     }
-
-    if (lead < 0xE0)
+    else if (lead < 0xE0)
     {
         return 2;
     }
-
-    if (lead < 0xF0)
+    else if (lead < 0xF0)
     {
         return 3;
     }
-
-    return 4;
+    else
+    {
+        return 4;
+    }
 }
 
 /*
@@ -504,41 +504,36 @@ static mnd_po_lex_status_t mnd_po_read_lex(mnd_po_reader_t *reader, const char *
 
         return mnd_po_read_lex_marked(reader, s + 3, len - 3, line);
     }
-
-    if (mnd_po_read_starts_with(s, len, "#~"))
+    else if (mnd_po_read_starts_with(s, len, "#~"))
     {
         line->obsolete = true;
 
         return mnd_po_read_lex_marked(reader, s + 2, len - 2, line);
     }
-
-    if (mnd_po_read_starts_with(s, len, "#|"))
+    else if (mnd_po_read_starts_with(s, len, "#|"))
     {
         line->previous = true;
 
         return mnd_po_read_lex_marked(reader, s + 2, len - 2, line);
     }
-
-    if (mnd_po_read_starts_with(s, len, "#."))
+    else if (mnd_po_read_starts_with(s, len, "#."))
     {
         size_t skip = ((len > 2) && (s[2] == ' ')) ? 3 : 2;
 
         return mnd_po_read_lex_comment(reader, s + skip, len - skip, MND_PO_LINE_EXTRACTED,
                                        line);
     }
-
-    if (mnd_po_read_starts_with(s, len, "#:"))
+    else if (mnd_po_read_starts_with(s, len, "#:"))
     {
         return mnd_po_read_lex_comment(reader, s + 2, len - 2, MND_PO_LINE_REFERENCE, line);
     }
-
-    if (mnd_po_read_starts_with(s, len, "#,"))
+    else if (mnd_po_read_starts_with(s, len, "#,"))
     {
         return mnd_po_read_lex_comment(reader, s + 2, len - 2, MND_PO_LINE_FLAGS, line);
     }
-
-    /* "#" の後ろが空白なら 1 つ除く。そのほかの文字なら "#" の後ろの全部 */
+    else
     {
+        /* "#" の後ろが空白なら 1 つ除く。そのほかの文字なら "#" の後ろの全部 */
         size_t skip = ((len > 1) && (s[1] == ' ')) ? 2 : 1;
 
         return mnd_po_read_lex_comment(reader, s + skip, len - skip, MND_PO_LINE_TRANSLATOR,

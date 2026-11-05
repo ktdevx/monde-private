@@ -24,6 +24,7 @@ static size_t decode_char(const char *s, size_t len, size_t i, uint32_t *cp)
 
         return 1;
     }
+
     if ((lead & 0xE0) == 0xC0)
     {
         count = 2;
@@ -39,16 +40,19 @@ static size_t decode_char(const char *s, size_t len, size_t i, uint32_t *cp)
         count = 4;
         value = lead & 0x07;
     }
+
     if (count > (len - i))
     {
         *cp = lead;
 
         return 1;
     }
+
     for (k = 1; k < count; k++)
     {
         value = (value << 6) | ((unsigned char)s[i + k] & 0x3F);
     }
+
     *cp = value;
 
     return count;
@@ -174,23 +178,28 @@ static bool append_wrapped(const char *prefix, const char *esc, const unsigned c
                 {
                     return false;
                 }
+
                 line_start = last_break;
                 col = base;
             }
+
             col += piece;
             piece = 0;
             last_break = i;
             has_break = true;
         }
+
         i += decode_char(esc, len, i, &cp);
         piece += (size_t)mnd_po_ucd_width(cp);
     }
+
     if (has_break && ((col + piece + 1) > MND_PO_WRAP_WIDTH))
     {
         if (!append_line(prefix, esc + line_start, last_break - line_start, eol, out))
         {
             return false;
         }
+
         line_start = last_break;
     }
 
@@ -251,10 +260,12 @@ bool mnd_po_wrap_string(const char *prefix, const char *keyword, const char *s, 
                 ok = append_wrapped(prefix, esc.data, (const unsigned char *)ebreaks.data, esc.len,
                                     eol, out);
             }
+
             if (!ok || (seg_end >= len))
             {
                 break;
             }
+
             seg_start = seg_end;
             seg_end = segment_end(s, len, seg_start);
             ok = escape_segment(s + seg_start, seg_end - seg_start, &esc, &ebreaks);
@@ -264,8 +275,10 @@ bool mnd_po_wrap_string(const char *prefix, const char *keyword, const char *s, 
             }
         }
     }
+
     mnd_buf_free(&esc);
     mnd_buf_free(&ebreaks);
+
     if (!ok)
     {
         truncate_to(out, start);

@@ -27,7 +27,8 @@
  *   LB19 × QU、LB21 × BA・HY・NS、LB22 × IN。どの規則にも当たらない組は LB31 で D、
  *   空白をはさむ組は LB18 で I になる。行ごとの注記は、それ以外に効く規則を示す。
  */
-static const char mnd_po_lb_pairs[32][33] = {
+static const char mnd_po_lb_pairs[32][33] =
+{
     /*        OCCQGNESIPPNAHIIHBBBZCWHHJJJREEZ */
     /*        PLPULSXYSROULLDNYAB2WMJ23LVTIBMW */
     "PPPPPPPPPPPPPPPPPPPP--PPPPPPPPP-", /* OP: LB14 OP SP* × */
@@ -83,19 +84,43 @@ static const char mnd_po_lb_pairs[32][33] = {
  * （UCD 15.0.0 の emoji/emoji-data.txt と extracted/DerivedGeneralCategory.txt から導いた）。
  * LB30b により、これらの後ろの EM の前では区切らない。行分割クラスはすべて ID
  */
-static const mnd_po_ucd_range_t mnd_po_lb_unassigned_pictographic[] = {
-    {0x1F02C, 0x1F02F, 1}, {0x1F094, 0x1F09F, 1}, {0x1F0AF, 0x1F0B0, 1},
-    {0x1F0C0, 0x1F0C0, 1}, {0x1F0D0, 0x1F0D0, 1}, {0x1F0F6, 0x1F0FF, 1},
-    {0x1F1AE, 0x1F1E5, 1}, {0x1F203, 0x1F20F, 1}, {0x1F23C, 0x1F23F, 1},
-    {0x1F249, 0x1F24F, 1}, {0x1F252, 0x1F25F, 1}, {0x1F266, 0x1F2FF, 1},
-    {0x1F6D8, 0x1F6DB, 1}, {0x1F6ED, 0x1F6EF, 1}, {0x1F6FD, 0x1F6FF, 1},
-    {0x1F777, 0x1F77A, 1}, {0x1F7DA, 0x1F7DF, 1}, {0x1F7EC, 0x1F7EF, 1},
-    {0x1F7F1, 0x1F7FF, 1}, {0x1F80C, 0x1F80F, 1}, {0x1F848, 0x1F84F, 1},
-    {0x1F85A, 0x1F85F, 1}, {0x1F888, 0x1F88F, 1}, {0x1F8AE, 0x1F8AF, 1},
-    {0x1F8B2, 0x1F8FF, 1}, {0x1FA54, 0x1FA5F, 1}, {0x1FA6E, 0x1FA6F, 1},
-    {0x1FA7D, 0x1FA7F, 1}, {0x1FA89, 0x1FA8F, 1}, {0x1FABE, 0x1FABE, 1},
-    {0x1FAC6, 0x1FACD, 1}, {0x1FADC, 0x1FADF, 1}, {0x1FAE9, 0x1FAEF, 1},
-    {0x1FAF9, 0x1FAFF, 1}, {0x1FC00, 0x1FFFD, 1}
+static const mnd_po_ucd_range_t mnd_po_lb_unassigned_pictographic[] =
+{
+    {0x1F02C, 0x1F02F, 1},
+    {0x1F094, 0x1F09F, 1},
+    {0x1F0AF, 0x1F0B0, 1},
+    {0x1F0C0, 0x1F0C0, 1},
+    {0x1F0D0, 0x1F0D0, 1},
+    {0x1F0F6, 0x1F0FF, 1},
+    {0x1F1AE, 0x1F1E5, 1},
+    {0x1F203, 0x1F20F, 1},
+    {0x1F23C, 0x1F23F, 1},
+    {0x1F249, 0x1F24F, 1},
+    {0x1F252, 0x1F25F, 1},
+    {0x1F266, 0x1F2FF, 1},
+    {0x1F6D8, 0x1F6DB, 1},
+    {0x1F6ED, 0x1F6EF, 1},
+    {0x1F6FD, 0x1F6FF, 1},
+    {0x1F777, 0x1F77A, 1},
+    {0x1F7DA, 0x1F7DF, 1},
+    {0x1F7EC, 0x1F7EF, 1},
+    {0x1F7F1, 0x1F7FF, 1},
+    {0x1F80C, 0x1F80F, 1},
+    {0x1F848, 0x1F84F, 1},
+    {0x1F85A, 0x1F85F, 1},
+    {0x1F888, 0x1F88F, 1},
+    {0x1F8AE, 0x1F8AF, 1},
+    {0x1F8B2, 0x1F8FF, 1},
+    {0x1FA54, 0x1FA5F, 1},
+    {0x1FA6E, 0x1FA6F, 1},
+    {0x1FA7D, 0x1FA7F, 1},
+    {0x1FA89, 0x1FA8F, 1},
+    {0x1FABE, 0x1FABE, 1},
+    {0x1FAC6, 0x1FACD, 1},
+    {0x1FADC, 0x1FADF, 1},
+    {0x1FAE9, 0x1FAEF, 1},
+    {0x1FAF9, 0x1FAFF, 1},
+    {0x1FC00, 0x1FFFD, 1}
 };
 
 static bool mnd_po_lb_is_unassigned_pictographic(uint32_t cp)
@@ -180,6 +205,7 @@ static size_t mnd_po_lb_decode(const unsigned char *s, size_t len, size_t i, uin
 
         return 1;
     }
+
     if ((c & 0xE0) == 0xC0)
     {
         n = 2;
@@ -201,12 +227,14 @@ static size_t mnd_po_lb_decode(const unsigned char *s, size_t len, size_t i, uin
 
         return 1;
     }
+
     if (n > (len - i))
     {
         *cp = 0xFFFD;
 
         return 1;
     }
+
     for (k = 1; k < n; k++)
     {
         if ((s[i + k] & 0xC0) != 0x80)
@@ -215,8 +243,10 @@ static size_t mnd_po_lb_decode(const unsigned char *s, size_t len, size_t i, uin
 
             return 1;
         }
+    
         value = (value << 6) | (uint32_t)(s[i + k] & 0x3F);
     }
+
     *cp = value;
 
     return n;
@@ -360,6 +390,7 @@ void mnd_po_linebreaks(const char *s, size_t len, unsigned char *breaks)
         {
             breaks[i + k] = 0;
         }
+
         hl_hyphen = next_hl_hyphen;
         ri_count = (cls == MND_PO_LB_RI) ? (ri_count + 1) : 0;
         prev = cls;

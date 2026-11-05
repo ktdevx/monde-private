@@ -13,16 +13,18 @@ static int hex_value(char c)
     {
         return c - '0';
     }
-    if ((c >= 'a') && (c <= 'f'))
+    else if ((c >= 'a') && (c <= 'f'))
     {
         return (c - 'a') + 10;
     }
-    if ((c >= 'A') && (c <= 'F'))
+    else if ((c >= 'A') && (c <= 'F'))
     {
         return (c - 'A') + 10;
     }
-
-    return -1;
+    else
+    {
+        return -1;
+    }
 }
 
 /* 1 文字のエスケープ（\\ \" \n \t \r \a \b \f \v）の文字なら、対応するバイトを *byte に入れて true */
@@ -77,12 +79,14 @@ static bool parse_escape(const char *lit, size_t len, size_t *pos, unsigned char
     {
         return false;
     }
+
     if (simple_escape_value(lit[i], byte))
     {
         *pos = i + 1;
 
         return true;
     }
+
     if ((lit[i] >= '0') && (lit[i] <= '7'))
     {
         size_t end = i + 3;
@@ -105,8 +109,10 @@ static bool parse_escape(const char *lit, size_t len, size_t *pos, unsigned char
             {
                 value = (value * 16) + (unsigned int)hex_value(lit[i]);
             }
+
             i++;
         }
+
         if (i == digits_start)
         {
             return false;
@@ -116,10 +122,12 @@ static bool parse_escape(const char *lit, size_t len, size_t *pos, unsigned char
     {
         return false;
     }
+
     if (value > 255)
     {
         return false;
     }
+
     *byte = (unsigned char)value;
     *pos = i;
 
@@ -147,6 +155,7 @@ mnd_po_unescape_status_t mnd_po_unescape(const char *lit, size_t len, mnd_buf_t 
     {
         return MND_PO_UNESCAPE_NO_MEMORY;
     }
+
     while (i < len)
     {
         size_t run = i;
@@ -156,6 +165,7 @@ mnd_po_unescape_status_t mnd_po_unescape(const char *lit, size_t len, mnd_buf_t 
         {
             run++;
         }
+
         if (run > i)
         {
             if (!mnd_buf_append(out, lit + i, run - i))
@@ -164,8 +174,10 @@ mnd_po_unescape_status_t mnd_po_unescape(const char *lit, size_t len, mnd_buf_t 
 
                 return MND_PO_UNESCAPE_NO_MEMORY;
             }
+
             i = run;
         }
+
         if (i < len)
         {
             unsigned char byte;
@@ -178,6 +190,7 @@ mnd_po_unescape_status_t mnd_po_unescape(const char *lit, size_t len, mnd_buf_t 
 
                 return MND_PO_UNESCAPE_BAD_ESCAPE;
             }
+
             if (!mnd_buf_append_byte(out, byte))
             {
                 truncate_to(out, start);
@@ -186,12 +199,14 @@ mnd_po_unescape_status_t mnd_po_unescape(const char *lit, size_t len, mnd_buf_t 
             }
         }
     }
+
     if ((out->len > start) && (memchr(out->data + start, '\0', out->len - start) != NULL))
     {
         truncate_to(out, start);
 
         return MND_PO_UNESCAPE_NUL;
     }
+
     if ((out->len > start)
         && !mnd_utf8_validate(out->data + start, out->len - start, &invalid_offset))
     {
@@ -245,6 +260,7 @@ bool mnd_po_escape(const char *s, size_t len, mnd_buf_t *out)
         default:
             break;
         }
+
         if (repl != NULL)
         {
             ok = mnd_buf_append(out, repl, 2);
@@ -253,6 +269,7 @@ bool mnd_po_escape(const char *s, size_t len, mnd_buf_t *out)
         {
             ok = mnd_buf_append_byte(out, (unsigned char)s[i]);
         }
+
         if (!ok)
         {
             truncate_to(out, start);
