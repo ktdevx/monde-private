@@ -84,7 +84,7 @@
   - _Depends: 2.1, 2.2_
   - _Requirements: 9.4_
 
-- [ ] 2.7 (P) HTML の正規化（テスト用の部品）を作る
+- [x] 2.7 (P) HTML の正規化（テスト用の部品）を作る
   - normalize.py の規則（空白のまとめ方、ブロックレベルのタグの前後の空白の除去、属性の並べ替えと値の書き直し、実体名の扱い、`br` の後の改行）を C に移植する。実体名は 1.3 の Entity の表で文字に戻す（設計のとおり）
   - 完了時: normalize スイートで、normalize.py の doctest の例が同じ結果になるテストが合格する
   - _Boundary: html_normalize_
@@ -219,3 +219,4 @@
 - 2.4: Html の字句の関数は `(data, pos, end)` の連続したバイト列だけを見て、コンテナのプレフィックスを知らない。InlineParser（4.1）は、プレフィックスをまたぐ生の HTML を論理的な文字列か連続した範囲で扱う。閉じのない `<!--`・`<?`・CDATA・引用符の属性値は `end` まで走査するため、InlineParser は「この位置より後ろにない」ことを記録して二乗の時間を避ける（8.3）。条件 6・7 の終わり（空行）は BlockParser が判定する。`<pre/>` は spec の文言どおり種類 0。
 - 2.5: `mnd_md_logical_text` は、内容が空でない行を 1 バイト以上重なるときだけ含め、内容が空の行は `start <= content.start <= end` で含める（リーフの範囲を渡すと最後の空行が残る）。pad は `start <= content.start` のときだけ補う。`mnd_buf` は malloc を直接使うため、Text のメモリ不足はテストできない。
 - 2.6: 範囲の検査は `mnd_md_tree_check(doc, &result)`（`result` は NULL 可）と、失敗時に NAOS_NOTE を出す `mnd_md_tree_check_note(doc)`（`tests/markdown/tree_check.h`）。`eol_len` は物理的な行の行末記号と一致すること、根は DOCUMENT で範囲の終わりが len であることも検査する。
+- 2.7: HTML の正規化は `mnd_md_html_normalize(html, len, &out)`（`tests/markdown/html_normalize.h`）。Python 3.13 の HTMLParser の流れを移植したもので、実体名は HTML5 の表で文字に戻す（normalize.py との設計どおりの違い）。
