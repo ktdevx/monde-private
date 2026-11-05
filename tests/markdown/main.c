@@ -1,0 +1,45 @@
+#include <naos/naos.h>
+
+NAOS_DECLARE_SUITE(model);
+NAOS_DECLARE_SUITE(lines_index);
+NAOS_DECLARE_SUITE(scan);
+NAOS_DECLARE_SUITE(html);
+NAOS_DECLARE_SUITE(unicode);
+NAOS_DECLARE_SUITE(entity);
+NAOS_DECLARE_SUITE(text);
+NAOS_DECLARE_SUITE(tree_check);
+NAOS_DECLARE_SUITE(normalize);
+NAOS_DECLARE_SUITE(render);
+NAOS_DECLARE_SUITE(spec_reader);
+NAOS_DECLARE_SUITE(parse);
+NAOS_DECLARE_SUITE(block);
+NAOS_DECLARE_SUITE(range);
+NAOS_DECLARE_SUITE(lines);
+NAOS_DECLARE_SUITE(inline);
+NAOS_DECLARE_SUITE(linkref);
+NAOS_DECLARE_SUITE(dialect);
+NAOS_DECLARE_SUITE(error);
+NAOS_DECLARE_SUITE(spec);
+
+NAOS_MAIN(
+    NAOS_ADD_SUITE(model),
+    NAOS_ADD_SUITE(lines_index),
+    NAOS_ADD_SUITE(scan),
+    NAOS_ADD_SUITE(html),
+    NAOS_ADD_SUITE(unicode),
+    NAOS_ADD_SUITE(entity),
+    NAOS_ADD_SUITE(text),
+    NAOS_ADD_SUITE(tree_check),
+    NAOS_ADD_SUITE(normalize),
+    NAOS_ADD_SUITE(render),
+    NAOS_ADD_SUITE(spec_reader),
+    NAOS_ADD_SUITE(parse),
+    NAOS_ADD_SUITE(block),
+    NAOS_ADD_SUITE(range),
+    NAOS_ADD_SUITE(lines),
+    NAOS_ADD_SUITE(inline),
+    NAOS_ADD_SUITE(linkref),
+    NAOS_ADD_SUITE(dialect),
+    NAOS_ADD_SUITE(error),
+    NAOS_ADD_SUITE(spec)
+)
