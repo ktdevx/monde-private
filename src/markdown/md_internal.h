@@ -106,6 +106,28 @@ void mnd_md_array_free(mnd_md_array_t *array);
 /* 文書（md_node.c） */
 
 /*
+ * リンク参照定義の表の要素（md_linkref.c）。def が NULL なら空き。
+ * hash と len は正規化したラベル（def->as.link_ref_def.norm_label）のハッシュ値とバイト数
+ */
+typedef struct mnd_md_linkref_slot
+{
+    size_t hash;
+    size_t len;
+    const mnd_md_node_t *def;
+} mnd_md_linkref_slot_t;
+
+/*
+ * リンク参照定義の表（正規化したラベルのハッシュ表。開番地法）。要素の配列は文書のアリーナに確保し、
+ * 伸長するときは倍の大きさの配列をアリーナに作り直す。cap は 0 か 2 のべき乗
+ */
+typedef struct mnd_md_linkref_table
+{
+    mnd_md_linkref_slot_t *slots;
+    size_t cap;
+    size_t count;
+} mnd_md_linkref_table_t;
+
+/*
  * 文書。内容を指すポインタ、根、アリーナを持つ。文書の構造体自体は確保関数から直接確保し、
  * ノード・行の配列・正規化したラベル・方言のデータはアリーナに確保する。
  * 解析の段階で使う値（行番号の表など）は、担当するタスクがここに追加する
@@ -116,6 +138,7 @@ struct mnd_md_doc
     size_t len;
     mnd_md_node_t *root;            /* MND_MD_DOCUMENT */
     mnd_md_arena_t arena;
+    mnd_md_linkref_table_t refs;    /* リンク参照定義の表（ブロックの段階が作る。md_linkref.c） */
 };
 
 /*
@@ -144,5 +167,63 @@ void mnd_md_node_insert_before(mnd_md_node_t *sibling, mnd_md_node_t *node);
 
 /* node を sibling の直後の兄弟にする（親は sibling の親）。node がどこかに連結していれば、先に外す */
 void mnd_md_node_insert_after(mnd_md_node_t *sibling, mnd_md_node_t *node);
+
+/* 解析の作業状態（md_parse.c） */
+
+struct mnd_md_line_index; /* md_lines.h */
+
+/*
+ * 開いているブロック（開いているブロックの配列の要素）。配列は根（文書）から最も内側のブロックまでを
+ * 順に持つ（再帰を使わない）。コンテナの照合や閉じる処理が使う状態は、担当するタスクがここに加える
+ */
+typedef struct mnd_md_open_block
+{
+    mnd_md_node_t *node;
+    /*
+     * 引用とリスト項目: 自身の記号が現れた最後の行の、空白でない最後のバイトの後ろ
+     * （範囲の終わりの候補。リスト項目では最初の行だけ）
+     */
+    size_t marker_end;
+    bool last_line_blank;   /* 最後に処理した行が、このブロックにとって空行だった（タイトとルーズの判定） */
+    bool last_child_blank;  /* 最後の子が空行で終わる（子がなければ false） */
+} mnd_md_open_block_t;
+
+/*
+ * 1 回の解析の作業状態。Parse が作り、ブロックの段階とインラインの段階に渡す。
+ * 作業用の配列は確保関数から直接確保し、Parse が成功・失敗のどちらでも解放する。
+ * 文書（doc）は成功したときだけ呼び出し側に渡し、失敗したときは Parse が解放する
+ */
+typedef struct mnd_md_parser
+{
+    const char *data;               /* 内容全体（変更しない） */
+    size_t len;
+    size_t body_start;              /* 本文の開始位置（len 以下） */
+    const char *path;               /* 診断に付けるパス。NULL 可 */
+    const mnd_md_allocator_t *allocator;    /* 確保関数（既定値を解決済み） */
+    const mnd_md_dialect_t *dialect;        /* オプションの方言（NULL なら CommonMark） */
+    mnd_md_doc_t *doc;              /* 作成中の文書 */
+    const struct mnd_md_line_index *line_index; /* 行番号の表（文書のアリーナに確保） */
+    mnd_md_array_t open;            /* 開いているブロック（mnd_md_open_block_t。先頭は文書） */
+    mnd_md_array_t leaf_lines;      /* 開いているリーフの行（mnd_md_line_t） */
+} mnd_md_parser_t;
+
+/* offset（0 <= offset <= len）の位置の行番号（1 起点。基準は内容全体の先頭） */
+size_t mnd_md_parser_line_of(const mnd_md_parser_t *parser, size_t offset);
+
+/*
+ * node の start_line と end_line を、範囲の規則（start_line は span.start の行、end_line は範囲の最後の
+ * バイトの行。範囲が空なら span.start の行）に従って設定する
+ */
+void mnd_md_parser_set_node_lines(const mnd_md_parser_t *parser, mnd_md_node_t *node);
+
+/*
+ * ブロックの規則のコンテキスト（md_dialect.h の不透明な型の定義）。ブロックの段階が 1 行の処理の中で作り、
+ * 方言のブロックの規則に渡す。解析中だけ有効である
+ */
+struct mnd_md_block_ctx
+{
+    mnd_md_parser_t *parser;
+    mnd_md_line_view_t line;        /* 現在の行の状態 */
+};
 
 #endif
