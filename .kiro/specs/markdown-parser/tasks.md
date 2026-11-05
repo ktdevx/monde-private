@@ -101,7 +101,7 @@
   - _Depends: 2.1, 2.2, 2.6_
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 8.1, 8.4_
 
-- [ ] 3.2 コンテナブロック（引用、リスト、リスト項目）と遅延継続行を実装する
+- [x] 3.2 コンテナブロック（引用、リスト、リスト項目）と遅延継続行を実装する
   - 引用の `>` とリスト項目のインデントによるコンテナの照合、新しいコンテナの開始、閉じる処理、遅延継続行の判定を実装する。リスト記号の種類と開始番号が変わるとリストを分け、段落を中断できるリスト項目の条件を守る
   - 空行の記録によるタイトとルーズの判定と、リスト項目の記号の範囲・内容のインデントを確定する
   - 各行のプレフィックスに、コンテナが使ったバイト（リスト項目の最初の行ではリスト記号）を含め、タブの一部を使った場合は補う空白の数を記録する。遅延継続行に印を付ける
@@ -221,3 +221,4 @@
 - 2.6: 範囲の検査は `mnd_md_tree_check(doc, &result)`（`result` は NULL 可）と、失敗時に NAOS_NOTE を出す `mnd_md_tree_check_note(doc)`（`tests/markdown/tree_check.h`）。`eol_len` は物理的な行の行末記号と一致すること、根は DOCUMENT で範囲の終わりが len であることも検査する。
 - 2.7: HTML の正規化は `mnd_md_html_normalize(html, len, &out)`（`tests/markdown/html_normalize.h`）。Python 3.13 の HTMLParser の流れを移植したもので、実体名は HTML5 の表で文字に戻す（normalize.py との設計どおりの違い）。
 - 3.1: 解析の作業状態は `md_internal.h` の `mnd_md_parser_t`（開いているブロックの配列 `open`、リーフの行の作業用配列 `leaf_lines`）。ブロックの段階は `mnd_md_block_run`、`match_open_blocks` は種類ごとの switch で、3.2・3.3・5.1 はそこに case を足す。`mnd_md_parse` は `mnd_md_block_run` の false を一律にメモリ不足として扱うため、5.1 で方言の規則の失敗を加えるときは別の経路が要る。行番号は `mnd_md_parser_line_of`、ノードの行番号は `mnd_md_parser_set_node_lines`。
+- 3.2: リストを分けるのは記号の種類（箇条書きの文字、順序付きの区切り文字）の違いだけで、開始番号では分けない（CommonMark どおり。タスクの文言の「開始番号」は段落の中断の条件にだけ効く）。`item.content_indent` は直近の親のコンテナの照合が終わった桁からの相対値（cmark と同じ）。遅延継続行のプレフィックスは、照合できたコンテナのバイトと行の先頭の空白からなる。段落は行の先頭の空白をすべて除くため pad は 0 になり、pad が 0 以外になるのはコードブロックの行（3.3）。3.3 のリーフの開始は `try_block_starts` と `record_blank_line` のコメントの位置に足し、`can_contain` と `is_leaf` に新しい種類を加える。

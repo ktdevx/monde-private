@@ -156,6 +156,13 @@ struct mnd_md_line_index; /* md_lines.h */
 typedef struct mnd_md_open_block
 {
     mnd_md_node_t *node;
+    /*
+     * 引用とリスト項目: 自身の記号が現れた最後の行の、空白でない最後のバイトの後ろ
+     * （範囲の終わりの候補。リスト項目では最初の行だけ）
+     */
+    size_t marker_end;
+    bool last_line_blank;   /* 最後に処理した行が、このブロックにとって空行だった（タイトとルーズの判定） */
+    bool last_child_blank;  /* 最後の子が空行で終わる（子がなければ false） */
 } mnd_md_open_block_t;
 
 /*
