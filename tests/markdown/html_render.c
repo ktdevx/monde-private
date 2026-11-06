@@ -145,100 +145,6 @@ static const mnd_md_node_t *find_leaf(const mnd_md_node_t *node)
     return node;
 }
 
-static size_t max_size(size_t a, size_t b)
-{
-    return (a > b) ? a : b;
-}
-
-static size_t min_size(size_t a, size_t b)
-{
-    return (a < b) ? a : b;
-}
-
-/* mnd_md_logical_text が行 line を論理的な文字列に含めるか（md_text.c の line_in_span と同じ条件） */
-static bool line_included(const mnd_md_line_t *line, mnd_span_t span)
-{
-    size_t cs = line->content.start;
-    size_t ce = line->content.end;
-
-    if (cs == ce)
-    {
-        return ((span.start <= cs) && (cs <= span.end));
-    }
-
-    return (max_size(span.start, cs) < min_size(span.end, ce));
-}
-
-static bool append_newlines(mnd_buf_t *buf, size_t count)
-{
-    while (count > 0)
-    {
-        if (!mnd_buf_append_byte(buf, '\n'))
-        {
-            return false;
-        }
-
-        count--;
-    }
-
-    return true;
-}
-
-/*
- * leaf の行に含まれる範囲 span の論理的な文字列を buf の後ろに追加する。
- * mnd_md_logical_text は、空でない内容と行の境目でだけ接する行を含めないため、範囲が行の境目で
- * 始まるか終わると、その境目の "\n" が落ちる（tasks.md の 4.1 の注意）。範囲が覆う境目
- * （行 i の内容の終わりから行 i + 1 の内容の始まりまで）のうち、落ちた分の "\n" を前後に補う
- */
-static bool span_text(renderer_t *r, const mnd_md_node_t *leaf, mnd_span_t span, mnd_buf_t *buf)
-{
-    size_t before = 0;
-    size_t after = 0;
-    size_t first = 0;
-    size_t last = 0;
-    size_t i;
-    bool any = false;
-
-    if ((leaf == NULL) || (leaf->lines == NULL) || (leaf->line_count == 0))
-    {
-        return mnd_md_logical_text(r->doc, leaf, span, buf);
-    }
-
-    for (i = 0; i < leaf->line_count; i++)
-    {
-        if (line_included(&leaf->lines[i], span))
-        {
-            if (!any)
-            {
-                first = i;
-            }
-
-            last = i;
-            any = true;
-        }
-    }
-
-    for (i = 0; (i + 1) < leaf->line_count; i++)
-    {
-        if ((span.start > leaf->lines[i].content.end) || (span.end < leaf->lines[i + 1].content.start))
-        {
-            continue;
-        }
-
-        if (!any || (i < first))
-        {
-            before++;
-        }
-        else if (i >= last)
-        {
-            after++;
-        }
-    }
-
-    return (append_newlines(buf, before) && mnd_md_logical_text(r->doc, leaf, span, buf)
-            && append_newlines(buf, after));
-}
-
 static bool is_hex(unsigned char c)
 {
     return (((c >= '0') && (c <= '9')) || ((c >= 'a') && (c <= 'f')) || ((c >= 'A') && (c <= 'F')));
@@ -363,7 +269,7 @@ static bool load_text(renderer_t *r, const mnd_md_node_t *leaf, mnd_span_t span)
 {
     mnd_buf_clear(&r->text);
 
-    return span_text(r, leaf, span, &r->text);
+    return mnd_md_logical_text(r->doc, leaf, span, &r->text);
 }
 
 /*

@@ -45,10 +45,10 @@ static bool append_spaces(mnd_buf_t *out, size_t count)
 }
 
 /*
- * 行の内容 [cs, ce) が範囲 [start, end) に含まれるか（論理的な文字列に行として現れるか）。
+ * 行の内容 [cs, ce) が範囲 [start, end) に含まれるか（内容の一部と補う空白が論理的な文字列に現れるか）。
  * 内容と 1 バイト以上重なる行は含まれる。内容が空の行は、その位置が範囲の内側か端（start <= cs <= end）
  * なら含まれる（リーフの範囲は最後の行の line_end で終わるので、最後の空の行も含まれる）。
- * 空でない内容と、境目でだけ接する行は含まれない
+ * 空でない内容と、境目でだけ接する行は含まれない（境目の "\n" は boundary_in_span が決める）
  */
 static bool line_in_span(const mnd_md_line_t *line, size_t start, size_t end)
 {
@@ -63,6 +63,16 @@ static bool line_in_span(const mnd_md_line_t *line, size_t start, size_t end)
     return (max_size(start, cs) < min_size(end, ce));
 }
 
+/*
+ * 行 line と次の行 next の境目が範囲 [start, end) の内側にあるか。範囲が line の内容の終わりから
+ * next の内容の始まりまでを覆う（start <= line の content.end、next の content.start <= end）なら内側で、
+ * 論理的な文字列に "\n" が現れる。境目のプレフィックスと行末記号のバイト自体は文字列に現れない
+ */
+static bool boundary_in_span(const mnd_md_line_t *line, const mnd_md_line_t *next, size_t start, size_t end)
+{
+    return ((start <= line->content.end) && (next->content.start <= end));
+}
+
 bool mnd_md_logical_text(const mnd_md_doc_t *doc, const mnd_md_node_t *leaf, mnd_span_t span,
                          mnd_buf_t *out)
 {
@@ -72,7 +82,6 @@ bool mnd_md_logical_text(const mnd_md_doc_t *doc, const mnd_md_node_t *leaf, mnd
     size_t from;
     size_t to;
     size_t i;
-    bool first = true;
 
     if ((doc == NULL) || (doc->data == NULL))
     {
@@ -90,27 +99,25 @@ bool mnd_md_logical_text(const mnd_md_doc_t *doc, const mnd_md_node_t *leaf, mnd
     for (i = 0; i < leaf->line_count; i++)
     {
         line = &leaf->lines[i];
-        if (!line_in_span(line, start, end))
+        if (line_in_span(line, start, end))
         {
-            continue;
+            /* 補う空白は内容の先頭の前にあるので、範囲が内容の先頭を含むときだけ加える */
+            if ((start <= line->content.start) && !append_spaces(out, line->pad))
+            {
+                return false;
+            }
+
+            from = max_size(start, line->content.start);
+            to = min_size(end, line->content.end);
+            if ((from < to) && !mnd_buf_append(out, doc->data + from, to - from))
+            {
+                return false;
+            }
         }
 
-        if (!first && !mnd_buf_append_byte(out, '\n'))
-        {
-            return false;
-        }
-
-        first = false;
-
-        /* 補う空白は内容の先頭の前にあるので、範囲が内容の先頭を含むときだけ加える */
-        if ((start <= line->content.start) && !append_spaces(out, line->pad))
-        {
-            return false;
-        }
-
-        from = max_size(start, line->content.start);
-        to = min_size(end, line->content.end);
-        if ((from < to) && !mnd_buf_append(out, doc->data + from, to - from))
+        /* 範囲の内側にある行の境目ごとに "\n" を加える（範囲が境目で始まるか終わる場合も含む） */
+        if (((i + 1) < leaf->line_count) && boundary_in_span(line, &leaf->lines[i + 1], start, end)
+            && !mnd_buf_append_byte(out, '\n'))
         {
             return false;
         }
