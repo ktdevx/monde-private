@@ -163,7 +163,7 @@
   - _Requirements: 7.2, 7.4, 7.6_
 
 - [ ] 6. spec による検証
-- [ ] 6.1 テスト専用の HTML 出力を作る
+- [x] 6.1 テスト専用の HTML 出力を作る
   - commonmark.js と同じ規則で、構文木を HTML にする（ブロックの改行の位置、タイトなリスト、コードブロックの言語のクラス、`<hr />` と `<br />`、エスケープ、URL のパーセントエンコード、画像の alt の文字列、NUL の U+FFFD）。コードブロック・コードスパン・タイトル・URL の文字列は論理的な文字列とアンエスケープで作る。再帰を使わない
   - 完了時: render スイートで、spec の各節から 1 例ずつ選び、テストに直接書いた例（段落、見出し、コード、引用、リスト、HTML、リンク、画像、強調）の出力が期待 HTML と完全に一致するテストが合格する
   - _Depends: 4.3_
@@ -231,3 +231,5 @@
 - 5.1: 方言は入口の `mnd_md_dialect_check`（md_internal.h）で検査し、`parser->dialect` は NULL にならない。規則の失敗は `parser->rule_failed/rule_index/rule_line` に記録し、`mnd_md_parse` が `rule %zu returned an invalid result` にする（5.2 のインラインの規則と後処理の検査も同じ経路を使う。`rule %zu` は規則の配列の中の 0 起点の添字）。インラインの対象のリーフは `is_inline_leaf(parser, node)`（`mnd_md_dialect_block_rule` を使う）。種類はブロックとインラインの規則の両方を通して一意。ブロックの規則はインデント 3 以下では CommonMark の開始より前に、段落の中のインデント 4 以上の行では単独で試す（`try_dialect_starts`）。空行では試さない。方言のブロックの範囲は `mnd_md_block_ctx_open` を呼んだ時点の位置から始まる。6.1 の HTML 出力は `MND_MD_KIND_DIALECT` 以上の種類を扱う必要がある。インラインと後処理のコンテキスト関数は宣言だけで、5.2 で定義する。
 - 5.2: 方言の区切り記号形式のノードは子を持ち、`as.dialect_data` が `mnd_md_emph_t`。開始文字形式のノードは子を持たない（データは規則が決める）。後処理のノードは任意の種類になる。そのため 6.1 の HTML 出力は、`MND_MD_KIND_DIALECT` 以上の種類を、子だけを出力する既定の扱いにする。6.2 の空の方言との比較は、後処理を持たない方言で行う。方言の区切り記号の探索の下限は `parser->delim_slot`（文字ごと × 開きにもなれるか × 長さの 3 の剰余）。インラインの規則の失敗の `rule %zu` は、インラインの規則の配列の添字。
 - 5.2 の設計の欠落（人の判断が必要）: 後処理のコールバック `postprocess(ctx, root)` には、原文を読む手段がない（`mnd_md_post_ctx_t` に原文を返す関数がなく、ノードから文書へ戻る手段もない）。テストはグローバル変数で原文を渡している。GFM のタスクリストや自動リンクの拡張に必要なので、design.md に `mnd_md_post_data` などを加える改訂を検討する。
+- 6.1: html_render の API は `mnd_md_html_render(doc, &out)`（tests/markdown/html_render.h。out の末尾に追加し、メモリ不足で false）。文字列は `span_text`（`mnd_md_logical_text` に、4.1 の注意の行の境目の `\n` を補う）で作り、参照形式は `def` をリーフにする。`MND_MD_KIND_DIALECT` 以上の種類と LINK_REF_DEF は子だけを出す。行のないコードブロックは空。`line_included` は md_text.c の `line_in_span` と同じ判定を複製しているので、片方を変えたらもう片方も直す。6.1 の時点で、全 652 例が完全一致した（scratch での確認）。
+- 6.1 の後続（検討）: 行の境目で始まるか終わる範囲で `\n` が落ちる問題は、translation-units の msgid にも影響する。Text の契約を改めるか、利用者ごとに補う責任を design.md に書く。
