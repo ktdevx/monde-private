@@ -1,4 +1,4 @@
-/* Dialect: mnd_md_commonmark、方言の検査、コンテキスト関数、後処理のあとの木の検査 */
+/* Dialect: mnd_md_commonmark、方言の検査、ブロックと後処理のコンテキスト関数、後処理のあとの木の検査 */
 
 #include "markdown/md.h"
 #include "markdown/md_dialect.h"
@@ -305,4 +305,237 @@ void *mnd_md_block_ctx_alloc(mnd_md_block_ctx_t *ctx, size_t size)
     }
 
     return ptr;
+}
+
+/* 後処理のコンテキスト関数 */
+
+/*
+ * 後処理のコンテキスト（md_dialect.h の不透明な型の定義）。後処理を呼ぶときに作り、コンテキスト関数が
+ * 失敗を記録する。解析中だけ有効である
+ */
+struct mnd_md_post_ctx
+{
+    mnd_md_parser_t *parser;
+    bool invalid;               /* 後処理がコンテキスト関数を不正に使った */
+    bool oom;                   /* コンテキスト関数の確保が失敗した */
+};
+
+mnd_md_node_t *mnd_md_post_new_node(mnd_md_post_ctx_t *ctx, mnd_md_kind_t kind, mnd_span_t span)
+{
+    mnd_md_node_t *node = mnd_md_node_new(ctx->parser->doc, kind, span);
+
+    if (node == NULL)
+    {
+        ctx->oom = true;
+        return NULL;
+    }
+
+    /* 範囲が内容の外なら行番号は 0 になる（木に入れれば、後処理のあとの検査で失敗する） */
+    mnd_md_parser_set_node_lines(ctx->parser, node);
+
+    return node;
+}
+
+bool mnd_md_post_split_text(mnd_md_post_ctx_t *ctx, mnd_md_node_t *text, size_t offset)
+{
+    mnd_md_node_t *tail = NULL;
+    mnd_span_t span;
+
+    /* offset は原文のオフセットで、テキストの範囲の内側（両側が空でない）でなければならない */
+    if ((text == NULL) || (text->kind != MND_MD_TEXT) || (offset <= text->span.start)
+        || (offset >= text->span.end))
+    {
+        return false;
+    }
+
+    span.start = offset;
+    span.end = text->span.end;
+    tail = mnd_md_post_new_node(ctx, MND_MD_TEXT, span);
+    if (tail == NULL)
+    {
+        return false;
+    }
+
+    text->span.end = offset;
+    mnd_md_parser_set_node_lines(ctx->parser, text);
+    mnd_md_node_insert_after(text, tail);
+
+    return true;
+}
+
+void mnd_md_post_insert_after(mnd_md_post_ctx_t *ctx, mnd_md_node_t *sibling, mnd_md_node_t *node)
+{
+    /* 根の兄弟は作れない */
+    if ((sibling == NULL) || (node == NULL) || (sibling == node) || (sibling->parent == NULL)
+        || (node == ctx->parser->doc->root))
+    {
+        ctx->invalid = true;
+        return;
+    }
+
+    mnd_md_node_insert_after(sibling, node);
+}
+
+void mnd_md_post_wrap(mnd_md_post_ctx_t *ctx, mnd_md_node_t *first, mnd_md_node_t *last, mnd_md_node_t *wrapper)
+{
+    mnd_md_node_t *node = NULL;
+    mnd_md_node_t *next = NULL;
+
+    /* wrapper はどこにも連結していないノード、first〜last は親を持つ兄弟の並び（first から next でたどれる） */
+    if ((first == NULL) || (last == NULL) || (wrapper == NULL) || (first->parent == NULL)
+        || (wrapper->parent != NULL) || (wrapper->prev != NULL) || (wrapper->next != NULL)
+        || (wrapper == ctx->parser->doc->root))
+    {
+        ctx->invalid = true;
+        return;
+    }
+
+    for (node = first; (node != NULL) && (node != last); node = node->next)
+    {
+    }
+
+    if (node == NULL)
+    {
+        ctx->invalid = true;
+        return;
+    }
+
+    mnd_md_node_insert_before(first, wrapper);
+    for (node = first; node != NULL; node = next)
+    {
+        next = (node == last) ? NULL : node->next;
+        mnd_md_node_append_child(wrapper, node);
+    }
+}
+
+void *mnd_md_post_alloc(mnd_md_post_ctx_t *ctx, size_t size)
+{
+    void *ptr = mnd_md_arena_alloc(&ctx->parser->doc->arena, size);
+
+    if (ptr == NULL)
+    {
+        ctx->oom = true;
+    }
+
+    return ptr;
+}
+
+/* 後処理のあとの木の検査 */
+
+/* node の範囲が内容の中にあり、親 parent の内側で、直前の兄弟 prev（NULL 可）と重ならないか */
+static bool node_range_ok(const mnd_md_node_t *node, const mnd_md_node_t *parent, const mnd_md_node_t *prev,
+                          size_t len)
+{
+    return ((node->span.start <= node->span.end) && (node->span.end <= len)
+            && (parent->span.start <= node->span.start) && (node->span.end <= parent->span.end)
+            && ((prev == NULL) || (prev->span.end <= node->span.start)));
+}
+
+/*
+ * 根から前順に再帰なしでたどり、最初に壊れたノードを返す（壊れていなければ NULL）。
+ * 子へ降りるときは子の parent と prev、兄弟へ進むときは兄弟の prev と parent、親へ戻るときは親の last_child を
+ * 確かめるので、たどったノードの連結は根からの木の形になり、後処理が連結を壊しても走査は必ず終わる
+ */
+static const mnd_md_node_t *find_invalid_node(const mnd_md_parser_t *parser)
+{
+    const mnd_md_node_t *root = parser->doc->root;
+    const mnd_md_node_t *node = root;
+    const mnd_md_node_t *child = NULL;
+    const mnd_md_node_t *next = NULL;
+    const mnd_md_node_t *parent = NULL;
+    size_t len = parser->len;
+
+    if ((root->parent != NULL) || (root->prev != NULL) || (root->next != NULL)
+        || (root->span.start > root->span.end) || (root->span.end != len))
+    {
+        return root;
+    }
+
+    for (;;)
+    {
+        child = node->first_child;
+        if (child != NULL)
+        {
+            if ((child->parent != node) || (child->prev != NULL) || !node_range_ok(child, node, NULL, len))
+            {
+                return child;
+            }
+
+            node = child;
+            continue;
+        }
+
+        if (node->last_child != NULL)
+        {
+            return node;
+        }
+
+        /* 次の兄弟か、祖先の次の兄弟へ進む */
+        while (node != root)
+        {
+            next = node->next;
+            parent = node->parent;
+            if (next != NULL)
+            {
+                if ((next->prev != node) || (next->parent != parent) || !node_range_ok(next, parent, node, len))
+                {
+                    return next;
+                }
+
+                node = next;
+                break;
+            }
+
+            if (parent->last_child != node)
+            {
+                return parent;
+            }
+
+            node = parent;
+        }
+
+        if (node == root)
+        {
+            return NULL;
+        }
+    }
+}
+
+bool mnd_md_dialect_postprocess(mnd_md_parser_t *parser)
+{
+    mnd_md_post_ctx_t ctx;
+    const mnd_md_node_t *bad = NULL;
+    bool ok = false;
+
+    if (parser->dialect->postprocess == NULL)
+    {
+        return true;
+    }
+
+    ctx.parser = parser;
+    ctx.invalid = false;
+    ctx.oom = false;
+    ok = parser->dialect->postprocess(&ctx, parser->doc->root);
+    if (ctx.oom)
+    {
+        return false;
+    }
+
+    if (!ok || ctx.invalid)
+    {
+        parser->post_failed = true;
+        parser->rule_line = 0;
+        return false;
+    }
+
+    bad = find_invalid_node(parser);
+    if (bad != NULL)
+    {
+        parser->post_failed = true;
+        parser->rule_line = mnd_md_parser_line_of(parser, (bad->span.start <= parser->len) ? bad->span.start
+                                                                                            : parser->len);
+        return false;
+    }
+
+    return true;
 }

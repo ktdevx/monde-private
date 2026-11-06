@@ -14,6 +14,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
 size_t mnd_md_parser_line_of(const mnd_md_parser_t *parser, size_t offset)
 {
@@ -131,17 +132,26 @@ bool mnd_md_parse(const char *data, size_t len, const mnd_md_options_t *options,
     parser.rule_failed = false;
     parser.rule_index = 0;
     parser.rule_line = 0;
+    parser.post_failed = false;
+    memset(parser.delim_slot, 0, sizeof(parser.delim_slot));
+    parser.delim_slot_count = 0;
     mnd_md_array_init(&parser.open, sizeof(mnd_md_open_block_t), parser.allocator);
     mnd_md_array_init(&parser.leaf_lines, sizeof(mnd_md_line_t), parser.allocator);
     mnd_md_array_init(&parser.dialect_lines, sizeof(mnd_md_line_t), parser.allocator);
 
     parser.doc = mnd_md_doc_create(data, len, parser.allocator);
     if ((parser.doc == NULL) || !parser_build_line_index(&parser) || !mnd_md_block_run(&parser)
-        || !mnd_md_inline_run(&parser))
+        || !mnd_md_inline_run(&parser)
+        || !mnd_md_dialect_postprocess(&parser))
     {
-        /* 方言の規則が不正な結果を返したのでなければ、ここまでの失敗はメモリ不足である（8.2） */
+        /* 方言の規則が不正な結果を返したか、後処理が木を壊したのでなければ、ここまでの失敗はメモリ不足である（8.2） */
         parser_discard(&parser);
-        if (parser.rule_failed)
+        if (parser.post_failed)
+        {
+            mnd_diag_add(diags, MND_SEVERITY_ERROR, options->path, parser.rule_line,
+                         "dialect \"%s\": postprocess produced an invalid tree", mnd_md_dialect_name(dialect));
+        }
+        else if (parser.rule_failed)
         {
             mnd_diag_add(diags, MND_SEVERITY_ERROR, options->path, parser.rule_line,
                          "dialect \"%s\": rule %zu returned an invalid result", mnd_md_dialect_name(dialect),

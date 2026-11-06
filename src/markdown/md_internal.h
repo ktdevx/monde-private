@@ -215,6 +215,14 @@ typedef struct mnd_md_parser
     bool rule_failed;
     size_t rule_index;
     size_t rule_line;
+    /* 方言の後処理のあとの木が範囲の不変条件を満たさなかった（rule_line は壊れたノードの行。分からなければ 0） */
+    bool post_failed;
+    /*
+     * 方言の区切り記号形式の規則の文字ごとの、強調の処理の探索の下限の枠の番号 + 1（0 なら区切り記号形式の
+     * 文字でない）と、その文字の種類の数。インラインの段階の最初に mnd_md_inline_run が作る
+     */
+    unsigned short delim_slot[256];
+    size_t delim_slot_count;
 } mnd_md_parser_t;
 
 /* offset（0 <= offset <= len）の位置の行番号（1 起点。基準は内容全体の先頭） */
@@ -287,5 +295,14 @@ const char *mnd_md_dialect_name(const mnd_md_dialect_t *dialect);
  */
 const mnd_md_block_rule_t *mnd_md_dialect_block_rule(const mnd_md_dialect_t *dialect, mnd_md_kind_t kind,
                                                      size_t *index);
+
+/*
+ * 方言の後処理を、インラインの段階のあとに 1 回呼ぶ（後処理を持たない方言では何もしない）。
+ * 後処理のあとに木を再帰なしでたどり、範囲が内容の中にあること・子が親の内側・兄弟が重ならず原文の順で
+ * あること（3.1〜3.3）と、親・兄弟の連結が矛盾しないことを検査する。メモリ不足なら false。
+ * 後処理が false を返したか、コンテキスト関数を不正に使ったか、木が壊れていれば、parser の post_failed と
+ * rule_line（壊れたノードの span.start の行。後処理の失敗では 0）を記録して false
+ */
+bool mnd_md_dialect_postprocess(mnd_md_parser_t *parser);
 
 #endif

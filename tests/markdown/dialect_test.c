@@ -22,6 +22,10 @@
 #define KIND_TAKE ((mnd_md_kind_t)(MND_MD_KIND_DIALECT + 1))    /* 段落の最後の行を引き取る `@@@` のリーフ */
 #define KIND_BOX ((mnd_md_kind_t)(MND_MD_KIND_DIALECT + 2))     /* `|` のコンテナ */
 #define KIND_INLINE ((mnd_md_kind_t)(MND_MD_KIND_DIALECT + 3))  /* インラインの規則（検査のテスト用） */
+#define KIND_VAR ((mnd_md_kind_t)(MND_MD_KIND_DIALECT + 5))     /* `{{name}}`（開始文字形式） */
+#define KIND_MARK ((mnd_md_kind_t)(MND_MD_KIND_DIALECT + 6))    /* `==text==`（区切り記号形式） */
+#define KIND_TODO ((mnd_md_kind_t)(MND_MD_KIND_DIALECT + 7))    /* 後処理がテキストの `TODO` を包むノード */
+#define KIND_BAD ((mnd_md_kind_t)(MND_MD_KIND_DIALECT + 8))     /* 範囲を壊す後処理が作るノード */
 
 /* finalize が呼ばれた回数 */
 static size_t line_finalize_calls;
@@ -262,6 +266,252 @@ static const mnd_md_dialect_t test_dialect = {
 
 static const mnd_md_dialect_t empty_dialect = {
     "empty", NULL, 0, NULL, 0, NULL
+};
+
+/* インラインの規則と後処理のテスト用の方言 */
+
+/*
+ * 後処理が読む内容（後処理のコンテキストは内容を渡さないので、解析の前にテストが設定する）。
+ * NULL なら後処理は何もしない
+ */
+static const char *post_data;
+
+/* `{{name}}`: 現在の行の中で `}}` を探し、name が空でなければノードを作って name の長さを付ける */
+static bool var_try_match(mnd_md_inline_ctx_t *ctx)
+{
+    mnd_md_line_view_t view = mnd_md_inline_ctx_line(ctx);
+    mnd_md_node_t *node = NULL;
+    size_t *data = NULL;
+    size_t q = 0;
+
+    if (((view.end - view.pos) < 5) || (view.data[view.pos + 1] != '{'))
+    {
+        return false;
+    }
+
+    for (q = view.pos + 2; (q + 1) < view.end; q++)
+    {
+        if ((view.data[q] == '}') && (view.data[q + 1] == '}'))
+        {
+            break;
+        }
+    }
+
+    if (((q + 1) >= view.end) || (q == (view.pos + 2)))
+    {
+        return false;
+    }
+
+    node = mnd_md_inline_ctx_emit(ctx, KIND_VAR, (q + 2) - view.pos);
+    if (node == NULL)
+    {
+        return false;
+    }
+
+    data = (size_t *)mnd_md_inline_ctx_alloc(ctx, sizeof(*data));
+    if (data == NULL)
+    {
+        return false;
+    }
+
+    *data = q - (view.pos + 2);
+    node->as.dialect_data = data;
+
+    return true;
+}
+
+/* `==`: 開きと閉じがともに 2 つ以上残っていれば、2 つずつ使って対にする */
+static bool mark_match_delims(const mnd_md_delim_run_t *opener, const mnd_md_delim_run_t *closer, size_t *use)
+{
+    if ((opener->length < 2) || (closer->length < 2))
+    {
+        return false;
+    }
+
+    *use = 2;
+
+    return true;
+}
+
+/* 前順で node の部分木の次のノード（root の部分木を出たら NULL） */
+static mnd_md_node_t *post_next_after(mnd_md_node_t *node, const mnd_md_node_t *root)
+{
+    while ((node != NULL) && (node != root))
+    {
+        if (node->next != NULL)
+        {
+            return node->next;
+        }
+
+        node = node->parent;
+    }
+
+    return NULL;
+}
+
+/* テキストの最初の `TODO` の開始のオフセット。なければ SIZE_MAX */
+static size_t find_todo(const mnd_md_node_t *text)
+{
+    size_t p = 0;
+
+    for (p = text->span.start; (p + 4) <= text->span.end; p++)
+    {
+        if (memcmp(post_data + p, "TODO", 4) == 0)
+        {
+            return p;
+        }
+    }
+
+    return (size_t)-1;
+}
+
+/* テキストの `TODO` を分けて KIND_TODO のノードで包む（包んだノードの中には降りない。再帰なし） */
+static bool todo_postprocess(mnd_md_post_ctx_t *ctx, mnd_md_node_t *root)
+{
+    mnd_md_node_t *node = root;
+    mnd_md_node_t *wrapper = NULL;
+    size_t *count = NULL;
+    size_t at = 0;
+    mnd_span_t span;
+
+    if (post_data == NULL)
+    {
+        return true;
+    }
+
+    while (node != NULL)
+    {
+        if ((node->kind == MND_MD_TEXT) && ((at = find_todo(node)) != (size_t)-1))
+        {
+            if ((at > node->span.start) && !mnd_md_post_split_text(ctx, node, at))
+            {
+                return false;
+            }
+
+            if (at > node->span.start)
+            {
+                node = node->next;
+            }
+
+            if (((at + 4) < node->span.end) && !mnd_md_post_split_text(ctx, node, at + 4))
+            {
+                return false;
+            }
+
+            span.start = at;
+            span.end = at + 4;
+            wrapper = mnd_md_post_new_node(ctx, KIND_TODO, span);
+            count = (size_t *)mnd_md_post_alloc(ctx, sizeof(*count));
+            if ((wrapper == NULL) || (count == NULL))
+            {
+                return false;
+            }
+
+            *count = 4;
+            wrapper->as.dialect_data = count;
+            mnd_md_post_wrap(ctx, node, node, wrapper);
+            node = post_next_after(wrapper, root);
+        }
+        else if ((node->first_child != NULL) && (node->kind != KIND_TODO))
+        {
+            node = node->first_child;
+        }
+        else
+        {
+            node = post_next_after(node, root);
+        }
+    }
+
+    return true;
+}
+
+/* 範囲を壊す後処理の種類 */
+static int bad_post_mode;
+
+/*
+ * 最初の段落の最後の子の後ろに、壊れた範囲のノードを入れる（0: 内容の外、1: 直前の兄弟と重なる、2: 親の外、
+ * 3: 段落の最後の子の後ろの空のノード（壊れていない）、4: false を返す、5: 根の後ろに入れる）
+ */
+static bool bad_postprocess(mnd_md_post_ctx_t *ctx, mnd_md_node_t *root)
+{
+    mnd_md_node_t *para = root->first_child;
+    mnd_md_node_t *last = para->last_child;
+    mnd_md_node_t *node = NULL;
+    mnd_span_t span;
+
+    switch (bad_post_mode)
+    {
+    case 0:
+        span.start = last->span.end;
+        span.end = root->span.end + 1;
+        break;
+    case 1:
+        span.start = last->span.end - 1;
+        span.end = last->span.end;
+        break;
+    case 2:
+        span.start = last->span.end;
+        span.end = para->span.end + 1;
+        break;
+    case 4:
+        return false;
+    default:
+        span.start = last->span.end;
+        span.end = last->span.end;
+        break;
+    }
+
+    node = mnd_md_post_new_node(ctx, KIND_BAD, span);
+    if (node == NULL)
+    {
+        return false;
+    }
+
+    mnd_md_post_insert_after(ctx, (bad_post_mode == 5) ? root : last, node);
+
+    return true;
+}
+
+/* 規則が不正な結果を返す開始文字形式の規則の種類（0: 行の外まで作る、1: 作らずに true、2: 種類が違う） */
+static int bad_inline_mode;
+
+static bool bad_try_match(mnd_md_inline_ctx_t *ctx)
+{
+    mnd_md_line_view_t view = mnd_md_inline_ctx_line(ctx);
+
+    switch (bad_inline_mode)
+    {
+    case 0:
+        (void)mnd_md_inline_ctx_emit(ctx, KIND_VAR, (view.end - view.pos) + 1);
+        return true;
+    case 1:
+        return true;
+    default:
+        return (mnd_md_inline_ctx_emit(ctx, KIND_MARK, 1) != NULL);
+    }
+}
+
+/* 区切り記号形式の規則が、残りより多い数を使う */
+static bool greedy_match_delims(const mnd_md_delim_run_t *opener, const mnd_md_delim_run_t *closer, size_t *use)
+{
+    *use = opener->length + closer->length;
+
+    return true;
+}
+
+/* kind、trigger、delimiter、try_match、match_delims */
+static const mnd_md_inline_rule_t test_inline_rules[2] = {
+    { KIND_VAR, '{', false, var_try_match, NULL },
+    { KIND_MARK, '=', true, NULL, mark_match_delims }
+};
+
+static const mnd_md_dialect_t inline_dialect = {
+    "test", NULL, 0, test_inline_rules, 2, todo_postprocess
+};
+
+/* ブロックの規則・インラインの規則・後処理をすべて使う方言（メモリ不足のテスト用） */
+static const mnd_md_dialect_t full_dialect = {
+    "test", test_block_rules, 3, test_inline_rules, 2, todo_postprocess
 };
 
 /* 期待する行の内容（prefix は [prefix_start, content_start)） */
@@ -818,6 +1068,386 @@ NAOS_TEST(dialect_out_of_memory_frees_everything)
     NAOS_CHECK_TRUE(failures > 0);
 }
 
+/* 開始文字形式の規則に渡された行の状態（view_try_match が記録する） */
+static mnd_md_line_view_t recorded_view;
+static size_t recorded_views;
+
+static bool view_try_match(mnd_md_inline_ctx_t *ctx)
+{
+    recorded_view = mnd_md_inline_ctx_line(ctx);
+    recorded_views++;
+
+    return false;
+}
+
+/* 7.2、7.4、7.6: 開始文字形式の `{{name}}` が、規則の種類と範囲のノードになる */
+NAOS_TEST(dialect_inline_start_rule_emits_node)
+{
+    static const char data[] = "a {{name}} b\n";
+    static const char unclosed[] = "x {{y\n\n{{}} {z}\n";
+    static const char nested[] = "*{{v}}*\nq\n{{w}} `{{c}}`\n";
+    mnd_md_doc_t *doc = NULL;
+    const mnd_md_node_t *para = NULL;
+    const mnd_md_node_t *node = NULL;
+
+    post_data = NULL;
+    doc = parse_with(data, sizeof(data) - 1, &inline_dialect);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = mnd_md_doc_root(doc)->first_child;
+    NAOS_REQUIRE_NOT_NULL(para);
+    node = para->first_child;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, MND_MD_TEXT, 0, 2, 1, 1);
+    node = node->next;
+    NAOS_REQUIRE_NOT_NULL(node);
+    NAOS_REQUIRE_INT_EQ((int)KIND_VAR, (int)node->kind);
+    check_node(node, KIND_VAR, 2, 10, 1, 1);
+    NAOS_CHECK_NULL(node->first_child);
+    NAOS_REQUIRE_NOT_NULL(node->as.dialect_data);
+    NAOS_CHECK_UINT_EQ(4, *(const size_t *)node->as.dialect_data);
+    node = node->next;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, MND_MD_TEXT, 10, 12, 1, 1);
+    NAOS_CHECK_NULL(node->next);
+    mnd_md_doc_free(doc);
+
+    /* 当てはまらなければテキスト（前後のテキストと 1 つになる） */
+    doc = parse_with(unclosed, sizeof(unclosed) - 1, &inline_dialect);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = mnd_md_doc_root(doc)->first_child;
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_NOT_NULL(para->first_child);
+    check_node(para->first_child, MND_MD_TEXT, 0, 5, 1, 1);
+    NAOS_CHECK_NULL(para->first_child->next);
+    para = para->next;
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_NOT_NULL(para->first_child);
+    check_node(para->first_child, MND_MD_TEXT, 7, 15, 3, 3);
+    NAOS_CHECK_NULL(para->first_child->next);
+    mnd_md_doc_free(doc);
+
+    /* 強調の中、行の境目の後ろ。コードスパンの中では試さない */
+    doc = parse_with(nested, sizeof(nested) - 1, &inline_dialect);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = mnd_md_doc_root(doc)->first_child;
+    NAOS_REQUIRE_NOT_NULL(para);
+    node = para->first_child;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, MND_MD_EMPH, 0, 7, 1, 1);
+    NAOS_REQUIRE_NOT_NULL(node->first_child);
+    check_node(node->first_child, KIND_VAR, 1, 6, 1, 1);
+    node = node->next;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, MND_MD_SOFT_BREAK, 7, 8, 1, 1);
+    node = node->next->next->next;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, KIND_VAR, 10, 15, 3, 3);
+    node = node->next->next;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, MND_MD_CODE_SPAN, 16, 23, 3, 3);
+    NAOS_CHECK_NULL(node->first_child);
+    NAOS_CHECK_NULL(node->next);
+    mnd_md_doc_free(doc);
+}
+
+/* 開始文字形式の規則に渡す行の状態は、現在の行の中の位置と桁（物理的な行の先頭から数える） */
+NAOS_TEST(dialect_inline_rule_line_view)
+{
+    static const mnd_md_inline_rule_t rules[1] = {
+        { KIND_VAR, '~', false, view_try_match, NULL }
+    };
+    static const mnd_md_dialect_t dialect = { "view", NULL, 0, rules, 1, NULL };
+    static const char data[] = "> a\t~b  \n> c ~\n";
+    mnd_md_doc_t *doc = NULL;
+
+    recorded_views = 0;
+    doc = parse_with(data, sizeof(data) - 1, &dialect);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    NAOS_CHECK_UINT_EQ(2, recorded_views);
+    /* 2 つ目の `~` は 2 行目の終わり */
+    NAOS_CHECK_TRUE(recorded_view.data == data);
+    NAOS_CHECK_UINT_EQ(13, recorded_view.pos);
+    NAOS_CHECK_UINT_EQ(14, recorded_view.end);
+    NAOS_CHECK_UINT_EQ(4, recorded_view.column);
+    NAOS_CHECK_UINT_EQ(0, recorded_view.indent);
+    NAOS_CHECK_UINT_EQ(13, recorded_view.first_nonspace);
+    NAOS_CHECK_FALSE(recorded_view.blank);
+    NAOS_CHECK_UINT_EQ(2, recorded_view.line);
+    mnd_md_doc_free(doc);
+
+    /* 1 行だけ: タブの後ろの桁と、行の内容の終わり（最後の行の末尾の空白は除く） */
+    recorded_views = 0;
+    doc = parse_with(data, 6, &dialect);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    NAOS_CHECK_UINT_EQ(1, recorded_views);
+    NAOS_CHECK_UINT_EQ(4, recorded_view.pos);
+    NAOS_CHECK_UINT_EQ(6, recorded_view.end);
+    NAOS_CHECK_UINT_EQ(4, recorded_view.column);
+    NAOS_CHECK_UINT_EQ(1, recorded_view.line);
+    mnd_md_doc_free(doc);
+}
+
+/* 7.2、7.4、7.6: 区切り記号形式の `==text==` が、強調と同じスタックで対になってノードになる */
+NAOS_TEST(dialect_inline_delimiter_rule_pairs)
+{
+    static const char data[] = "a ==b *c*== d\n";
+    static const char link[] = "[==x==](/u)\n";
+    static const char unpaired[] = "a ==b= c\n";
+    static const char lines[] = "==a\nb==\n";
+    static const char triple[] = "===a===\n";
+    mnd_md_doc_t *doc = NULL;
+    const mnd_md_node_t *para = NULL;
+    const mnd_md_node_t *node = NULL;
+    const mnd_md_emph_t *mark = NULL;
+
+    post_data = NULL;
+    doc = parse_with(data, sizeof(data) - 1, &inline_dialect);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = mnd_md_doc_root(doc)->first_child;
+    NAOS_REQUIRE_NOT_NULL(para);
+    node = para->first_child;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, MND_MD_TEXT, 0, 2, 1, 1);
+    node = node->next;
+    NAOS_REQUIRE_NOT_NULL(node);
+    NAOS_REQUIRE_INT_EQ((int)KIND_MARK, (int)node->kind);
+    check_node(node, KIND_MARK, 2, 11, 1, 1);
+    mark = (const mnd_md_emph_t *)node->as.dialect_data;
+    NAOS_REQUIRE_NOT_NULL(mark);
+    NAOS_CHECK_INT_EQ('=', mark->delim);
+    NAOS_CHECK_UINT_EQ(2, mark->open.start);
+    NAOS_CHECK_UINT_EQ(4, mark->open.end);
+    NAOS_CHECK_UINT_EQ(9, mark->close.start);
+    NAOS_CHECK_UINT_EQ(11, mark->close.end);
+    NAOS_REQUIRE_NOT_NULL(node->first_child);
+    check_node(node->first_child, MND_MD_TEXT, 4, 6, 1, 1);
+    NAOS_REQUIRE_NOT_NULL(node->first_child->next);
+    check_node(node->first_child->next, MND_MD_EMPH, 6, 9, 1, 1);
+    NAOS_CHECK_NULL(node->first_child->next->next);
+    node = node->next;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, MND_MD_TEXT, 11, 13, 1, 1);
+    NAOS_CHECK_NULL(node->next);
+    mnd_md_doc_free(doc);
+
+    /* リンクの中の区切り記号は、リンクを閉じるときに対になる */
+    doc = parse_with(link, sizeof(link) - 1, &inline_dialect);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    node = mnd_md_doc_root(doc)->first_child->first_child;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, MND_MD_LINK, 0, 11, 1, 1);
+    NAOS_REQUIRE_NOT_NULL(node->first_child);
+    check_node(node->first_child, KIND_MARK, 1, 6, 1, 1);
+    NAOS_CHECK_NULL(node->first_child->next);
+    NAOS_REQUIRE_NOT_NULL(node->first_child->first_child);
+    check_node(node->first_child->first_child, MND_MD_TEXT, 3, 4, 1, 1);
+    mnd_md_doc_free(doc);
+
+    /* 規則が対にしなければ、使われなかった記号はテキスト */
+    doc = parse_with(unpaired, sizeof(unpaired) - 1, &inline_dialect);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    node = mnd_md_doc_root(doc)->first_child->first_child;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, MND_MD_TEXT, 0, 8, 1, 1);
+    NAOS_CHECK_NULL(node->next);
+    mnd_md_doc_free(doc);
+
+    /* 行をまたぐ */
+    doc = parse_with(lines, sizeof(lines) - 1, &inline_dialect);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    node = mnd_md_doc_root(doc)->first_child->first_child;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, KIND_MARK, 0, 7, 1, 2);
+    NAOS_CHECK_NULL(node->next);
+    NAOS_REQUIRE_NOT_NULL(node->first_child);
+    check_node(node->first_child, MND_MD_TEXT, 2, 3, 1, 1);
+    NAOS_REQUIRE_NOT_NULL(node->first_child->next);
+    check_node(node->first_child->next, MND_MD_SOFT_BREAK, 3, 4, 1, 1);
+    mnd_md_doc_free(doc);
+
+    /* 開きは後ろから、閉じは前から使い、残りはテキスト */
+    doc = parse_with(triple, sizeof(triple) - 1, &inline_dialect);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    node = mnd_md_doc_root(doc)->first_child->first_child;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, MND_MD_TEXT, 0, 1, 1, 1);
+    node = node->next;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, KIND_MARK, 1, 6, 1, 1);
+    node = node->next;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, MND_MD_TEXT, 6, 7, 1, 1);
+    NAOS_CHECK_NULL(node->next);
+    mnd_md_doc_free(doc);
+}
+
+/* 7.2、7.6: 後処理がテキストの `TODO` を分けて包んだノードが、期待する種類と範囲で木に入る */
+NAOS_TEST(dialect_postprocess_wraps_text)
+{
+    static const char data[] = "a TODO b\n\n# TODO\n\nTODOTODO *TODO*\n";
+    mnd_md_doc_t *doc = NULL;
+    const mnd_md_node_t *block = NULL;
+    const mnd_md_node_t *node = NULL;
+
+    post_data = data;
+    doc = parse_with(data, sizeof(data) - 1, &inline_dialect);
+    post_data = NULL;
+    NAOS_REQUIRE_NOT_NULL(doc);
+
+    block = mnd_md_doc_root(doc)->first_child;
+    NAOS_REQUIRE_NOT_NULL(block);
+    node = block->first_child;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, MND_MD_TEXT, 0, 2, 1, 1);
+    node = node->next;
+    NAOS_REQUIRE_NOT_NULL(node);
+    NAOS_REQUIRE_INT_EQ((int)KIND_TODO, (int)node->kind);
+    check_node(node, KIND_TODO, 2, 6, 1, 1);
+    NAOS_REQUIRE_NOT_NULL(node->as.dialect_data);
+    NAOS_CHECK_UINT_EQ(4, *(const size_t *)node->as.dialect_data);
+    NAOS_REQUIRE_NOT_NULL(node->first_child);
+    check_node(node->first_child, MND_MD_TEXT, 2, 6, 1, 1);
+    NAOS_CHECK_NULL(node->first_child->next);
+    node = node->next;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, MND_MD_TEXT, 6, 8, 1, 1);
+    NAOS_CHECK_NULL(node->next);
+
+    block = block->next;
+    NAOS_REQUIRE_NOT_NULL(block);
+    NAOS_CHECK_INT_EQ((int)MND_MD_HEADING, (int)block->kind);
+    node = block->first_child;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, KIND_TODO, 12, 16, 3, 3);
+    NAOS_CHECK_NULL(node->next);
+    NAOS_REQUIRE_NOT_NULL(node->first_child);
+    check_node(node->first_child, MND_MD_TEXT, 12, 16, 3, 3);
+
+    block = block->next;
+    NAOS_REQUIRE_NOT_NULL(block);
+    node = block->first_child;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, KIND_TODO, 18, 22, 5, 5);
+    node = node->next;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, KIND_TODO, 22, 26, 5, 5);
+    node = node->next;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, MND_MD_TEXT, 26, 27, 5, 5);
+    node = node->next;
+    NAOS_REQUIRE_NOT_NULL(node);
+    check_node(node, MND_MD_EMPH, 27, 33, 5, 5);
+    NAOS_REQUIRE_NOT_NULL(node->first_child);
+    check_node(node->first_child, KIND_TODO, 28, 32, 5, 5);
+    NAOS_CHECK_NULL(node->next);
+    mnd_md_doc_free(doc);
+}
+
+/* 後処理が範囲の不変条件を壊したら、壊れたノードの行の診断になる。壊さなければ成功する */
+NAOS_TEST(dialect_postprocess_invalid_tree_is_diagnosed)
+{
+    static const mnd_md_dialect_t dialect = { "test", NULL, 0, NULL, 0, bad_postprocess };
+    static const char data[] = "x\nab\n";
+    static const char *const message = "dialect \"test\": postprocess produced an invalid tree";
+    mnd_md_doc_t *doc = NULL;
+    const mnd_md_node_t *para = NULL;
+
+    bad_post_mode = 0;
+    check_dialect_error(data, &dialect, message, 2);
+    bad_post_mode = 1;
+    check_dialect_error(data, &dialect, message, 2);
+    bad_post_mode = 2;
+    check_dialect_error(data, &dialect, message, 2);
+    bad_post_mode = 4;
+    check_dialect_error(data, &dialect, message, 0);
+    bad_post_mode = 5;
+    check_dialect_error(data, &dialect, message, 0);
+
+    bad_post_mode = 3;
+    doc = parse_with(data, sizeof(data) - 1, &dialect);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = mnd_md_doc_root(doc)->first_child;
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_NOT_NULL(para->last_child);
+    check_node(para->last_child, KIND_BAD, 4, 4, 2, 2);
+    mnd_md_doc_free(doc);
+}
+
+/* インラインの規則が不正な結果を返したら、インラインの規則の配列の添字とその行の診断になる */
+NAOS_TEST(dialect_inline_rule_invalid_results_are_diagnosed)
+{
+    static const mnd_md_inline_rule_t bad[2] = {
+        { KIND_MARK, '=', true, NULL, mark_match_delims },
+        { KIND_VAR, '{', false, bad_try_match, NULL }
+    };
+    static const mnd_md_inline_rule_t greedy[2] = {
+        { KIND_VAR, '{', false, var_try_match, NULL },
+        { KIND_MARK, '=', true, NULL, greedy_match_delims }
+    };
+    static const mnd_md_dialect_t d_bad = { "bad", NULL, 0, bad, 2, NULL };
+    static const mnd_md_dialect_t d_greedy = { "bad", NULL, 0, greedy, 2, NULL };
+    static const mnd_md_dialect_t d_greedy_first = { "bad", NULL, 0, &greedy[1], 1, NULL };
+    static const char *const message0 = "dialect \"bad\": rule 0 returned an invalid result";
+    static const char *const message1 = "dialect \"bad\": rule 1 returned an invalid result";
+
+    bad_inline_mode = 0;
+    check_dialect_error("a\nb {\n", &d_bad, message1, 2);
+    bad_inline_mode = 1;
+    check_dialect_error("a\nb {\n", &d_bad, message1, 2);
+    bad_inline_mode = 2;
+    check_dialect_error("a\nb {\n", &d_bad, message1, 2);
+    check_dialect_error("x\n==a==\n", &d_greedy, message1, 2);
+    check_dialect_error("x\n\n[==a==](/u)\n", &d_greedy, message1, 3);
+    /* 区切り記号形式の規則（添字 0）は、開始文字形式の規則の添字と区別する */
+    check_dialect_error("{x}\n", &d_bad, message1, 1);
+    check_dialect_error("==a==\n", &d_greedy_first, message0, 1);
+}
+
+/* 8.2: インラインの規則と後処理を使う解析でも、メモリ不足は `out of memory` になり、確保したものをすべて解放する */
+NAOS_TEST(dialect_inline_and_postprocess_out_of_memory_frees_everything)
+{
+    static const char data[] = "para {{v}} ==m *e*== TODO\n%%% x {{y}} TODO\n[==l==](/u) a TODO z\n| ==q==\n";
+    size_t fail_at = 0;
+    size_t failures = 0;
+    bool succeeded = false;
+
+    post_data = data;
+    for (fail_at = 1; (fail_at <= OOM_MAX_STEPS) && !succeeded; fail_at++)
+    {
+        mnd_md_test_alloc_t ta;
+        mnd_md_options_t options = MND_MD_OPTIONS_INIT;
+        mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+        mnd_md_doc_t *doc = (mnd_md_doc_t *)&options;
+
+        mnd_md_test_alloc_init(&ta, fail_at);
+        options.allocator = &ta.allocator;
+        options.dialect = &full_dialect;
+        if (mnd_md_parse(data, sizeof(data) - 1, &options, &doc, &diags))
+        {
+            succeeded = true;
+            NAOS_CHECK_UINT_EQ(0, ta.failures);
+            NAOS_REQUIRE_NOT_NULL(doc);
+            NAOS_CHECK_TRUE(mnd_md_tree_check_note(doc));
+            mnd_md_doc_free(doc);
+        }
+        else
+        {
+            failures++;
+            NAOS_CHECK_NULL(doc);
+            NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&diags));
+            NAOS_CHECK_STR_EQ("out of memory", mnd_diag_list_at(&diags, 0)->message);
+            NAOS_CHECK_UINT_EQ(0, mnd_diag_list_at(&diags, 0)->line);
+        }
+
+        mnd_diag_list_free(&diags);
+        NAOS_CHECK_UINT_EQ(0, mnd_md_test_alloc_live(&ta));
+    }
+
+    post_data = NULL;
+    NAOS_CHECK_TRUE(succeeded);
+    NAOS_CHECK_TRUE(failures > 0);
+}
+
 NAOS_SUITE(dialect,
     NAOS_ADD_TEST(dialect_default_and_empty_dialects_give_same_tree),
     NAOS_ADD_TEST(dialect_commonmark_has_no_rules),
@@ -832,5 +1462,12 @@ NAOS_SUITE(dialect,
     NAOS_ADD_TEST(dialect_rules_tried_on_indented_line_in_paragraph),
     NAOS_ADD_TEST(dialect_invalid_rules_are_diagnosed),
     NAOS_ADD_TEST(dialect_invalid_rule_results_are_diagnosed),
-    NAOS_ADD_TEST(dialect_out_of_memory_frees_everything)
+    NAOS_ADD_TEST(dialect_out_of_memory_frees_everything),
+    NAOS_ADD_TEST(dialect_inline_start_rule_emits_node),
+    NAOS_ADD_TEST(dialect_inline_rule_line_view),
+    NAOS_ADD_TEST(dialect_inline_delimiter_rule_pairs),
+    NAOS_ADD_TEST(dialect_postprocess_wraps_text),
+    NAOS_ADD_TEST(dialect_postprocess_invalid_tree_is_diagnosed),
+    NAOS_ADD_TEST(dialect_inline_rule_invalid_results_are_diagnosed),
+    NAOS_ADD_TEST(dialect_inline_and_postprocess_out_of_memory_frees_everything)
 )
