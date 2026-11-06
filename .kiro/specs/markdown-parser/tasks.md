@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [ ] 1. markdown モジュールの基盤
+- [x] 1. markdown モジュールの基盤
 - [x] 1.1 markdown モジュールとテスト実行ファイルの雛形を作り、構成・ビルド・テストの手順を通す
   - 設計の公開ヘッダ 3 つ（構文木、解析の入口、方言）を置き、設計の型と関数の宣言をすべて書く。部品ごとの内部ヘッダは空の雛形として置き、中身は各部品のタスクが自分の内部ヘッダだけに書く。共有の内部ヘッダ（アリーナ、ノードの作成と連結、解析の作業状態とコンテキストの型）は 2.1 と 3.1 が担当する
   - 設計の File Structure Plan の製品のソース（アリーナ、ノード、行、ブロックの開始の判定、HTML の字句、解析の入口、ブロック、リンク参照、インライン、区切り記号、論理的な文字列、方言、実体名の表と検索、Unicode の表と検索）を最初から登録する。各ソースは空の翻訳単位にならず、警告なしでコンパイルできるようにする。生成する表は 1.2 と 1.3 で生成するまで、空の表を持つ仮のファイルにしておく
@@ -37,7 +37,7 @@
   - _Depends: 1.1_
   - _Requirements: 9.2, 9.6_
 
-- [ ] 2. 構文木と下位の部品
+- [x] 2. 構文木と下位の部品
 - [x] 2.1 (P) アリーナ、ノードの作成と連結、走査、文書の解放と、テスト用の確保関数を実装する
   - 確保関数（既定は `malloc` と `free`）から塊を確保するアリーナと、作業用の配列の確保・伸長・解放を実装する。容量の計算は確保の前にオーバーフローを検査する
   - ノードの作成、子の末尾への追加、兄弟の前への挿入、前順の走査（再帰なし）、文書の根・内容・長さの取得、文書の解放を実装する
@@ -91,7 +91,7 @@
   - _Depends: 1.3_
   - _Requirements: 9.3_
 
-- [ ] 3. ブロックの段階
+- [x] 3. ブロックの段階
 - [x] 3.1 解析の入口と、段落だけを扱うブロックの段階の骨組みを実装する
   - オプション（NULL、開始位置、確保関数、パス）を検査し、内容全体の UTF-8 を検査する。開始位置が長さを超える場合と不正な UTF-8 の場合は、設計のメッセージで診断を返す
   - 開始位置から 1 行ずつ処理し、開いているブロックの配列（再帰なし）と、段落の行の記録、空行による段落の終わり、範囲と行番号の確定を実装する
@@ -124,7 +124,7 @@
   - _Depends: 1.2, 2.5_
   - _Requirements: 2.7, 2.8, 6.2, 6.3_
 
-- [ ] 4. インラインの段階
+- [x] 4. インラインの段階
 - [x] 4.1 行のカーソルと、リンクと強調を除くインラインを実装し、解析の入口から呼ぶ
   - 段落と見出しの行の内容を順に読むカーソルを作り、すべての位置を原文のオフセットで記録する。コードブロック・HTML ブロック・リンク参照定義ではインラインを解析しない
   - テキスト、ソフト改行、ハード改行（2 つ以上の空白とバックスラッシュ）、バックスラッシュエスケープ、実体参照と数値文字参照、コードスパン（閉じのない長さの記録）、自動リンク（URI とメールアドレス）、生の HTML を認識する。最後の行の末尾の空白はどのノードにも含めない
@@ -141,35 +141,35 @@
   - _Boundary: Delims、InlineParser_
   - _Requirements: 5.1, 5.9_
 
-- [ ] 4.3 リンクと画像を実装する
+- [x] 4.3 リンクと画像を実装する
   - 角括弧のスタックで `[` と `![` を記録し、`]` で、インライン形式（リンク先・タイトル・行をまたぐ空白）、完全参照、省略参照、ショートカット参照の順に判定する。参照は定義の表で解決し、定義がなければテキストのまま残す。リンクの中のリンクを作らないように、外側の角括弧を使えなくする。リンクを閉じるときは、角括弧の位置を下限として強調の処理を呼ぶ
   - リンク全体・テキスト（alt）・リンク先・タイトル・参照ラベルの範囲と、参照形式の定義のノードを記録する。参照形式では、リンク先とタイトルに定義の範囲を使う
   - 完了時: inline・linkref スイートで、インラインリンクの各範囲、`<>` のリンク先と空のリンク先、画像の alt と alt の中の強調、4 種類の参照の形式と参照ラベル、参照形式のリンク先とタイトルが定義の範囲であること、参照より後ろの定義の解決、定義のない `[foo]` がテキストになることのテストが合格し、tree_check を満たす
   - _Requirements: 5.2, 5.3, 5.4, 5.5, 6.1, 6.4_
 
-- [ ] 5. 方言の拡張点
-- [ ] 5.1 方言の検査と既定の方言、ブロックの規則の拡張点を実装する
+- [x] 5. 方言の拡張点
+- [x] 5.1 方言の検査と既定の方言、ブロックの規則の拡張点を実装する
   - 何も追加しない既定の方言と、方言の規則の検査（種類の範囲、重複、必須のコールバック、開始文字）を実装し、不正なら設計のメッセージで診断を返す
   - ブロックの段階で、新しいブロックの開始の前に方言のブロックの規則を登録順に試し、開いている方言のブロックの継続と閉じる処理を呼ぶ。ブロックの規則のコンテキスト関数（行の状態、バイトと桁の消費、ブロックを開く、中断しようとしている段落とその行の引き取り、アリーナからの確保）を実装する。リーフの規則の行を記録し、インラインの対象に含める
   - 完了時: dialect スイートで、方言を指定しない解析と既定の方言の解析で同じ木になること、`%%% ` で始まる 1 行のテスト用のブロックの規則が段落を中断して期待する種類・範囲・行・インラインの子を持つノードになること、段落の最後の行を引き取る規則のノードの範囲、不正な規則が診断になることのテストが合格する
   - _Depends: 3.4, 4.1_
   - _Requirements: 7.1, 7.2, 7.3_
 
-- [ ] 5.2 インラインの規則と後処理の拡張点を実装する
+- [x] 5.2 インラインの規則と後処理の拡張点を実装する
   - インラインの段階で、方言の開始文字の位置で開始文字形式の規則を試し、区切り記号形式の規則の文字の連なりを強調と同じスタックに積み、規則の判断で対にしてノードを作る
   - 後処理のコンテキスト関数（ノードの作成、テキストの分割、兄弟の後ろへの挿入、兄弟の包み込み、アリーナからの確保）を実装し、後処理のあとに、方言の部品の中で、範囲が内容の中にあること・子が親の内側・兄弟が重ならないことを再帰なしで検査し、壊れていれば `postprocess produced an invalid tree` で失敗させる
   - 完了時: dialect スイートで、テスト用の方言の `{{name}}`（開始文字形式）、`==text==`（区切り記号形式）、テキストの `TODO` を包む後処理のノードが期待する種類と範囲で木に入ること、範囲を壊す後処理が診断になることのテストが合格する
   - _Depends: 4.2, 4.3_
   - _Requirements: 7.2, 7.4, 7.6_
 
-- [ ] 6. spec による検証
-- [ ] 6.1 テスト専用の HTML 出力を作る
+- [x] 6. spec による検証
+- [x] 6.1 テスト専用の HTML 出力を作る
   - commonmark.js と同じ規則で、構文木を HTML にする（ブロックの改行の位置、タイトなリスト、コードブロックの言語のクラス、`<hr />` と `<br />`、エスケープ、URL のパーセントエンコード、画像の alt の文字列、NUL の U+FFFD）。コードブロック・コードスパン・タイトル・URL の文字列は論理的な文字列とアンエスケープで作る。再帰を使わない
   - 完了時: render スイートで、spec の各節から 1 例ずつ選び、テストに直接書いた例（段落、見出し、コード、引用、リスト、HTML、リンク、画像、強調）の出力が期待 HTML と完全に一致するテストが合格する
   - _Depends: 4.3_
   - _Requirements: 9.1_
 
-- [ ] 6.2 spec の全例を比べるテストを作る
+- [x] 6.2 spec の全例を比べるテストを作る
   - 全 652 例を解析し、HTML 出力と期待 HTML を、完全一致または正規化後の一致で比べる。一致しない例の番号と節をテストのメモに出し、1 つでもあれば失敗にする。完全一致しなかった例の数もメモに出す
   - 全例で範囲の不変条件の検査を行うテストと、何も追加しない方言（既定の方言とは別に作った空の方言）で HTML とすべての範囲が既定の方言と一致することを確かめるテストを作る
   - 完了時: spec スイートの html、ranges、empty_dialect のテストが実行でき、一致しない例の番号と節の一覧が出力される（この時点では全例の合格を求めない）
@@ -177,25 +177,25 @@
   - _Depends: 1.4, 2.6, 2.7, 5.2, 6.1_
   - _Requirements: 9.2, 9.3, 9.4_
 
-- [ ] 6.3 spec のブロックの節の不一致を直す
+- [x] 6.3 spec のブロックの節の不一致を直す
   - Tabs、Precedence、Thematic breaks、ATX headings、Setext headings、Indented code blocks、Fenced code blocks、HTML blocks、Link reference definitions、Paragraphs、Blank lines、Block quotes、List items、Lists の節で一致しない例を、ブロックの段階とリンク参照の部品（必要なら HTML 出力）で直す。spec.txt と期待 HTML は変えない
   - 完了時: 上の節の例が spec スイートの html と ranges で合格する。原因がインラインや区切り記号の部品にある例は、番号を記録して 6.4 に引き継ぐ
   - _Boundary: BlockParser、LinkRef、html_render_
   - _Requirements: 9.2, 9.4_
 
-- [ ] 6.4 spec のインラインの節の不一致を直す
+- [x] 6.4 spec のインラインの節の不一致を直す
   - Backslash escapes、Entity and numeric character references、Code spans、Emphasis and strong emphasis、Links、Images、Autolinks、Raw HTML、Hard line breaks、Soft line breaks、Textual content の節で一致しない例を、インラインと区切り記号の部品（必要なら HTML 出力）で直す
   - 完了時: 上の節のすべての例が spec スイートの html と ranges で合格する
   - _Boundary: InlineParser、Delims、html_render_
   - _Requirements: 9.2, 9.4_
 
-- [ ] 6.5 spec の全例による検証を通す（統合）
+- [x] 6.5 spec の全例による検証を通す（統合）
   - 6.3 と 6.4 の修正の組み合わせで残った不一致（節をまたぐもの）を直し、全例の合格を確かめる
   - 完了時: spec スイートの html、ranges、empty_dialect のテストが、全 652 例で合格する
   - _Requirements: 7.5, 9.2, 9.3, 9.4_
 
-- [ ] 7. 異常な入力と全体の確認
-- [ ] 7.1 メモリ不足、病的な入力、不正な UTF-8 のテストを書き、見つかった問題を直す（統合）
+- [x] 7. 異常な入力と全体の確認
+- [x] 7.1 メモリ不足、病的な入力、不正な UTF-8 のテストを書き、見つかった問題を直す（統合）
   - 全種類のブロックとインラインを含む中程度の文書について、n 回目の確保を失敗させる位置を 1 から順に変え、毎回 `false`・`*out` が NULL・`out of memory` の診断・確保と解放の回数が等しいことを、成功するまで確かめる
   - 10,000 段の `>`、10,000 段のリスト、10,000 個の `[`、`*a` の 10,000 回の繰り返し、`[`・`](` の繰り返し、閉じないバッククォートの繰り返しで、異常終了せずに解析が終わり、tree_check を満たすことを確かめる
   - 途中の行と開始位置より前にある不正な UTF-8 の行番号とメッセージを確かめる。成功した解析で診断が増えないこと、文書の解放のあとに確保と解放の回数が等しいことを確かめる
@@ -203,7 +203,7 @@
   - 完了時: error スイートと spec スイートのすべてのテストが合格する
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
 
-- [ ] 7.2 代表的な例の範囲の個別テストを揃え、境界と規約を確認する
+- [x] 7.2 代表的な例の範囲の個別テストを揃え、境界と規約を確認する
   - range・lines・inline スイートで、要件 3・4・5 の受け入れ基準ごとに少なくとも 1 つ、期待する範囲をオフセットの数値で書いたテストがあることを確かめ、足りないものを加える。単独の CR を含む文書の行番号（同じ行番号になる）のテストを含める
   - `src/markdown/` に、ファイルの入出力・標準出力への書き込み・プロセスの終了と、翻訳・PO・サブコマンドの語が現れず、テスト用の HTML 出力・正規化・spec の読み込みを参照していないことを確かめる。spec.txt がインストールの対象でないことを確かめる
   - 完了時: `ctest -L markdown` がすべて合格し、上の確認の結果（検索のコマンドと結果）を作業の記録に残す
@@ -224,5 +224,23 @@
 - 3.2: リストを分けるのは記号の種類（箇条書きの文字、順序付きの区切り文字）の違いだけで、開始番号では分けない（CommonMark どおり。タスクの文言の「開始番号」は段落の中断の条件にだけ効く）。`item.content_indent` は直近の親のコンテナの照合が終わった桁からの相対値（cmark と同じ）。遅延継続行のプレフィックスは、照合できたコンテナのバイトと行の先頭の空白からなる。段落は行の先頭の空白をすべて除くため pad は 0 になり、pad が 0 以外になるのはコードブロックの行（3.3）。3.3 のリーフの開始は `try_block_starts` と `record_blank_line` のコメントの位置に足し、`can_contain` と `is_leaf` に新しい種類を加える。
 - 3.3: ブロックの開始の順序は `try_block_starts`（インデントコード、方言の規則の位置（5.1）、引用、ATX、フェンス、HTML 1〜7、Setext、テーマ区切り、リスト項目）。Setext に変える前に `paragraph_take_definitions(parser, &remains)` を呼ぶ受け口があり、3.4 が中身を入れる（段落を取り除くときは `try_block_starts` の `*matched` の調整を確かめる）。閉じフェンスのないフェンスコードの範囲は最後の行（空行でもよい）の `line_end` まで。HTML ブロックの範囲はコンテナのプレフィックスの直後（先頭の空白を含む）から。
 - 3.4: 定義の表は `struct mnd_md_doc` の `refs`（オープンアドレス法、スロットは文書のアリーナ）。インラインの段階（4.3）では、ラベルの論理的な文字列を `mnd_md_linkref_normalize` で要素の大きさ 1 の `mnd_md_array_t` に正規化し、`mnd_md_linkref_lookup(doc, items, count)` で引く。ラベルの上限 `MND_MD_LINKREF_LABEL_MAX`（999）は符号位置で数える。正規化はアンエスケープしない。タイトルのない定義の `title` は `dest.end` の空の範囲で `title_delim` は 0。定義だけの段落が `---` の行で取り除かれると、テーマ区切りになる（commonmark.js と同じ）。
-- 4.1: `mnd_md_inline_run(parser)`（md_inline.h）は親へのポインタで前順にたどり、PARAGRAPH と HEADING を解析する。リーフごとの `inline_state_t` の位置は、行の内容をつないだ文字列（行の境目は `\n`、最後の行の末尾の空白とタブを除く）の添え字で、`map_pos`／`map_span` で原文のオフセットに戻す。テキストは [text_start, k) を `text_flush` で出す。4.2・4.3 は `is_special` と `parse_leaf` の switch に文字を足し、スタックを `inline_state_t` に置く。改行の範囲は `lines[i+1].prefix.start` で終わる。注意（6.1）: `mnd_md_logical_text` は行の境目でだけ接する空でない行を含めないため、内容が行の境目で始まるか終わるコードスパンでは境目の `\n` が落ちる。HTML 出力で補うこと。
+- 4.1: `mnd_md_inline_run(parser)`（md_inline.h）は親へのポインタで前順にたどり、PARAGRAPH と HEADING を解析する。リーフごとの `inline_state_t` の位置は、行の内容をつないだ文字列（行の境目は `\n`、最後の行の末尾の空白とタブを除く）の添え字で、`map_pos`／`map_span` で原文のオフセットに戻す。テキストは [text_start, k) を `text_flush` で出す。4.2・4.3 は `is_special` と `parse_leaf` の switch に文字を足し、スタックを `inline_state_t` に置く。改行の範囲は `lines[i+1].prefix.start` で終わる。（解消済み: 最終検証の修正で、`mnd_md_logical_text` が行の境目の `\n` を出すようになった）
 - 4.2: Delims の API は `mnd_md_delim_classify`、`mnd_md_delim_push`、`mnd_md_delim_process(parser, stack, stack_bottom)`（処理のあと `stack_bottom` から上のエントリを取り除く）。4.3 はリンクの中身を包んだあとで、角括弧を積んだときの区切り記号の数を `stack_bottom` にして呼ぶ。`openers_bottom` の枠（`BOTTOM_CHARS`、`bottom_index`）は `*` と `_` だけなので、5.2 は方言の区切り記号の文字の枠と `match_delims` の経路（3 の倍数の規則は適用しない）を加える。md_inline.c の `merge_texts` は、リーフの終わりに原文で隣り合うテキストの兄弟をまとめる（使われなかった区切り記号は前後のテキストと 1 つになる）。
+- 4.3: 角括弧のスタックは `inline_state_t` の `brackets`（`bracket_t`）。`handle_open_bracket`／`handle_close_bracket` が spec の look for link or image のとおりに動き、リンクの中のリンクは `inactive_below` で O(1) で防ぐ。リンクが決まると開きのテキストのノードを置き換えて後ろの兄弟を子にし、`mnd_md_delim_process(parser, &st->delims, opener.delim_bottom)` を呼ぶ（5.2 の方言の区切り記号もこの経路を通る）。インライン形式の `label` は `text.end` の空の範囲、タイトルのないときの `title` は `dest.end` の空の範囲で `title_delim` は 0。参照形式の `dest`／`title` は `def` のノードの中の範囲なので、6.1 は `def` をリーフとして論理的な文字列を得る。画像の子は alt のインライン。`title_fail` は記録の位置以降の開きだけを失敗にする。囲まないリンク先の括弧の深さは最大 `DEST_PAREN_DEPTH_MAX`（32）。`[foo][ ]` はリンクにならず、空の囲まないリンク先は直後が `)` のときだけ認める（commonmark.js どおり）。
+- 4.3 の後続: インラインの囲まないリンク先は NUL を U+FFFD として受け付けるが、`md_linkref.c` の `scan_destination` は NUL で止まり `[a]: b\0c` が定義にならない。LinkRef 側で直す（6.3 または 7.1 で扱う）。
+- 5.1: 方言は入口の `mnd_md_dialect_check`（md_internal.h）で検査し、`parser->dialect` は NULL にならない。規則の失敗は `parser->rule_failed/rule_index/rule_line` に記録し、`mnd_md_parse` が `rule %zu returned an invalid result` にする（5.2 のインラインの規則と後処理の検査も同じ経路を使う。`rule %zu` は規則の配列の中の 0 起点の添字）。インラインの対象のリーフは `is_inline_leaf(parser, node)`（`mnd_md_dialect_block_rule` を使う）。種類はブロックとインラインの規則の両方を通して一意。ブロックの規則はインデント 3 以下では CommonMark の開始より前に、段落の中のインデント 4 以上の行では単独で試す（`try_dialect_starts`）。空行では試さない。方言のブロックの範囲は `mnd_md_block_ctx_open` を呼んだ時点の位置から始まる。6.1 の HTML 出力は `MND_MD_KIND_DIALECT` 以上の種類を扱う必要がある。インラインと後処理のコンテキスト関数は宣言だけで、5.2 で定義する。
+- 5.2: 方言の区切り記号形式のノードは子を持ち、`as.dialect_data` が `mnd_md_emph_t`。開始文字形式のノードは子を持たない（データは規則が決める）。後処理のノードは任意の種類になる。そのため 6.1 の HTML 出力は、`MND_MD_KIND_DIALECT` 以上の種類を、子だけを出力する既定の扱いにする。6.2 の空の方言との比較は、後処理を持たない方言で行う。方言の区切り記号の探索の下限は `parser->delim_slot`（文字ごと × 開きにもなれるか × 長さの 3 の剰余）。インラインの規則の失敗の `rule %zu` は、インラインの規則の配列の添字。
+- 5.2 の設計の欠落（人の判断が必要）: 後処理のコールバック `postprocess(ctx, root)` には、原文を読む手段がない（`mnd_md_post_ctx_t` に原文を返す関数がなく、ノードから文書へ戻る手段もない）。テストはグローバル変数で原文を渡している。GFM のタスクリストや自動リンクの拡張に必要なので、design.md に `mnd_md_post_data` などを加える改訂を検討する。
+- 6.1: html_render の API は `mnd_md_html_render(doc, &out)`（tests/markdown/html_render.h。out の末尾に追加し、メモリ不足で false）。文字列は `mnd_md_logical_text` で作り（最終検証の修正で、境目の `\n` の補いは不要になり削除した）、参照形式は `def` をリーフにする。`MND_MD_KIND_DIALECT` 以上の種類と LINK_REF_DEF は子だけを出す。行のないコードブロックは空。6.1 の時点で、全 652 例が完全一致した（scratch での確認）。
+- 6.1 の後続（解消済み）: 行の境目の `\n` が落ちる問題は、最終検証の修正で Text の側で直した。
+- 6.2: spec スイートは file・html・ranges・empty_dialect の 4 つ。例の番号・行・節、節ごとの失敗数、完全一致しなかった例の数は、失敗した検査の直前の NAOS_NOTE として出る（Naos は合格したときにメモを表示しないので、合格した実行では件数が見えない）。空の方言との比較は、前順で全ノードの全フィールドと HTML を比べる。6.2 の時点で、3 つとも全 652 例で合格した。
+- 6.3〜6.5: 6.2 の時点で spec スイートの html・ranges・empty_dialect が全 652 例で合格していたため（gcc の Release と clang の Debug の両方で確認）、ブロックとインラインの節には直すべき不一致がなく、コードは変えていない。差分がないので、タスクごとのレビューは行わず、spec スイートの合格を新しい証拠として完了とした。
+- 7.1: テーマ区切りの判定は、md_block.c の `line_starts_thematic_break` が行ごとの `no_break_pos`（cmark の thematic_break_kill_pos と同じ考え方）を使い、深い `- - - …` のリストで二乗の時間になるのを避ける。LinkRef の囲まないリンク先は NUL を U+FFFD として含め、NUL 以外の制御文字で終わる（インラインと同じ。括弧の深さの上限 32 は LinkRef にはない）。病的な入力の大きさは `MND_MD_PATHOLOGICAL_N` / `MND_MD_PATHOLOGICAL_TICKS` で変えられ、線形の時間であることを確かめられる（テストは時間を検査しない）。アリーナは大きな塊で確保するので、メモリ不足のテストで失敗させられる位置は約 17 か所。
+- 7.2: range・lines に 6 テストを追加した（range_line_numbers_crlf、range_line_numbers_lone_cr、range_children_nested_and_ordered、range_spans_point_to_source_bytes、lines_link_ref_def_in_block_quote、lines_mixed_line_endings）。要件 3.1〜3.7・4.1〜4.7・5.1〜5.11 の各基準に、数値の範囲を確かめるテストがあることを確認した（5.11 は種類と子のないことを確かめる）。
+- 7.2 の確認の記録（src/markdown/ について）:
+  - `grep -rnE '\b(fopen|fclose|fread|fwrite|fputs|fputc|fprintf|printf|puts|putchar|perror|stdout|stderr|stdin|exit|_Exit|abort|quick_exit|atexit)\b' src/markdown` は 0 件。`<stdlib.h>` は md_arena.c（malloc/free）と md_inline.c（qsort）だけで使う。
+  - `grep -rniE 'translat|msgid|msgstr|\bpo\b|\.po\b|subcommand' src/markdown` は 1 件。md_unicode_tables.c:12 のコメントにある Unicode の一般カテゴリ「Po」で、PO ファイルのことではない。
+  - `grep -rnE 'html_render|html_normalize|spec_reader|spec\.txt' src/markdown` は 0 件。
+  - spec.txt がインストールの対象でないこと: `git ls-files | grep -E 'CMakeLists.txt$|\.cmake$' | xargs grep -niE '\binstall\s*\(|cpack'` は 0 件（install() と CPack の規則がない）。`cmake --install` はファイルを置かない。spec.txt はテスト用の定義 `MND_MD_SPEC_FILE` からだけ参照する。リリースのパッケージを作るときは、spec.txt とテスト用の部品を含めないこと。
+- 最終検証の修正 H(b): `mnd_md_logical_text` は、span が行 i の内容の終わりから行 i + 1 の内容の始まりまでを覆うとき、その境目の `\n` を出す（`boundary_in_span`。境目で始まる範囲と終わる範囲も含む）。行と pad の扱い（`line_in_span`、`start <= content.start`）は 2.5 のまま。html_render の補い（`span_text`、`line_included`）は削除した。translation-units は、ソフト改行とハード改行の範囲から `\n`（ハード改行では前の空白を含む）を得る点に注意する。
+- 最終検証の後続（人の判断が必要）: (1) 後処理から原文を読む手段（5.2 の設計の欠落）。(2) LinkRef の囲まないリンク先には括弧の深さの上限がなく、インラインの上限 32 と食い違う。リンク先・タイトル・ラベルの走査はインラインと LinkRef で二重に実装されている。(3) design.md の構成図とファイルの配置との小さなずれ（インラインのコンテキスト関数は md_inline.c にある。md_dialect.c と md_inline.c が md_scan.h を、md_lines.h が md_internal.h を使う）。

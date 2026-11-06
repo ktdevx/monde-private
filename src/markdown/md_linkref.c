@@ -200,7 +200,8 @@ static bool scan_label(cursor_t *cur, mnd_span_t *label)
 
 /*
  * リンク先を読む。`<` で始まれば、改行とエスケープされない `<` を含まない `>` までの内側（空でもよい）。
- * そうでなければ、ASCII の制御文字と空白を含まず、エスケープされない括弧が釣り合う、空でない並び
+ * そうでなければ、ASCII の制御文字と空白を含まず、エスケープされない括弧が釣り合う、空でない並び。
+ * NUL は spec のとおり U+FFFD として扱い、リンク先に含めてよい（インライン形式の scan_bare_dest と同じ）
  */
 static bool scan_destination(cursor_t *cur, mnd_span_t *dest, bool *angle)
 {
@@ -247,7 +248,7 @@ static bool scan_destination(cursor_t *cur, mnd_span_t *dest, bool *angle)
     for (;;)
     {
         c = cursor_peek(cur);
-        if ((c == CURSOR_EOF) || (c == '\n') || (c <= 0x20) || (c == 0x7F))
+        if ((c == CURSOR_EOF) || (c == '\n') || (c == ' ') || ((c < 0x20) && (c != 0)) || (c == 0x7F))
         {
             break;
         }

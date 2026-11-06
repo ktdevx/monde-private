@@ -137,17 +137,66 @@ NAOS_TEST(span_across_lines)
 NAOS_TEST(span_ending_at_line_end_has_no_trailing_lf)
 {
     check_quote_text(2, 5, "foo");
-    /* 行末記号と次の行のプレフィックスだけを含んでも、次の行の内容と重ならなければ改行は入らない */
-    check_quote_text(2, 9, "foo");
-    /* 前の行の内容の終わりから始まる範囲は、前の行と重ならない */
-    check_quote_text(5, 12, "  bar");
+    /* 次の行の内容の先頭に届かない範囲は、行の境目を覆わないので改行は入らない */
+    check_quote_text(2, 8, "foo");
+    /* 前の行の内容の終わりに届かない位置から始まる範囲も、行の境目を覆わない */
+    check_quote_text(6, 12, "  bar");
+}
+
+NAOS_TEST(span_covering_line_boundary_keeps_lf)
+{
+    /* 行 i の内容の終わりから行 i + 1 の内容の始まりまでを覆う範囲は、その境目の "\n" を含む */
+    check_quote_text(2, 9, "foo\n");
+    check_quote_text(5, 12, "\n  bar");
+    check_quote_text(5, 16, "\n  bar\n");
+    check_quote_text(5, 19, "\n  bar\nbaz");
 }
 
 NAOS_TEST(span_only_on_prefix_and_eol_is_empty)
 {
-    check_quote_text(5, 9, "");
-    check_quote_text(12, 16, "");
+    /* 行の境目を覆う範囲は "\n" だけになる */
+    check_quote_text(5, 9, "\n");
+    check_quote_text(12, 16, "\n");
+    /* 境目を覆わない範囲は空 */
+    check_quote_text(6, 9, "");
+    check_quote_text(5, 8, "");
     check_quote_text(3, 3, "");
+    check_quote_text(5, 5, "");
+}
+
+/* 引用の外の 3 行（プレフィックスなし）のリーフで、span の論理的な文字列が expected と一致することを確かめる */
+static void check_three_line_text(const char *data, const size_t bounds[6], mnd_span_t span,
+                                  const char *expected)
+{
+    mnd_md_line_t lines[3];
+    mnd_md_doc_t *doc = mnd_md_doc_create(data, strlen(data), NULL);
+    mnd_md_node_t *leaf;
+    mnd_buf_t out = MND_BUF_INIT;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    lines[0] = line_of(1, bounds[0], bounds[0], bounds[1], 0, 1);
+    lines[1] = line_of(2, bounds[2], bounds[2], bounds[3], 0, 1);
+    lines[2] = line_of(3, bounds[4], bounds[4], bounds[5], 0, 0);
+    leaf = make_leaf(doc, MND_MD_PARAGRAPH, span_of(bounds[0], bounds[5]), lines, 3);
+    NAOS_REQUIRE_NOT_NULL(leaf);
+    NAOS_CHECK_TRUE(mnd_md_logical_text(doc, leaf, span, &out));
+    NAOS_CHECK_MEM_EQ(out.data, out.len, expected, strlen(expected));
+    mnd_buf_free(&out);
+    mnd_md_doc_free(doc);
+}
+
+NAOS_TEST(inline_span_starting_and_ending_at_line_boundary)
+{
+    /* 画像 "![\nfoo\n](x)" の alt の範囲 [2, 7) は、前後の行の境目を含む */
+    static const size_t image[6] = {0, 2, 3, 6, 7, 11};
+    /* コードスパン "`\nfoo\n`" の内容の範囲 [1, 6) */
+    static const size_t code[6] = {0, 1, 2, 5, 6, 7};
+
+    check_three_line_text("![\nfoo\n](x)", image, span_of(2, 7), "\nfoo\n");
+    check_three_line_text("`\nfoo\n`", code, span_of(1, 6), "\nfoo\n");
+    /* 境目の片側だけ */
+    check_three_line_text("`\nfoo\n`", code, span_of(1, 5), "\nfoo");
+    check_three_line_text("`\nfoo\n`", code, span_of(2, 6), "foo\n");
 }
 
 NAOS_TEST(span_is_clamped_to_doc_length)
@@ -175,6 +224,16 @@ NAOS_TEST(empty_line_inside_span_is_kept)
     mnd_buf_clear(&out);
     NAOS_CHECK_TRUE(mnd_md_logical_text(doc, leaf, span_of(0, 2), &out));
     NAOS_CHECK_MEM_EQ(out.data, out.len, "a\n", 2);
+    /* 内容の終わりから始まる範囲も、覆う境目ごとに "\n" を含む（空の行の内容は空） */
+    mnd_buf_clear(&out);
+    NAOS_CHECK_TRUE(mnd_md_logical_text(doc, leaf, span_of(1, 3), &out));
+    NAOS_CHECK_MEM_EQ(out.data, out.len, "\n\n", 2);
+    mnd_buf_clear(&out);
+    NAOS_CHECK_TRUE(mnd_md_logical_text(doc, leaf, span_of(1, 2), &out));
+    NAOS_CHECK_MEM_EQ(out.data, out.len, "\n", 1);
+    mnd_buf_clear(&out);
+    NAOS_CHECK_TRUE(mnd_md_logical_text(doc, leaf, span_of(2, 3), &out));
+    NAOS_CHECK_MEM_EQ(out.data, out.len, "\n", 1);
     mnd_buf_free(&out);
     mnd_md_doc_free(doc);
 }
@@ -346,7 +405,9 @@ NAOS_SUITE(text,
     NAOS_ADD_TEST(span_covering_prefix_bytes_includes_pad),
     NAOS_ADD_TEST(span_across_lines),
     NAOS_ADD_TEST(span_ending_at_line_end_has_no_trailing_lf),
+    NAOS_ADD_TEST(span_covering_line_boundary_keeps_lf),
     NAOS_ADD_TEST(span_only_on_prefix_and_eol_is_empty),
+    NAOS_ADD_TEST(inline_span_starting_and_ending_at_line_boundary),
     NAOS_ADD_TEST(span_is_clamped_to_doc_length),
     NAOS_ADD_TEST(empty_line_inside_span_is_kept),
     NAOS_ADD_TEST(last_empty_line_of_leaf_is_kept),

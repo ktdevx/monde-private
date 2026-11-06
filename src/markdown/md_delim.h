@@ -21,7 +21,7 @@
 typedef struct mnd_md_delim
 {
     mnd_md_node_t *node;        /* 区切り記号の連なりを表すテキストのノード（残っている記号の範囲） */
-    unsigned char ch;           /* '*' または '_'（方言の区切り記号の文字は 5.2 が加える） */
+    unsigned char ch;           /* '*'、'_'、または方言の区切り記号形式の規則の開始文字 */
     mnd_md_delim_run_t run;     /* 残っている数、元の長さ、開きと閉じの可否 */
     size_t prev;                /* 連結の前の要素の添字。なければ MND_MD_DELIM_NONE */
     size_t next;                /* 連結の後ろの要素の添字。なければ MND_MD_DELIM_NONE */
@@ -51,8 +51,15 @@ bool mnd_md_delim_push(mnd_md_array_t *stack, mnd_md_node_t *node, unsigned char
  * 開きと閉じの区切り記号の範囲（as.emph）と行番号を記録する。3 の倍数の規則と、区切り記号の文字・
  * 閉じが開きにもなれるか・元の長さを 3 で割った余りの組ごとの探索の下限（openers_bottom）で、
  * 要素の数に比例する時間で終わる（8.3）。
+ * 方言の区切り記号の文字（parser->delim_slot が 0 でない文字）の閉じは、同じ文字の開きとの対を、その文字の
+ * 区切り記号形式の規則の match_delims で登録順に判定し（3 の倍数の規則は適用しない）、最初に真を返した規則の
+ * 種類のノードを作る。ノードの範囲と記号の使い方は強調と同じで、mnd_md_emph_t と同じ形のデータ（開きと閉じの
+ * 範囲）をアリーナに確保して as.dialect_data に入れる。探索の下限の組は強調と同じ形（文字ごとに、閉じが開きにも
+ * なれるか × 元の長さを 3 で割った余り）である。
  * 最後に、stack_bottom 以上の要素をスタックから取り除く（リンクを閉じるとき（4.3）は、角括弧を積んだときの
- * スタックの要素数を stack_bottom にして呼ぶ）。メモリ不足なら false（作りかけのノードは文書のアリーナに残る）
+ * スタックの要素数を stack_bottom にして呼ぶ）。メモリ不足なら false（作りかけのノードは文書のアリーナに残る）。
+ * 規則が不正な数（0、または開きか閉じの残りの数を超える数）を返したら、parser の rule_failed、rule_index
+ * （インラインの規則の配列の添字）、rule_line（閉じの行）を記録して false
  */
 bool mnd_md_delim_process(mnd_md_parser_t *parser, mnd_md_array_t *stack, size_t stack_bottom);
 

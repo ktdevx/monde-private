@@ -281,6 +281,63 @@ NAOS_TEST(lines_heading_and_html_block)
     mnd_md_doc_free(doc);
 }
 
+/*
+ * 4.1、4.2: 引用の中の 3 行のリンク参照定義の各行。2 行目の先頭の空白は定義が取り除く空白としてプレフィックスに入る
+ */
+NAOS_TEST(lines_link_ref_def_in_block_quote)
+{
+    mnd_md_doc_t *doc = parse_ok("> [foo]:\n>  /url\n> 'ti'\n");
+    const mnd_md_node_t *def = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    def = mnd_md_doc_root(doc)->first_child->first_child;
+    NAOS_REQUIRE_NOT_NULL(def);
+    NAOS_REQUIRE_INT_EQ((int)MND_MD_LINK_REF_DEF, (int)def->kind);
+    NAOS_CHECK_UINT_EQ(2, def->span.start);
+    NAOS_CHECK_UINT_EQ(23, def->span.end);
+    NAOS_CHECK_UINT_EQ(1, def->start_line);
+    NAOS_CHECK_UINT_EQ(3, def->end_line);
+    NAOS_REQUIRE_UINT_EQ(3, def->line_count);
+    check_line(&def->lines[0], 1, 0, 2, 8, 0, 1, false);
+    check_line(&def->lines[1], 2, 9, 12, 16, 0, 1, false);
+    check_line(&def->lines[2], 3, 17, 19, 23, 0, 1, false);
+    NAOS_CHECK_UINT_EQ(3, def->as.link_ref_def.label.start);
+    NAOS_CHECK_UINT_EQ(6, def->as.link_ref_def.label.end);
+    NAOS_CHECK_UINT_EQ(12, def->as.link_ref_def.dest.start);
+    NAOS_CHECK_UINT_EQ(16, def->as.link_ref_def.dest.end);
+    NAOS_CHECK_UINT_EQ(20, def->as.link_ref_def.title.start);
+    NAOS_CHECK_UINT_EQ(22, def->as.link_ref_def.title.end);
+    check_logical_text(doc, def, "[foo]:\n/url\n'ti'");
+    mnd_md_doc_free(doc);
+}
+
+/*
+ * 4.3、3.1: LF、単独の CR、CRLF が混ざった段落の各行。内容に行末記号が入らず、eol_len は 1、1、2。
+ * 単独の CR は行番号では数えないので、CR で終わる行とその次の行は同じ行番号になる
+ */
+NAOS_TEST(lines_mixed_line_endings)
+{
+    mnd_md_doc_t *doc = parse_ok("a\rb\nc\r\nd\re");
+    const mnd_md_node_t *para = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = mnd_md_doc_root(doc)->first_child;
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_INT_EQ((int)MND_MD_PARAGRAPH, (int)para->kind);
+    NAOS_CHECK_UINT_EQ(0, para->span.start);
+    NAOS_CHECK_UINT_EQ(10, para->span.end);
+    NAOS_CHECK_UINT_EQ(1, para->start_line);
+    NAOS_CHECK_UINT_EQ(3, para->end_line);
+    NAOS_REQUIRE_UINT_EQ(5, para->line_count);
+    check_line(&para->lines[0], 1, 0, 0, 1, 0, 1, false);
+    check_line(&para->lines[1], 1, 2, 2, 3, 0, 1, false);
+    check_line(&para->lines[2], 2, 4, 4, 5, 0, 2, false);
+    check_line(&para->lines[3], 3, 7, 7, 8, 0, 1, false);
+    check_line(&para->lines[4], 3, 9, 9, 10, 0, 0, false);
+    check_logical_text(doc, para, "a\nb\nc\nd\ne");
+    mnd_md_doc_free(doc);
+}
+
 NAOS_SUITE(lines,
     NAOS_ADD_TEST(lines_paragraph_in_item_in_block_quote),
     NAOS_ADD_TEST(lines_paragraph_extra_indent_in_item),
@@ -291,5 +348,7 @@ NAOS_SUITE(lines,
     NAOS_ADD_TEST(lines_indented_code_blank_lines),
     NAOS_ADD_TEST(lines_indented_code_pad_after_tab),
     NAOS_ADD_TEST(lines_crlf_eol_len),
-    NAOS_ADD_TEST(lines_heading_and_html_block)
+    NAOS_ADD_TEST(lines_heading_and_html_block),
+    NAOS_ADD_TEST(lines_link_ref_def_in_block_quote),
+    NAOS_ADD_TEST(lines_mixed_line_endings)
 )

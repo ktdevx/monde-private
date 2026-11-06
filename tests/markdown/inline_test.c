@@ -858,6 +858,438 @@ NAOS_TEST(inline_pathological_emphasis)
     }
 }
 
+/* リンクと画像の範囲（ref_kind・本文・ラベル・リンク先・タイトル）を確かめる */
+static void check_link(const mnd_md_node_t *node, mnd_md_kind_t kind, mnd_md_ref_kind_t ref_kind, size_t start,
+                       size_t end, size_t text_start, size_t text_end, size_t dest_start, size_t dest_end)
+{
+    NAOS_REQUIRE_NOT_NULL(node);
+    NAOS_CHECK_INT_EQ((int)kind, (int)node->kind);
+    NAOS_CHECK_INT_EQ((int)ref_kind, (int)node->as.link.ref_kind);
+    NAOS_CHECK_UINT_EQ(start, node->span.start);
+    NAOS_CHECK_UINT_EQ(end, node->span.end);
+    NAOS_CHECK_UINT_EQ(text_start, node->as.link.text.start);
+    NAOS_CHECK_UINT_EQ(text_end, node->as.link.text.end);
+    NAOS_CHECK_UINT_EQ(dest_start, node->as.link.dest.start);
+    NAOS_CHECK_UINT_EQ(dest_end, node->as.link.dest.end);
+    NAOS_CHECK_TRUE(node->lines == NULL);
+}
+
+/* 参照ラベルの範囲を確かめる */
+static void check_label(const mnd_md_node_t *node, size_t start, size_t end)
+{
+    NAOS_REQUIRE_NOT_NULL(node);
+    NAOS_CHECK_UINT_EQ(start, node->as.link.label.start);
+    NAOS_CHECK_UINT_EQ(end, node->as.link.label.end);
+}
+
+/* 5.2: インラインリンクの全体・テキスト・リンク先・タイトルの範囲。リンクテキストの中の強調 */
+NAOS_TEST(inline_link_inline_ranges)
+{
+    static const expected_node_t inner[] = { { MND_MD_TEXT, 6, 7 } };
+    mnd_md_doc_t *doc = parse_ok("a [b *c*](/u \"t\") d\n");
+    const mnd_md_node_t *para = NULL;
+    const mnd_md_node_t *link = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(3, child_count(para));
+    NAOS_CHECK_UINT_EQ(0, child_at(para, 0)->span.start);
+    NAOS_CHECK_UINT_EQ(2, child_at(para, 0)->span.end);
+    link = child_at(para, 1);
+    check_link(link, MND_MD_LINK, MND_MD_REF_INLINE, 2, 17, 3, 8, 10, 12);
+    check_label(link, 8, 8);
+    NAOS_CHECK_FALSE(link->as.link.dest_angle);
+    NAOS_CHECK_TRUE(link->as.link.has_title);
+    NAOS_CHECK_UINT_EQ(14, link->as.link.title.start);
+    NAOS_CHECK_UINT_EQ(15, link->as.link.title.end);
+    NAOS_CHECK_INT_EQ('"', link->as.link.title_delim);
+    NAOS_CHECK_NULL(link->as.link.def);
+    NAOS_CHECK_UINT_EQ(1, link->start_line);
+    NAOS_CHECK_UINT_EQ(1, link->end_line);
+    NAOS_REQUIRE_UINT_EQ(2, child_count(link));
+    NAOS_CHECK_INT_EQ((int)MND_MD_TEXT, (int)child_at(link, 0)->kind);
+    NAOS_CHECK_UINT_EQ(3, child_at(link, 0)->span.start);
+    NAOS_CHECK_UINT_EQ(5, child_at(link, 0)->span.end);
+    check_emph(child_at(link, 1), MND_MD_EMPH, '*', 5, 8);
+    check_children(child_at(link, 1), inner, 1);
+    NAOS_CHECK_INT_EQ((int)MND_MD_TEXT, (int)child_at(para, 2)->kind);
+    NAOS_CHECK_UINT_EQ(17, child_at(para, 2)->span.start);
+    NAOS_CHECK_UINT_EQ(19, child_at(para, 2)->span.end);
+    mnd_md_doc_free(doc);
+}
+
+/* 5.2、5.10: 引用の中で、リンク先とタイトルの前後で行をまたぐインラインリンク。タイトルなしの範囲 */
+NAOS_TEST(inline_link_across_lines_and_no_title)
+{
+    mnd_md_doc_t *doc = parse_ok("> [a](\n> /u\n> 'x\n> y'\n> )\n");
+    const mnd_md_node_t *para = NULL;
+    const mnd_md_node_t *link = NULL;
+    mnd_span_t title;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(1, child_count(para));
+    link = child_at(para, 0);
+    check_link(link, MND_MD_LINK, MND_MD_REF_INLINE, 2, 25, 3, 4, 9, 11);
+    NAOS_CHECK_TRUE(link->as.link.has_title);
+    NAOS_CHECK_INT_EQ('\'', link->as.link.title_delim);
+    NAOS_CHECK_UINT_EQ(15, link->as.link.title.start);
+    NAOS_CHECK_UINT_EQ(20, link->as.link.title.end);
+    NAOS_CHECK_UINT_EQ(1, link->start_line);
+    NAOS_CHECK_UINT_EQ(5, link->end_line);
+    title = link->as.link.title;
+    check_logical(doc, para, title, "x\ny");
+    mnd_md_doc_free(doc);
+
+    /* タイトルがなければ、タイトルはリンク先の終わりの空の範囲 */
+    doc = parse_ok("[a](/u)\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    link = find_kind(doc, MND_MD_LINK);
+    check_link(link, MND_MD_LINK, MND_MD_REF_INLINE, 0, 7, 1, 2, 4, 6);
+    NAOS_CHECK_FALSE(link->as.link.has_title);
+    NAOS_CHECK_UINT_EQ(6, link->as.link.title.start);
+    NAOS_CHECK_UINT_EQ(6, link->as.link.title.end);
+    NAOS_CHECK_INT_EQ(0, link->as.link.title_delim);
+    mnd_md_doc_free(doc);
+}
+
+/* 5.2: `<>` で囲んだリンク先（空白を含められる）と、空のリンク先（`<>` と `()`） */
+NAOS_TEST(inline_link_angle_and_empty_dest)
+{
+    mnd_md_doc_t *doc = NULL;
+    const mnd_md_node_t *link = NULL;
+
+    doc = parse_ok("[a](<b c>)\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    link = find_kind(doc, MND_MD_LINK);
+    check_link(link, MND_MD_LINK, MND_MD_REF_INLINE, 0, 10, 1, 2, 5, 8);
+    NAOS_CHECK_TRUE(link->as.link.dest_angle);
+    NAOS_CHECK_FALSE(link->as.link.has_title);
+    mnd_md_doc_free(doc);
+
+    doc = parse_ok("[a](<>)\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    link = find_kind(doc, MND_MD_LINK);
+    check_link(link, MND_MD_LINK, MND_MD_REF_INLINE, 0, 7, 1, 2, 5, 5);
+    NAOS_CHECK_TRUE(link->as.link.dest_angle);
+    mnd_md_doc_free(doc);
+
+    doc = parse_ok("[a]()\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    link = find_kind(doc, MND_MD_LINK);
+    check_link(link, MND_MD_LINK, MND_MD_REF_INLINE, 0, 5, 1, 2, 4, 4);
+    NAOS_CHECK_FALSE(link->as.link.dest_angle);
+    mnd_md_doc_free(doc);
+
+    /* 空のテキスト、括弧の釣り合うリンク先、エスケープされた括弧 */
+    doc = parse_ok("[](a(b)\\)c)\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    link = find_kind(doc, MND_MD_LINK);
+    check_link(link, MND_MD_LINK, MND_MD_REF_INLINE, 0, 11, 1, 1, 3, 10);
+    NAOS_CHECK_UINT_EQ(0, child_count(link));
+    mnd_md_doc_free(doc);
+}
+
+/* 5.3: 画像の全体・alt・リンク先の範囲と、alt の中の強調（画像の子は alt のインライン） */
+NAOS_TEST(inline_image_alt_and_emphasis)
+{
+    static const expected_node_t inner[] = { { MND_MD_TEXT, 5, 6 } };
+    static const expected_node_t plain[] = { { MND_MD_TEXT, 0, 6 } };
+    mnd_md_doc_t *doc = parse_ok("![a *b*](/u 'c')\n");
+    const mnd_md_node_t *para = NULL;
+    const mnd_md_node_t *image = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(1, child_count(para));
+    image = child_at(para, 0);
+    check_link(image, MND_MD_IMAGE, MND_MD_REF_INLINE, 0, 16, 2, 7, 9, 11);
+    NAOS_CHECK_TRUE(image->as.link.has_title);
+    NAOS_CHECK_UINT_EQ(13, image->as.link.title.start);
+    NAOS_CHECK_UINT_EQ(14, image->as.link.title.end);
+    NAOS_REQUIRE_UINT_EQ(2, child_count(image));
+    NAOS_CHECK_INT_EQ((int)MND_MD_TEXT, (int)child_at(image, 0)->kind);
+    NAOS_CHECK_UINT_EQ(2, child_at(image, 0)->span.start);
+    NAOS_CHECK_UINT_EQ(4, child_at(image, 0)->span.end);
+    check_emph(child_at(image, 1), MND_MD_EMPH, '*', 4, 7);
+    check_children(child_at(image, 1), inner, 1);
+    mnd_md_doc_free(doc);
+
+    /* `!` の後ろが `[` でなければテキスト */
+    check_paragraph("a! b !\n", plain, 1);
+}
+
+/*
+ * 5.4、5.5: 完全参照・省略参照・ショートカット参照（リンクと画像）の形式と参照ラベルの範囲。リンク先と
+ * タイトルは定義の範囲で、def は定義のノード（参照より後ろの定義。6.1）
+ */
+NAOS_TEST(inline_link_reference_forms)
+{
+    mnd_md_doc_t *doc = parse_ok("[x][Foo] [foo][] [foo] ![foo]\n\n[foo]: /url \"ti\"\n");
+    const mnd_md_node_t *root = NULL;
+    const mnd_md_node_t *para = NULL;
+    const mnd_md_node_t *def = NULL;
+    const mnd_md_node_t *node = NULL;
+    size_t i = 0;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    root = mnd_md_doc_root(doc);
+    para = root->first_child;
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_INT_EQ((int)MND_MD_PARAGRAPH, (int)para->kind);
+    def = para->next;
+    NAOS_REQUIRE_NOT_NULL(def);
+    NAOS_REQUIRE_INT_EQ((int)MND_MD_LINK_REF_DEF, (int)def->kind);
+    NAOS_REQUIRE_UINT_EQ(7, child_count(para));
+
+    check_link(child_at(para, 0), MND_MD_LINK, MND_MD_REF_FULL, 0, 8, 1, 2, 38, 42);
+    check_label(child_at(para, 0), 4, 7);
+    check_link(child_at(para, 2), MND_MD_LINK, MND_MD_REF_COLLAPSED, 9, 16, 10, 13, 38, 42);
+    check_label(child_at(para, 2), 10, 13);
+    check_link(child_at(para, 4), MND_MD_LINK, MND_MD_REF_SHORTCUT, 17, 22, 18, 21, 38, 42);
+    check_label(child_at(para, 4), 18, 21);
+    check_link(child_at(para, 6), MND_MD_IMAGE, MND_MD_REF_SHORTCUT, 23, 29, 25, 28, 38, 42);
+    check_label(child_at(para, 6), 25, 28);
+
+    for (i = 0; i < 7; i += 2)
+    {
+        node = child_at(para, i);
+        NAOS_CHECK_PTR_EQ(def, node->as.link.def);
+        NAOS_CHECK_UINT_EQ(def->as.link_ref_def.dest.start, node->as.link.dest.start);
+        NAOS_CHECK_UINT_EQ(def->as.link_ref_def.dest.end, node->as.link.dest.end);
+        NAOS_CHECK_TRUE(node->as.link.has_title);
+        NAOS_CHECK_UINT_EQ(44, node->as.link.title.start);
+        NAOS_CHECK_UINT_EQ(46, node->as.link.title.end);
+        NAOS_CHECK_INT_EQ('"', node->as.link.title_delim);
+        NAOS_CHECK_FALSE(node->as.link.dest_angle);
+    }
+    for (i = 1; i < 7; i += 2)
+    {
+        NAOS_CHECK_INT_EQ((int)MND_MD_TEXT, (int)child_at(para, i)->kind);
+    }
+    mnd_md_doc_free(doc);
+}
+
+/*
+ * 5.4: インライン形式にならなければ参照形式を試す（`[foo](not a link)`）。完全参照のラベルに定義がなければ、
+ * 本文に定義があってもリンクにしない。ラベルの前に空白があれば完全参照にならない
+ */
+NAOS_TEST(inline_link_reference_fallbacks)
+{
+    static const expected_node_t no_link[] = { { MND_MD_TEXT, 0, 10 } };
+    mnd_md_doc_t *doc = NULL;
+    const mnd_md_node_t *para = NULL;
+
+    doc = parse_ok("[foo](not a link)\n\n[foo]: /url\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(2, child_count(para));
+    check_link(child_at(para, 0), MND_MD_LINK, MND_MD_REF_SHORTCUT, 0, 5, 1, 4, 26, 30);
+    NAOS_CHECK_UINT_EQ(5, child_at(para, 1)->span.start);
+    NAOS_CHECK_UINT_EQ(17, child_at(para, 1)->span.end);
+    mnd_md_doc_free(doc);
+
+    doc = parse_ok("[foo][bar]\n\n[foo]: /url\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    check_children(find_kind(doc, MND_MD_PARAGRAPH), no_link, 1);
+    mnd_md_doc_free(doc);
+
+    doc = parse_ok("[foo] [bar]\n\n[bar]: /url\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(2, child_count(para));
+    NAOS_CHECK_UINT_EQ(6, child_at(para, 0)->span.end);
+    check_link(child_at(para, 1), MND_MD_LINK, MND_MD_REF_SHORTCUT, 6, 11, 7, 10, 20, 24);
+    mnd_md_doc_free(doc);
+}
+
+/*
+ * 8.3: リンクの中のリンクは作らない（外側の `[` を使えなくする）。画像の中のリンクと、リンクの中の画像は作る。
+ * 強調の処理はリンクの開きを下限とする（`*[a*](/u)` の `*` は対にならない）
+ */
+NAOS_TEST(inline_link_nesting_and_emphasis_bottom)
+{
+    mnd_md_doc_t *doc = NULL;
+    const mnd_md_node_t *para = NULL;
+    const mnd_md_node_t *node = NULL;
+
+    doc = parse_ok("[a [b](/u) c](/v)\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(3, child_count(para));
+    NAOS_CHECK_INT_EQ((int)MND_MD_TEXT, (int)child_at(para, 0)->kind);
+    NAOS_CHECK_UINT_EQ(3, child_at(para, 0)->span.end);
+    check_link(child_at(para, 1), MND_MD_LINK, MND_MD_REF_INLINE, 3, 10, 4, 5, 7, 9);
+    NAOS_CHECK_INT_EQ((int)MND_MD_TEXT, (int)child_at(para, 2)->kind);
+    NAOS_CHECK_UINT_EQ(10, child_at(para, 2)->span.start);
+    NAOS_CHECK_UINT_EQ(17, child_at(para, 2)->span.end);
+    mnd_md_doc_free(doc);
+
+    doc = parse_ok("![a [b](/u)](/v)\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(1, child_count(para));
+    node = child_at(para, 0);
+    check_link(node, MND_MD_IMAGE, MND_MD_REF_INLINE, 0, 16, 2, 11, 13, 15);
+    NAOS_REQUIRE_UINT_EQ(2, child_count(node));
+    check_link(child_at(node, 1), MND_MD_LINK, MND_MD_REF_INLINE, 4, 11, 5, 6, 8, 10);
+    mnd_md_doc_free(doc);
+
+    doc = parse_ok("[![m](x)](y)\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(1, child_count(para));
+    node = child_at(para, 0);
+    check_link(node, MND_MD_LINK, MND_MD_REF_INLINE, 0, 12, 1, 8, 10, 11);
+    NAOS_REQUIRE_UINT_EQ(1, child_count(node));
+    check_link(child_at(node, 0), MND_MD_IMAGE, MND_MD_REF_INLINE, 1, 8, 3, 4, 6, 7);
+    mnd_md_doc_free(doc);
+
+    doc = parse_ok("*[a*](/u)\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(2, child_count(para));
+    NAOS_CHECK_INT_EQ((int)MND_MD_TEXT, (int)child_at(para, 0)->kind);
+    NAOS_CHECK_UINT_EQ(1, child_at(para, 0)->span.end);
+    node = child_at(para, 1);
+    check_link(node, MND_MD_LINK, MND_MD_REF_INLINE, 1, 9, 2, 4, 6, 8);
+    NAOS_REQUIRE_UINT_EQ(1, child_count(node));
+    NAOS_CHECK_INT_EQ((int)MND_MD_TEXT, (int)child_at(node, 0)->kind);
+    NAOS_CHECK_UINT_EQ(2, child_at(node, 0)->span.start);
+    NAOS_CHECK_UINT_EQ(4, child_at(node, 0)->span.end);
+    mnd_md_doc_free(doc);
+
+    /* リンクの外の強調はリンクを子に持つ */
+    doc = parse_ok("*[a](/u)*\n");
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_UINT_EQ(1, child_count(para));
+    check_emph(child_at(para, 0), MND_MD_EMPH, '*', 0, 9);
+    check_link(child_at(child_at(para, 0), 0), MND_MD_LINK, MND_MD_REF_INLINE, 1, 8, 2, 3, 5, 7);
+    mnd_md_doc_free(doc);
+}
+
+/*
+ * 5.2: タイトルの開きの位置は単調に増えない（`<>` のリンク先が `](` と空白を含む）。内側の `]` でタイトルが
+ * 閉じなくても、外側の `]` のそれより前のタイトルは試す（`[[a](<x](y "z> ")`）
+ */
+NAOS_TEST(inline_link_title_before_failed_title)
+{
+    static const char *const inputs[] = { "[[a](<x](y \"z> \")\n", "[[a](<x](y 'z> ')\n" };
+    static const char delims[] = { '"', '\'' };
+    static const expected_node_t text[] = { { MND_MD_TEXT, 1, 7 } };
+    size_t i = 0;
+
+    for (i = 0; i < (sizeof(inputs) / sizeof(inputs[0])); i++)
+    {
+        mnd_md_doc_t *doc = parse_ok(inputs[i]);
+        const mnd_md_node_t *para = NULL;
+        const mnd_md_node_t *link = NULL;
+
+        NAOS_REQUIRE_NOT_NULL(doc);
+        para = find_kind(doc, MND_MD_PARAGRAPH);
+        NAOS_REQUIRE_NOT_NULL(para);
+        NAOS_REQUIRE_UINT_EQ(1, child_count(para));
+        link = child_at(para, 0);
+        check_link(link, MND_MD_LINK, MND_MD_REF_INLINE, 0, 17, 1, 7, 9, 10);
+        NAOS_CHECK_TRUE(link->as.link.has_title);
+        NAOS_CHECK_UINT_EQ(12, link->as.link.title.start);
+        NAOS_CHECK_UINT_EQ(15, link->as.link.title.end);
+        NAOS_CHECK_INT_EQ(delims[i], link->as.link.title_delim);
+        check_children(link, text, 1);
+        mnd_md_doc_free(doc);
+    }
+}
+
+/* 8.2: リンクと画像を含む文書のメモリ不足 */
+NAOS_TEST(inline_link_out_of_memory)
+{
+    static const char data[] = "*[a [b]*](/u 't') ![c][d] [d][] [d]\n\n[d]: /v\n";
+    size_t fail_at = 0;
+    size_t failures = 0;
+    bool succeeded = false;
+
+    for (fail_at = 1; (fail_at <= OOM_MAX_STEPS) && !succeeded; fail_at++)
+    {
+        mnd_md_test_alloc_t ta;
+        mnd_md_options_t options = MND_MD_OPTIONS_INIT;
+        mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+        mnd_md_doc_t *doc = (mnd_md_doc_t *)&options;
+
+        mnd_md_test_alloc_init(&ta, fail_at);
+        options.allocator = &ta.allocator;
+        if (mnd_md_parse(data, sizeof(data) - 1, &options, &doc, &diags))
+        {
+            succeeded = true;
+            NAOS_CHECK_UINT_EQ(0, ta.failures);
+            NAOS_REQUIRE_NOT_NULL(doc);
+            NAOS_CHECK_TRUE(mnd_md_tree_check_note(doc));
+            NAOS_CHECK_NOT_NULL(find_kind(doc, MND_MD_LINK));
+            NAOS_CHECK_NOT_NULL(find_kind(doc, MND_MD_IMAGE));
+            mnd_md_doc_free(doc);
+        }
+        else
+        {
+            failures++;
+            NAOS_CHECK_NULL(doc);
+            NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&diags));
+            NAOS_CHECK_STR_EQ("out of memory", mnd_diag_list_at(&diags, 0)->message);
+        }
+        NAOS_CHECK_UINT_EQ(0, mnd_md_test_alloc_live(&ta));
+        mnd_diag_list_free(&diags);
+    }
+    NAOS_CHECK_TRUE(succeeded);
+    NAOS_CHECK_UINT_GT(failures, 0);
+}
+
+/*
+ * 8.3: 角括弧とリンクの候補の繰り返し（閉じない `[`、`](`、閉じないリンク先とタイトル、ラベル、リンクの繰り返し、
+ * 入れ子の角括弧）で、解析が終わり tree_check を満たすこと
+ */
+NAOS_TEST(inline_pathological_links)
+{
+    static const char *const units[] = {
+        "[", "![", "](", "[](", "[a](", "[a](b \"", "[a](b '", "[a](b (", "[a](<b", "[]((", "[a][", "[a]",
+        "[a](b)", "[a][b]", "*[a*](b) ", "[a](b \"c\" ", "[\\]", "[[a](<x](y \"z> ", "[a](<b](c \""
+    };
+    size_t i = 0;
+    size_t len = 0;
+    size_t half = 0;
+    char *text = NULL;
+    mnd_md_doc_t *doc = NULL;
+
+    for (i = 0; i < (sizeof(units) / sizeof(units[0])); i++)
+    {
+        text = repeat(units[i], PATHOLOGICAL_REPEAT, &len);
+        NAOS_REQUIRE_NOT_NULL(text);
+        doc = parse_len_ok(text, len);
+        NAOS_CHECK_NOT_NULL(doc);
+        mnd_md_doc_free(doc);
+        free(text);
+    }
+
+    /* 入れ子の角括弧（`[` の繰り返しのあとに `]` の繰り返し） */
+    text = repeat("[]", PATHOLOGICAL_REPEAT, &len);
+    NAOS_REQUIRE_NOT_NULL(text);
+    half = len / 2;
+    memset(text, '[', half);
+    memset(text + half, ']', len - half);
+    doc = parse_len_ok(text, len);
+    NAOS_CHECK_NOT_NULL(doc);
+    mnd_md_doc_free(doc);
+    free(text);
+}
+
 NAOS_SUITE(inline,
     NAOS_ADD_TEST(inline_text),
     NAOS_ADD_TEST(inline_soft_break),
@@ -884,5 +1316,15 @@ NAOS_SUITE(inline,
     NAOS_ADD_TEST(inline_emphasis_punctuation),
     NAOS_ADD_TEST(inline_emphasis_leftover_and_rule_of_three),
     NAOS_ADD_TEST(inline_emphasis_across_lines_and_in_heading),
-    NAOS_ADD_TEST(inline_pathological_emphasis)
+    NAOS_ADD_TEST(inline_pathological_emphasis),
+    NAOS_ADD_TEST(inline_link_inline_ranges),
+    NAOS_ADD_TEST(inline_link_across_lines_and_no_title),
+    NAOS_ADD_TEST(inline_link_angle_and_empty_dest),
+    NAOS_ADD_TEST(inline_image_alt_and_emphasis),
+    NAOS_ADD_TEST(inline_link_reference_forms),
+    NAOS_ADD_TEST(inline_link_reference_fallbacks),
+    NAOS_ADD_TEST(inline_link_nesting_and_emphasis_bottom),
+    NAOS_ADD_TEST(inline_link_title_before_failed_title),
+    NAOS_ADD_TEST(inline_link_out_of_memory),
+    NAOS_ADD_TEST(inline_pathological_links)
 )

@@ -19,15 +19,15 @@
 /* メモリ不足のテストで、失敗させる位置を変える回数の上限（成功するまでの確保の回数より十分に大きい） */
 #define OOM_MAX_STEPS 1000
 
-/* 解析が成功し、診断が増えず、tree_check を満たすことを確かめる。失敗なら NULL */
-static mnd_md_doc_t *parse_ok(const char *data)
+/* data[0..len) の解析が成功し、診断が増えず、tree_check を満たすことを確かめる。失敗なら NULL */
+static mnd_md_doc_t *parse_ok_len(const char *data, size_t len)
 {
     mnd_md_options_t options = MND_MD_OPTIONS_INIT;
     mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
     mnd_md_doc_t *doc = NULL;
     bool ok = false;
 
-    ok = mnd_md_parse(data, strlen(data), &options, &doc, &diags);
+    ok = mnd_md_parse(data, len, &options, &doc, &diags);
     NAOS_CHECK_TRUE(ok);
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
     mnd_diag_list_free(&diags);
@@ -42,6 +42,12 @@ static mnd_md_doc_t *parse_ok(const char *data)
     }
 
     return doc;
+}
+
+/* NUL 終端の data の解析が成功し、診断が増えず、tree_check を満たすことを確かめる。失敗なら NULL */
+static mnd_md_doc_t *parse_ok(const char *data)
+{
+    return parse_ok_len(data, strlen(data));
 }
 
 /* text を正規化した結果が expected と一致することを確かめる */
@@ -198,6 +204,202 @@ NAOS_TEST(linkref_table_grows)
     mnd_md_doc_free(doc);
 }
 
+/* 前順で最初の kind のノード。なければ NULL */
+static const mnd_md_node_t *find_kind(const mnd_md_doc_t *doc, mnd_md_kind_t kind)
+{
+    const mnd_md_node_t *root = mnd_md_doc_root(doc);
+    const mnd_md_node_t *node = NULL;
+
+    for (node = root; node != NULL; node = mnd_md_node_next(node, root))
+    {
+        if (node->kind == kind)
+        {
+            return node;
+        }
+    }
+
+    return NULL;
+}
+
+/* data の最初の段落が、範囲 [0, end) の 1 つのテキストだけを子に持つ（参照がテキストのまま残る）ことを確かめる */
+static void check_plain_paragraph(const char *data, size_t end)
+{
+    mnd_md_doc_t *doc = parse_ok(data);
+    const mnd_md_node_t *para = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_NOT_NULL(para->first_child);
+    NAOS_CHECK_TRUE(para->first_child->next == NULL);
+    NAOS_CHECK_INT_EQ((int)MND_MD_TEXT, (int)para->first_child->kind);
+    NAOS_CHECK_UINT_EQ(0, para->first_child->span.start);
+    NAOS_CHECK_UINT_EQ(end, para->first_child->span.end);
+    NAOS_CHECK_NULL(find_kind(doc, MND_MD_LINK));
+    NAOS_CHECK_NULL(find_kind(doc, MND_MD_IMAGE));
+    mnd_md_doc_free(doc);
+}
+
+/* 6.1、5.5: 参照より後ろ（引用の中）の定義で参照を解決し、リンク先とタイトルに定義の範囲を使う */
+NAOS_TEST(linkref_reference_before_definition)
+{
+    mnd_md_doc_t *doc = parse_ok("[foo] and [Foo][]\n\n> [FOO]: /url 'x'\n");
+    const mnd_md_node_t *para = NULL;
+    const mnd_md_node_t *quote = NULL;
+    const mnd_md_node_t *def = NULL;
+    const mnd_md_node_t *link = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    para = find_kind(doc, MND_MD_PARAGRAPH);
+    quote = find_kind(doc, MND_MD_BLOCK_QUOTE);
+    NAOS_REQUIRE_NOT_NULL(para);
+    NAOS_REQUIRE_NOT_NULL(quote);
+    def = quote->first_child;
+    NAOS_REQUIRE_NOT_NULL(def);
+    NAOS_REQUIRE_INT_EQ((int)MND_MD_LINK_REF_DEF, (int)def->kind);
+
+    link = para->first_child;
+    NAOS_REQUIRE_NOT_NULL(link);
+    NAOS_CHECK_INT_EQ((int)MND_MD_LINK, (int)link->kind);
+    NAOS_CHECK_INT_EQ((int)MND_MD_REF_SHORTCUT, (int)link->as.link.ref_kind);
+    NAOS_CHECK_UINT_EQ(0, link->span.start);
+    NAOS_CHECK_UINT_EQ(5, link->span.end);
+    NAOS_CHECK_PTR_EQ(def, link->as.link.def);
+    NAOS_CHECK_UINT_EQ(28, link->as.link.dest.start);
+    NAOS_CHECK_UINT_EQ(32, link->as.link.dest.end);
+    NAOS_CHECK_TRUE(link->as.link.has_title);
+    NAOS_CHECK_UINT_EQ(34, link->as.link.title.start);
+    NAOS_CHECK_UINT_EQ(35, link->as.link.title.end);
+    NAOS_CHECK_INT_EQ('\'', link->as.link.title_delim);
+
+    NAOS_REQUIRE_NOT_NULL(link->next);
+    link = link->next->next;
+    NAOS_REQUIRE_NOT_NULL(link);
+    NAOS_CHECK_INT_EQ((int)MND_MD_LINK, (int)link->kind);
+    NAOS_CHECK_INT_EQ((int)MND_MD_REF_COLLAPSED, (int)link->as.link.ref_kind);
+    NAOS_CHECK_UINT_EQ(10, link->span.start);
+    NAOS_CHECK_UINT_EQ(17, link->span.end);
+    NAOS_CHECK_PTR_EQ(def, link->as.link.def);
+    NAOS_CHECK_TRUE(link->next == NULL);
+    mnd_md_doc_free(doc);
+}
+
+/* 5.5: 行をまたぐ定義（`<>` のリンク先、行をまたぐタイトル）を指す参照は、その定義の範囲をそのまま使う */
+NAOS_TEST(linkref_reference_uses_definition_ranges)
+{
+    mnd_md_doc_t *doc = parse_ok("[a] ![A][]\n\n[a]:\n  </u>\n  \"t\n  2\"\n");
+    const mnd_md_node_t *def = NULL;
+    const mnd_md_node_t *link = NULL;
+    const mnd_md_node_t *image = NULL;
+    const char *data = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    data = mnd_md_doc_data(doc);
+    def = find_kind(doc, MND_MD_LINK_REF_DEF);
+    link = find_kind(doc, MND_MD_LINK);
+    image = find_kind(doc, MND_MD_IMAGE);
+    NAOS_REQUIRE_NOT_NULL(def);
+    NAOS_REQUIRE_NOT_NULL(link);
+    NAOS_REQUIRE_NOT_NULL(image);
+    check_dest(doc, def, "/u");
+    NAOS_CHECK_MEM_EQ(data + def->as.link_ref_def.title.start,
+                      def->as.link_ref_def.title.end - def->as.link_ref_def.title.start, "t\n  2", 5);
+
+    NAOS_CHECK_INT_EQ((int)MND_MD_REF_SHORTCUT, (int)link->as.link.ref_kind);
+    NAOS_CHECK_INT_EQ((int)MND_MD_REF_COLLAPSED, (int)image->as.link.ref_kind);
+    NAOS_CHECK_UINT_EQ(6, image->as.link.label.start);
+    NAOS_CHECK_UINT_EQ(7, image->as.link.label.end);
+    NAOS_CHECK_PTR_EQ(def, link->as.link.def);
+    NAOS_CHECK_PTR_EQ(def, image->as.link.def);
+    NAOS_CHECK_UINT_EQ(def->as.link_ref_def.dest.start, link->as.link.dest.start);
+    NAOS_CHECK_UINT_EQ(def->as.link_ref_def.dest.end, link->as.link.dest.end);
+    NAOS_CHECK_UINT_EQ(def->as.link_ref_def.title.start, link->as.link.title.start);
+    NAOS_CHECK_UINT_EQ(def->as.link_ref_def.title.end, link->as.link.title.end);
+    NAOS_CHECK_UINT_EQ(def->as.link_ref_def.dest.start, image->as.link.dest.start);
+    NAOS_CHECK_UINT_EQ(def->as.link_ref_def.title.end, image->as.link.title.end);
+    NAOS_CHECK_TRUE(link->as.link.dest_angle);
+    NAOS_CHECK_TRUE(link->as.link.has_title);
+    NAOS_CHECK_INT_EQ('"', link->as.link.title_delim);
+    mnd_md_doc_free(doc);
+}
+
+/*
+ * 6.4: 定義のない参照（ショートカット・省略・完全参照・画像）は、リンクにも画像にもならずテキストとして残る。
+ * ラベルが 999 文字を超える参照も解決しない
+ */
+NAOS_TEST(linkref_undefined_reference_is_text)
+{
+    char data[1100];
+    size_t i = 0;
+
+    check_plain_paragraph("[foo]\n", 5);
+    check_plain_paragraph("[foo]\n\n[bar]: /u\n", 5);
+    check_plain_paragraph("[foo][]\n", 7);
+    check_plain_paragraph("![foo] [x][foo]\n", 15);
+
+    data[0] = '[';
+    for (i = 1; i <= 1000; i++)
+    {
+        data[i] = 'a';
+    }
+    memcpy(data + 1001, "]\n\n[a]: /u\n", 12);
+    check_plain_paragraph(data, 1002);
+}
+
+/*
+ * 2.7、8.3: NUL は U+FFFD として扱う（spec の「Insecure characters」）。U+FFFD は ASCII の制御文字でないので、
+ * 囲まないリンク先に含めてよい（インライン形式のリンク先と同じ）。ラベルの NUL は U+FFFD と同じラベルになり、
+ * タイトルの NUL はタイトルに含まれる。NUL 以外の ASCII の制御文字は、囲まないリンク先を終わらせる
+ */
+NAOS_TEST(linkref_nul_is_replacement_character)
+{
+    static const char bare[] = "[a]\n\n[a]: b\0c\n";
+    static const char label[] = "[\0]\n\n[\xEF\xBF\xBD]: /u\n";
+    static const char title[] = "[a]\n\n[a]: /u \"x\0y\"\n";
+    static const char control[] = "[a]\n\n[a]: b\x01" "c\n";
+    mnd_md_doc_t *doc = NULL;
+    const mnd_md_node_t *def = NULL;
+    const mnd_md_node_t *link = NULL;
+
+    doc = parse_ok_len(bare, sizeof(bare) - 1);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    def = find_kind(doc, MND_MD_LINK_REF_DEF);
+    link = find_kind(doc, MND_MD_LINK);
+    NAOS_REQUIRE_NOT_NULL(def);
+    NAOS_CHECK_UINT_EQ(5, def->span.start);
+    NAOS_CHECK_UINT_EQ(13, def->span.end);
+    NAOS_CHECK_UINT_EQ(10, def->as.link_ref_def.dest.start);
+    NAOS_CHECK_UINT_EQ(13, def->as.link_ref_def.dest.end);
+    NAOS_REQUIRE_NOT_NULL(link);
+    NAOS_CHECK_PTR_EQ(def, link->as.link.def);
+    mnd_md_doc_free(doc);
+
+    doc = parse_ok_len(label, sizeof(label) - 1);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    def = find_kind(doc, MND_MD_LINK_REF_DEF);
+    link = find_kind(doc, MND_MD_LINK);
+    NAOS_REQUIRE_NOT_NULL(def);
+    NAOS_REQUIRE_NOT_NULL(link);
+    NAOS_CHECK_PTR_EQ(def, link->as.link.def);
+    mnd_md_doc_free(doc);
+
+    doc = parse_ok_len(title, sizeof(title) - 1);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    def = find_kind(doc, MND_MD_LINK_REF_DEF);
+    NAOS_REQUIRE_NOT_NULL(def);
+    NAOS_CHECK_TRUE(def->as.link_ref_def.has_title);
+    NAOS_CHECK_UINT_EQ(14, def->as.link_ref_def.title.start);
+    NAOS_CHECK_UINT_EQ(17, def->as.link_ref_def.title.end);
+    NAOS_CHECK_NOT_NULL(find_kind(doc, MND_MD_LINK));
+    mnd_md_doc_free(doc);
+
+    doc = parse_ok_len(control, sizeof(control) - 1);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    NAOS_CHECK_NULL(find_kind(doc, MND_MD_LINK_REF_DEF));
+    NAOS_CHECK_NULL(find_kind(doc, MND_MD_LINK));
+    mnd_md_doc_free(doc);
+}
+
 /* メモリ不足: 定義を含む文書の解析が、どの確保で失敗しても漏れなく false を返す */
 NAOS_TEST(linkref_out_of_memory)
 {
@@ -245,5 +447,9 @@ NAOS_SUITE(linkref,
     NAOS_ADD_TEST(linkref_duplicate_label_keeps_first),
     NAOS_ADD_TEST(linkref_table_holds_all_definitions),
     NAOS_ADD_TEST(linkref_table_grows),
+    NAOS_ADD_TEST(linkref_reference_before_definition),
+    NAOS_ADD_TEST(linkref_reference_uses_definition_ranges),
+    NAOS_ADD_TEST(linkref_undefined_reference_is_text),
+    NAOS_ADD_TEST(linkref_nul_is_replacement_character),
     NAOS_ADD_TEST(linkref_out_of_memory)
 )

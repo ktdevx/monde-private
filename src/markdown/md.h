@@ -114,12 +114,13 @@ typedef struct mnd_md_link
 {
     mnd_md_ref_kind_t ref_kind;
     mnd_span_t text;        /* リンクテキスト、または画像の alt（[ と ] の内側） */
-    mnd_span_t label;       /* 参照ラベル（FULL は 2 つ目の [] の内側、COLLAPSED と SHORTCUT は text と同じ） */
+    /* 参照ラベル（FULL は 2 つ目の [] の内側、COLLAPSED と SHORTCUT は text と同じ、INLINE は text.end の空の範囲） */
+    mnd_span_t label;
     const mnd_md_node_t *def; /* 参照形式のとき、対応するリンク参照定義のノード */
     mnd_span_t dest;        /* リンク先（参照形式では定義の dest） */
     bool dest_angle;
     bool has_title;
-    mnd_span_t title;       /* タイトル（参照形式では定義の title） */
+    mnd_span_t title;       /* タイトル（参照形式では定義の title。タイトルがなければ dest.end の空の範囲） */
     char title_delim;
 } mnd_md_link_t;
 
@@ -210,6 +211,8 @@ const mnd_md_node_t *mnd_md_node_next(const mnd_md_node_t *node, const mnd_md_no
 /*
  * leaf の行に含まれる範囲 span の論理的な文字列を out の後ろに追加する。
  * 各行のプレフィックスを飛ばし、pad の数の空白を補い、行の境目を "\n" にする。
+ * span が行 i の内容の終わりから行 i + 1 の内容の始まりまでを覆えば、その境目の "\n" を含める
+ * （span が境目で始まるか終わる場合も含む）。
  * leaf には span を含む、行を持つノード（段落、見出し、コードブロック、リンク参照定義など）を渡す。
  * インラインのノードの範囲には、それを含むリーフを渡す。
  * span が leaf の行の内容と重ならない部分は無視する。leaf が行を持たない場合は、span のバイト列を

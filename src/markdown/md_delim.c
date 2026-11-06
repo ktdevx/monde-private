@@ -13,11 +13,19 @@
 #define REPLACEMENT_CP 0xFFFDU
 
 /*
- * 探索の下限の組の数（区切り記号の文字 2 種類 × 閉じが開きにもなれるか 2 × 元の長さを 3 で割った余り 3）。
- * 方言の区切り記号の文字（5.2）は、bottom_index とともに組を加える
+ * 探索の下限の組（区切り記号の文字 × 閉じが開きにもなれるか 2 × 元の長さを 3 で割った余り 3）。
+ * 文字の枠は `*`、`_` と、方言の区切り記号形式の規則の文字（parser->delim_slot。最大 256 種類）
  */
-#define BOTTOM_CHARS 2
-#define BOTTOM_COUNT (BOTTOM_CHARS * 2 * 3)
+#define BOTTOM_KEYS (2 * 3)
+#define BOTTOM_CHARS_MAX (2 + 256)
+
+/* 方言の区切り記号の対の判定の結果 */
+typedef enum dialect_match
+{
+    DIALECT_MATCH_NO,       /* 対にしない */
+    DIALECT_MATCH_YES,      /* 対にする */
+    DIALECT_MATCH_INVALID   /* 規則が不正な結果を返した */
+} dialect_match_t;
 
 /* 文字の分類 */
 
@@ -184,9 +192,18 @@ static void unlink_delim(mnd_md_delim_t *items, size_t index)
 }
 
 /* 区切り記号の文字の探索の下限の組の番号 */
-static size_t bottom_index(const mnd_md_delim_t *closer)
+static size_t bottom_index(const mnd_md_parser_t *parser, const mnd_md_delim_t *closer)
 {
-    size_t ch = (closer->ch == '_') ? 1 : 0;
+    size_t ch = 0;
+
+    if (closer->ch == '_')
+    {
+        ch = 1;
+    }
+    else if (closer->ch != '*')
+    {
+        ch = 1 + (size_t)parser->delim_slot[closer->ch];
+    }
 
     return (((ch * 2) + (closer->run.can_open ? 1 : 0)) * 3) + (closer->run.original_length % 3);
 }
@@ -200,32 +217,101 @@ static bool odd_match(const mnd_md_delim_t *opener, const mnd_md_delim_t *closer
 }
 
 /*
- * 開き items[o] と閉じ items[c] から use 個の記号を使い、その間の兄弟を子にする強調のノードを作って
- * 開きのテキストの直後に置く。メモリ不足なら NULL
+ * 方言の区切り記号の文字の開き opener と閉じ closer（同じ文字）を、その文字の区切り記号形式の規則で登録順に
+ * 判定する。最初に真を返した規則を *rule に、使う数を *use に入れる。使う数が 1 以上で、開きと閉じの残りの
+ * 数以下でなければ、規則が不正な結果を返したとして、その添字を parser に記録する（行は閉じの行）。
+ * 3 の倍数の規則は適用しない
+ */
+static dialect_match_t match_dialect(mnd_md_parser_t *parser, const mnd_md_delim_t *opener,
+                                     const mnd_md_delim_t *closer, const mnd_md_inline_rule_t **rule,
+                                     size_t *use)
+{
+    const mnd_md_dialect_t *dialect = parser->dialect;
+    const mnd_md_inline_rule_t *r = NULL;
+    size_t i = 0;
+    size_t n = 0;
+
+    for (i = 0; i < dialect->inline_rule_count; i++)
+    {
+        r = &dialect->inline_rules[i];
+        if (!r->delimiter || (r->trigger != closer->ch))
+        {
+            continue;
+        }
+
+        n = 0;
+        if (!r->match_delims(&opener->run, &closer->run, &n))
+        {
+            continue;
+        }
+
+        if ((n == 0) || (n > opener->run.length) || (n > closer->run.length))
+        {
+            parser->rule_failed = true;
+            parser->rule_index = i;
+            parser->rule_line = mnd_md_parser_line_of(parser, closer->node->span.start);
+            return DIALECT_MATCH_INVALID;
+        }
+
+        *rule = r;
+        *use = n;
+
+        return DIALECT_MATCH_YES;
+    }
+
+    return DIALECT_MATCH_NO;
+}
+
+/*
+ * 開き items[o] と閉じ items[c] から use 個の記号を使い、その間の兄弟を子にする強調のノード（rule が NULL で
+ * なければ、その規則の種類のノード）を作って開きのテキストの直後に置く。方言の種類のノードは、mnd_md_emph_t と
+ * 同じ形のデータをアリーナに確保して as.dialect_data に入れる。メモリ不足なら NULL
  */
 static mnd_md_node_t *make_emph(mnd_md_parser_t *parser, mnd_md_delim_t *opener, mnd_md_delim_t *closer,
-                                size_t use)
+                                size_t use, const mnd_md_inline_rule_t *rule)
 {
     mnd_md_node_t *open_text = opener->node;
     mnd_md_node_t *close_text = closer->node;
     mnd_md_node_t *emph = NULL;
     mnd_md_node_t *child = NULL;
     mnd_md_node_t *next = NULL;
+    mnd_md_emph_t *data = NULL;
+    mnd_md_kind_t kind = (use == 2) ? MND_MD_STRONG : MND_MD_EMPH;
     mnd_span_t span;
 
     span.start = open_text->span.end - use;
     span.end = close_text->span.start + use;
-    emph = mnd_md_node_new(parser->doc, (use == 2) ? MND_MD_STRONG : MND_MD_EMPH, span);
+    if (rule != NULL)
+    {
+        kind = rule->kind;
+    }
+
+    emph = mnd_md_node_new(parser->doc, kind, span);
     if (emph == NULL)
     {
         return NULL;
     }
 
-    emph->as.emph.delim = (char)opener->ch;
-    emph->as.emph.open.start = span.start;
-    emph->as.emph.open.end = open_text->span.end;
-    emph->as.emph.close.start = close_text->span.start;
-    emph->as.emph.close.end = span.end;
+    if (rule != NULL)
+    {
+        data = (mnd_md_emph_t *)mnd_md_arena_alloc(&parser->doc->arena, sizeof(*data));
+        if (data == NULL)
+        {
+            return NULL;
+        }
+
+        emph->as.dialect_data = data;
+    }
+    else
+    {
+        data = &emph->as.emph;
+    }
+
+    data->delim = (char)opener->ch;
+    data->open.start = span.start;
+    data->open.end = open_text->span.end;
+    data->close.start = close_text->span.start;
+    data->close.end = span.end;
     mnd_md_parser_set_node_lines(parser, emph);
 
     /* 開きは後ろから、閉じは前から使う */
@@ -248,7 +334,10 @@ static mnd_md_node_t *make_emph(mnd_md_parser_t *parser, mnd_md_delim_t *opener,
 bool mnd_md_delim_process(mnd_md_parser_t *parser, mnd_md_array_t *stack, size_t stack_bottom)
 {
     mnd_md_delim_t *items = (mnd_md_delim_t *)stack->items;
-    size_t openers_bottom[BOTTOM_COUNT];
+    size_t openers_bottom[BOTTOM_CHARS_MAX * BOTTOM_KEYS];
+    size_t bottom_count = (2 + parser->delim_slot_count) * BOTTOM_KEYS;
+    const mnd_md_inline_rule_t *rule = NULL;
+    dialect_match_t match = DIALECT_MATCH_NO;
     size_t closer = MND_MD_DELIM_NONE;
     size_t opener = MND_MD_DELIM_NONE;
     size_t old_closer = MND_MD_DELIM_NONE;
@@ -264,7 +353,7 @@ bool mnd_md_delim_process(mnd_md_parser_t *parser, mnd_md_array_t *stack, size_t
     }
 
     /* 探索の下限は「この添字以上の開きだけを探す」値で持つ（spec の openers_bottom は排他の下限の要素） */
-    for (i = 0; i < BOTTOM_COUNT; i++)
+    for (i = 0; i < bottom_count; i++)
     {
         openers_bottom[i] = stack_bottom;
     }
@@ -281,14 +370,38 @@ bool mnd_md_delim_process(mnd_md_parser_t *parser, mnd_md_array_t *stack, size_t
             continue;
         }
 
-        bottom = bottom_index(&items[closer]);
+        bottom = bottom_index(parser, &items[closer]);
         found = false;
+        rule = NULL;
         for (opener = items[closer].prev;
              (opener != MND_MD_DELIM_NONE) && (opener >= openers_bottom[bottom]);
              opener = items[opener].prev)
         {
-            if ((items[opener].ch == items[closer].ch) && items[opener].run.can_open
-                && !odd_match(&items[opener], &items[closer]))
+            if ((items[opener].ch != items[closer].ch) || !items[opener].run.can_open)
+            {
+                continue;
+            }
+
+            if ((items[closer].ch == '*') || (items[closer].ch == '_'))
+            {
+                if (!odd_match(&items[opener], &items[closer]))
+                {
+                    use = ((items[closer].run.length >= 2) && (items[opener].run.length >= 2)) ? 2 : 1;
+                    found = true;
+                    break;
+                }
+
+                continue;
+            }
+
+            match = match_dialect(parser, &items[opener], &items[closer], &rule, &use);
+            if (match == DIALECT_MATCH_INVALID)
+            {
+                stack->count = stack_bottom;
+                return false;
+            }
+
+            if (match == DIALECT_MATCH_YES)
             {
                 found = true;
                 break;
@@ -310,8 +423,7 @@ bool mnd_md_delim_process(mnd_md_parser_t *parser, mnd_md_array_t *stack, size_t
             continue;
         }
 
-        use = ((items[closer].run.length >= 2) && (items[opener].run.length >= 2)) ? 2 : 1;
-        if (make_emph(parser, &items[opener], &items[closer], use) == NULL)
+        if (make_emph(parser, &items[opener], &items[closer], use, rule) == NULL)
         {
             stack->count = stack_bottom;
             return false;
