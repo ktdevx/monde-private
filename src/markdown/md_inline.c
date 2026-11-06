@@ -1718,10 +1718,28 @@ static bool parse_leaf(inline_state_t *st, mnd_md_node_t *leaf)
     return true;
 }
 
-/* インラインを解析するリーフか（段落と見出し。方言の inline_content のリーフは 5.1 が加える） */
-static bool is_inline_leaf(const mnd_md_node_t *node)
+/*
+ * インラインを解析するリーフか（行を持つ段落と見出しと、inline_content が真の方言のリーフ）。
+ * 方言のインラインのノードの種類はブロックの規則の種類と異なる（方言の検査）ので、インラインのノードは
+ * 当たらない
+ */
+static bool is_inline_leaf(const mnd_md_parser_t *parser, const mnd_md_node_t *node)
 {
-    return (((node->kind == MND_MD_PARAGRAPH) || (node->kind == MND_MD_HEADING)) && (node->line_count > 0));
+    const mnd_md_block_rule_t *rule = NULL;
+
+    if (node->line_count == 0)
+    {
+        return false;
+    }
+
+    if ((node->kind == MND_MD_PARAGRAPH) || (node->kind == MND_MD_HEADING))
+    {
+        return true;
+    }
+
+    rule = mnd_md_dialect_block_rule(parser->dialect, node->kind, NULL);
+
+    return ((rule != NULL) && !rule->container && rule->inline_content);
 }
 
 bool mnd_md_inline_run(mnd_md_parser_t *parser)
@@ -1743,7 +1761,7 @@ bool mnd_md_inline_run(mnd_md_parser_t *parser)
     /* 前順に再帰なしでたどる。インラインのリーフの子（作ったインラインのノード）には降りない */
     while (node != NULL)
     {
-        if (is_inline_leaf(node))
+        if (is_inline_leaf(parser, node))
         {
             if (!parse_leaf(&st, node))
             {

@@ -6,8 +6,10 @@
  * コンテキストの型）。src/markdown/ の .c と tests/markdown/ だけが include する
  */
 
+#include "foundation/diag.h"
 #include "foundation/source.h"
 #include "markdown/md.h"
+#include "markdown/md_dialect.h"
 #include "markdown/md_parse.h"
 
 #include <stdbool.h>
@@ -200,11 +202,19 @@ typedef struct mnd_md_parser
     size_t body_start;              /* 本文の開始位置（len 以下） */
     const char *path;               /* 診断に付けるパス。NULL 可 */
     const mnd_md_allocator_t *allocator;    /* 確保関数（既定値を解決済み） */
-    const mnd_md_dialect_t *dialect;        /* オプションの方言（NULL なら CommonMark） */
+    const mnd_md_dialect_t *dialect;        /* 方言（NULL でない。オプションが NULL なら mnd_md_commonmark） */
     mnd_md_doc_t *doc;              /* 作成中の文書 */
     const struct mnd_md_line_index *line_index; /* 行番号の表（文書のアリーナに確保） */
     mnd_md_array_t open;            /* 開いているブロック（mnd_md_open_block_t。先頭は文書） */
     mnd_md_array_t leaf_lines;      /* 開いているリーフの行（mnd_md_line_t） */
+    mnd_md_array_t dialect_lines;   /* 方言の規則が段落から引き取った行（mnd_md_line_t。開く間だけ使う） */
+    /*
+     * 方言の規則が不正な結果を返した（段階の関数の false をメモリ不足と区別する）。
+     * rule_index はその規則の添字、rule_line はその行の行番号
+     */
+    bool rule_failed;
+    size_t rule_index;
+    size_t rule_line;
 } mnd_md_parser_t;
 
 /* offset（0 <= offset <= len）の位置の行番号（1 起点。基準は内容全体の先頭） */
@@ -216,14 +226,66 @@ size_t mnd_md_parser_line_of(const mnd_md_parser_t *parser, size_t offset);
  */
 void mnd_md_parser_set_node_lines(const mnd_md_parser_t *parser, mnd_md_node_t *node);
 
+/* ブロックの規則のコンテキストを渡すコールバック */
+typedef enum mnd_md_block_ctx_mode
+{
+    MND_MD_BLOCK_CTX_START,         /* try_start */
+    MND_MD_BLOCK_CTX_CONTINUE,      /* try_continue */
+    MND_MD_BLOCK_CTX_FINALIZE       /* finalize */
+} mnd_md_block_ctx_mode_t;
+
 /*
- * ブロックの規則のコンテキスト（md_dialect.h の不透明な型の定義）。ブロックの段階が 1 行の処理の中で作り、
- * 方言のブロックの規則に渡す。解析中だけ有効である
+ * ブロックの規則のコンテキスト（md_dialect.h の不透明な型の定義）。ブロックの段階が規則のコールバックを
+ * 呼ぶたびに作り（mnd_md_block_ctx_init）、コンテキスト関数（md_dialect.c）がカーソルを進め、ブロックを開き、
+ * 結果を記録する。ブロックの段階は、コールバックが true を返したときだけカーソルと結果を使う。
+ * 解析中だけ有効である
  */
 struct mnd_md_block_ctx
 {
     mnd_md_parser_t *parser;
-    mnd_md_line_view_t line;        /* 現在の行の状態 */
+    mnd_md_block_ctx_mode_t mode;
+    const mnd_md_block_rule_t *rule;    /* 呼んでいる規則 */
+    size_t line_start;              /* 物理的な行の先頭 */
+    size_t line_end;                /* 行末記号の直前 */
+    size_t line_no;                 /* 物理的な行の行番号 */
+    /* カーソル（mnd_md_scan_pos_t と同じ意味: 次に読む位置、論理的な桁、残っている仮想の空白） */
+    size_t pos;
+    size_t column;
+    size_t pad;
+    /* START のとき: 中断しようとしている段落（最も内側の開いている段落。なければ NULL）と、その行の数 */
+    mnd_md_node_t *paragraph;
+    size_t paragraph_lines;
+    bool paragraph_matched;         /* 段落まですべてのブロックを照合できた（行を引き取れる） */
+    mnd_md_node_t *opened;          /* mnd_md_block_ctx_open で作ったノード（木にはまだ連結しない） */
+    size_t take;                    /* 引き取る段落の最後の行の数 */
+    bool invalid;                   /* 規則が不正な操作をした（行末を超えて使った、など） */
+    bool oom;                       /* コンテキスト関数の確保が失敗した */
 };
+
+/*
+ * コンテキストを mode と rule で初期化する。カーソルと段落は 0（NULL）にし、行番号は
+ * line_start の行にする（呼び出し側がカーソルと段落を設定する）
+ */
+void mnd_md_block_ctx_init(mnd_md_block_ctx_t *ctx, mnd_md_parser_t *parser, mnd_md_block_ctx_mode_t mode,
+                           const mnd_md_block_rule_t *rule, size_t line_start, size_t line_end);
+
+/* 方言（md_dialect.c） */
+
+/*
+ * 方言の規則を検査する（種類が MND_MD_KIND_DIALECT 以上で、ブロックとインラインのすべての規則で異なること、
+ * 必須のコールバック、インラインの開始文字が CommonMark の特別な文字でないこと）。
+ * 不正なら最初の不正な規則について `dialect "%s": invalid %s rule %zu` の診断を追加して false を返す
+ */
+bool mnd_md_dialect_check(const mnd_md_dialect_t *dialect, const char *path, mnd_diag_list_t *diags);
+
+/* 診断に使う方言の名前（name が NULL なら空文字列） */
+const char *mnd_md_dialect_name(const mnd_md_dialect_t *dialect);
+
+/*
+ * kind の種類のノードを作るブロックの規則を返し、*index にその添字を入れる（index は NULL 可）。
+ * 方言の種類でないか、その種類のブロックの規則がなければ NULL
+ */
+const mnd_md_block_rule_t *mnd_md_dialect_block_rule(const mnd_md_dialect_t *dialect, mnd_md_kind_t kind,
+                                                     size_t *index);
 
 #endif

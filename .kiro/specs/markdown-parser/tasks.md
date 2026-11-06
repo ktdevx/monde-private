@@ -148,7 +148,7 @@
   - _Requirements: 5.2, 5.3, 5.4, 5.5, 6.1, 6.4_
 
 - [ ] 5. 方言の拡張点
-- [ ] 5.1 方言の検査と既定の方言、ブロックの規則の拡張点を実装する
+- [x] 5.1 方言の検査と既定の方言、ブロックの規則の拡張点を実装する
   - 何も追加しない既定の方言と、方言の規則の検査（種類の範囲、重複、必須のコールバック、開始文字）を実装し、不正なら設計のメッセージで診断を返す
   - ブロックの段階で、新しいブロックの開始の前に方言のブロックの規則を登録順に試し、開いている方言のブロックの継続と閉じる処理を呼ぶ。ブロックの規則のコンテキスト関数（行の状態、バイトと桁の消費、ブロックを開く、中断しようとしている段落とその行の引き取り、アリーナからの確保）を実装する。リーフの規則の行を記録し、インラインの対象に含める
   - 完了時: dialect スイートで、方言を指定しない解析と既定の方言の解析で同じ木になること、`%%% ` で始まる 1 行のテスト用のブロックの規則が段落を中断して期待する種類・範囲・行・インラインの子を持つノードになること、段落の最後の行を引き取る規則のノードの範囲、不正な規則が診断になることのテストが合格する
@@ -228,3 +228,4 @@
 - 4.2: Delims の API は `mnd_md_delim_classify`、`mnd_md_delim_push`、`mnd_md_delim_process(parser, stack, stack_bottom)`（処理のあと `stack_bottom` から上のエントリを取り除く）。4.3 はリンクの中身を包んだあとで、角括弧を積んだときの区切り記号の数を `stack_bottom` にして呼ぶ。`openers_bottom` の枠（`BOTTOM_CHARS`、`bottom_index`）は `*` と `_` だけなので、5.2 は方言の区切り記号の文字の枠と `match_delims` の経路（3 の倍数の規則は適用しない）を加える。md_inline.c の `merge_texts` は、リーフの終わりに原文で隣り合うテキストの兄弟をまとめる（使われなかった区切り記号は前後のテキストと 1 つになる）。
 - 4.3: 角括弧のスタックは `inline_state_t` の `brackets`（`bracket_t`）。`handle_open_bracket`／`handle_close_bracket` が spec の look for link or image のとおりに動き、リンクの中のリンクは `inactive_below` で O(1) で防ぐ。リンクが決まると開きのテキストのノードを置き換えて後ろの兄弟を子にし、`mnd_md_delim_process(parser, &st->delims, opener.delim_bottom)` を呼ぶ（5.2 の方言の区切り記号もこの経路を通る）。インライン形式の `label` は `text.end` の空の範囲、タイトルのないときの `title` は `dest.end` の空の範囲で `title_delim` は 0。参照形式の `dest`／`title` は `def` のノードの中の範囲なので、6.1 は `def` をリーフとして論理的な文字列を得る。画像の子は alt のインライン。`title_fail` は記録の位置以降の開きだけを失敗にする。囲まないリンク先の括弧の深さは最大 `DEST_PAREN_DEPTH_MAX`（32）。`[foo][ ]` はリンクにならず、空の囲まないリンク先は直後が `)` のときだけ認める（commonmark.js どおり）。
 - 4.3 の後続: インラインの囲まないリンク先は NUL を U+FFFD として受け付けるが、`md_linkref.c` の `scan_destination` は NUL で止まり `[a]: b\0c` が定義にならない。LinkRef 側で直す（6.3 または 7.1 で扱う）。
+- 5.1: 方言は入口の `mnd_md_dialect_check`（md_internal.h）で検査し、`parser->dialect` は NULL にならない。規則の失敗は `parser->rule_failed/rule_index/rule_line` に記録し、`mnd_md_parse` が `rule %zu returned an invalid result` にする（5.2 のインラインの規則と後処理の検査も同じ経路を使う。`rule %zu` は規則の配列の中の 0 起点の添字）。インラインの対象のリーフは `is_inline_leaf(parser, node)`（`mnd_md_dialect_block_rule` を使う）。種類はブロックとインラインの規則の両方を通して一意。ブロックの規則はインデント 3 以下では CommonMark の開始より前に、段落の中のインデント 4 以上の行では単独で試す（`try_dialect_starts`）。空行では試さない。方言のブロックの範囲は `mnd_md_block_ctx_open` を呼んだ時点の位置から始まる。6.1 の HTML 出力は `MND_MD_KIND_DIALECT` 以上の種類を扱う必要がある。インラインと後処理のコンテキスト関数は宣言だけで、5.2 で定義する。

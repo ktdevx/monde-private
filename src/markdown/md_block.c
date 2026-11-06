@@ -1,7 +1,8 @@
-/* BlockParser: コンテナの照合、コンテナとリーフの開始、遅延継続行、閉じる処理、範囲の確定 */
+/* BlockParser: コンテナの照合、コンテナとリーフの開始、遅延継続行、閉じる処理、範囲の確定、方言のブロックの規則 */
 
 #include "markdown/md.h"
 #include "markdown/md_block.h"
+#include "markdown/md_dialect.h"
 #include "markdown/md_html.h"
 #include "markdown/md_internal.h"
 #include "markdown/md_lines.h"
@@ -11,6 +12,11 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
+
+/*
+ * ブロックを閉じる処理（close_tip）は方言の規則の finalize を呼ぶので、「メモリ不足なら false」とある関数のうち
+ * ブロックを閉じるものは、方言の規則が不正な結果を返したときも false を返す（parser の rule_failed に記録する）
+ */
 
 /* インデントがこの桁数以上の行は、ブロックの開始の記号を持たない（インデントコードブロックの桁数） */
 #define BLOCK_CODE_INDENT 4
@@ -71,8 +77,26 @@ static bool is_space_or_tab(char c)
     return ((c == ' ') || (c == '\t'));
 }
 
-/* リーフか（閉じるときに leaf_finalize で行と範囲を確定する。開いているリーフの行は leaf_lines に記録する） */
-static bool is_leaf(const mnd_md_node_t *node)
+/* kind の種類のノードを作る方言のブロックの規則（方言の種類でなければ NULL） */
+static const mnd_md_block_rule_t *dialect_rule(const mnd_md_parser_t *parser, mnd_md_kind_t kind,
+                                               size_t *index)
+{
+    return mnd_md_dialect_block_rule(parser->dialect, kind, index);
+}
+
+/* 方言のリーフか（container が偽の規則が開いたブロック） */
+static bool is_dialect_leaf(const mnd_md_parser_t *parser, mnd_md_kind_t kind)
+{
+    const mnd_md_block_rule_t *rule = dialect_rule(parser, kind, NULL);
+
+    return ((rule != NULL) && !rule->container);
+}
+
+/*
+ * リーフか（閉じるときに leaf_finalize で行と範囲を確定する。開いているリーフの行は leaf_lines に記録する）。
+ * 方言のリーフを含む
+ */
+static bool is_leaf(const mnd_md_parser_t *parser, const mnd_md_node_t *node)
 {
     switch (node->kind)
     {
@@ -83,26 +107,29 @@ static bool is_leaf(const mnd_md_node_t *node)
     case MND_MD_HTML_BLOCK:
         return true;
     default:
-        return false;
+        return is_dialect_leaf(parser, node->kind);
     }
 }
 
 /*
- * 行をそのまま受け付けるリーフか（コードブロック、HTML ブロック）。
+ * 行をそのまま受け付けるリーフか（コードブロック、HTML ブロック、方言のリーフ）。
  * 最後に照合したブロックがこれらなら、新しいブロックの開始を試さない
  */
-static bool accepts_lines(const mnd_md_node_t *node)
+static bool accepts_lines(const mnd_md_parser_t *parser, const mnd_md_node_t *node)
 {
-    return ((node->kind == MND_MD_CODE_BLOCK) || (node->kind == MND_MD_HTML_BLOCK));
+    return ((node->kind == MND_MD_CODE_BLOCK) || (node->kind == MND_MD_HTML_BLOCK)
+            || is_dialect_leaf(parser, node->kind));
 }
 
 /*
  * parent の種類のブロックが、child の種類のブロックを子に持てるか。
- * 文書・引用・リスト項目はリスト項目以外（リーフを含む）を、リストはリスト項目だけを持ち、
- * リーフ（段落、見出し、テーマ区切り、コードブロック、HTML ブロック）は子を持たない
+ * 文書・引用・リスト項目・方言のコンテナはリスト項目以外（リーフを含む）を、リストはリスト項目だけを持ち、
+ * リーフ（段落、見出し、テーマ区切り、コードブロック、HTML ブロック、方言のリーフ）は子を持たない
  */
-static bool can_contain(mnd_md_kind_t parent, mnd_md_kind_t child)
+static bool can_contain(const mnd_md_parser_t *parser, mnd_md_kind_t parent, mnd_md_kind_t child)
 {
+    const mnd_md_block_rule_t *rule = NULL;
+
     switch (parent)
     {
     case MND_MD_DOCUMENT:
@@ -112,7 +139,8 @@ static bool can_contain(mnd_md_kind_t parent, mnd_md_kind_t child)
     case MND_MD_LIST:
         return child == MND_MD_ITEM;
     default:
-        return false;
+        rule = dialect_rule(parser, parent, NULL);
+        return ((rule != NULL) && rule->container && (child != MND_MD_ITEM));
     }
 }
 
@@ -315,6 +343,11 @@ static bool leaf_finalize(mnd_md_parser_t *parser, mnd_md_node_t *node)
             }
             break;
         default:
+            /* 方言のリーフ: 開始は開いた位置（引き取った行があればその内容の開始）、終わりは最後の行の内容の終わり */
+            if (node->kind >= MND_MD_KIND_DIALECT)
+            {
+                node->span.end = last->content.end;
+            }
             break;
         }
     }
@@ -347,13 +380,73 @@ static void container_finalize(mnd_md_node_t *node, const mnd_md_open_block_t *e
     node->span.end = end;
 }
 
-/* 最も内側の開いているブロックを閉じ、範囲と行番号を確定する（根は閉じない）。メモリ不足なら false */
+/*
+ * 方言の規則のコールバックが ctx に記録した結果を確かめる。メモリ不足なら false。
+ * 規則が不正な操作をしたなら、規則の添字 index とその行を parser に記録して false
+ */
+static bool dialect_ctx_ok(mnd_md_parser_t *parser, const mnd_md_block_ctx_t *ctx, size_t index)
+{
+    if (ctx->oom)
+    {
+        return false;
+    }
+
+    if (ctx->invalid)
+    {
+        parser->rule_failed = true;
+        parser->rule_index = index;
+        parser->rule_line = ctx->line_no;
+        return false;
+    }
+
+    return true;
+}
+
+/* 規則が不正な結果を返したことを記録して false を返す */
+static bool dialect_fail(mnd_md_parser_t *parser, mnd_md_block_ctx_t *ctx, size_t index)
+{
+    ctx->invalid = true;
+
+    return dialect_ctx_ok(parser, ctx, index);
+}
+
+/*
+ * 閉じる方言のブロック node の規則の finalize を呼ぶ（範囲・行・行番号は確定済み）。
+ * コンテキストのカーソルはノードの範囲の終わりの位置で、行番号はその行。
+ * finalize が false を返したら、規則が不正な結果を返したとする。メモリ不足なら false
+ */
+static bool dialect_finalize(mnd_md_parser_t *parser, mnd_md_node_t *node)
+{
+    size_t index = 0;
+    const mnd_md_block_rule_t *rule = dialect_rule(parser, node->kind, &index);
+    mnd_md_block_ctx_t ctx;
+    bool ok = false;
+
+    if ((rule == NULL) || (rule->finalize == NULL))
+    {
+        return true;
+    }
+
+    mnd_md_block_ctx_init(&ctx, parser, MND_MD_BLOCK_CTX_FINALIZE, rule, node->span.end, node->span.end);
+    ok = rule->finalize(&ctx, node);
+    if (!dialect_ctx_ok(parser, &ctx, index))
+    {
+        return false;
+    }
+
+    return ok ? true : dialect_fail(parser, &ctx, index);
+}
+
+/*
+ * 最も内側の開いているブロックを閉じ、範囲と行番号を確定する（根は閉じない）。方言のブロックは、続けて規則の
+ * finalize を呼ぶ。メモリ不足か、方言の規則が不正な結果を返したら false
+ */
 static bool close_tip(mnd_md_parser_t *parser)
 {
     mnd_md_open_block_t closed = *open_tip_entry(parser);
     mnd_md_node_t *node = closed.node;
 
-    if (is_leaf(node))
+    if (is_leaf(parser, node))
     {
         if (!leaf_finalize(parser, node))
         {
@@ -366,6 +459,11 @@ static bool close_tip(mnd_md_parser_t *parser)
     }
 
     mnd_md_parser_set_node_lines(parser, node);
+    if (!dialect_finalize(parser, node))
+    {
+        return false;
+    }
+
     mnd_md_array_pop(&parser->open);
     open_tip_entry(parser)->last_child_blank = ends_with_blank(&closed);
 
@@ -387,29 +485,23 @@ static bool close_to(mnd_md_parser_t *parser, size_t count)
 }
 
 /*
- * kind の種類の新しいブロックを span の範囲で作り、最も内側の開いているブロックの最後の子として開く。
+ * 作ったノード node（どこにも連結していない）を、最も内側の開いているブロックの最後の子として開く。
  * 最も内側のブロックがその種類の子を持てなければ、持てるブロックまで閉じる。
  * 直前の兄弟が空行で終わっていれば、親（またはリスト項目の親）のリストをルーズにする。
- * 新しいブロックの要素を返す（次に開いているブロックの配列を変更するまで有効）。メモリ不足なら NULL
+ * 新しいブロックの要素を返す（次に開いているブロックの配列を変更するまで有効）。
+ * メモリ不足か、閉じた方言のブロックの規則が不正な結果を返したら NULL
  */
-static mnd_md_open_block_t *add_block(mnd_md_parser_t *parser, mnd_md_kind_t kind, mnd_span_t span)
+static mnd_md_open_block_t *add_node(mnd_md_parser_t *parser, mnd_md_node_t *node)
 {
     mnd_md_open_block_t *parent_entry = NULL;
     mnd_md_node_t *parent = NULL;
-    mnd_md_node_t *node = NULL;
 
-    while ((open_count(parser) > 1) && !can_contain(open_tip(parser)->kind, kind))
+    while ((open_count(parser) > 1) && !can_contain(parser, open_tip(parser)->kind, node->kind))
     {
         if (!close_tip(parser))
         {
             return NULL;
         }
-    }
-
-    node = mnd_md_node_new(parser->doc, kind, span);
-    if (node == NULL)
-    {
-        return NULL;
     }
 
     parent_entry = open_tip_entry(parser);
@@ -435,6 +527,22 @@ static mnd_md_open_block_t *add_block(mnd_md_parser_t *parser, mnd_md_kind_t kin
     }
 
     return open_tip_entry(parser);
+}
+
+/*
+ * kind の種類の新しいブロックを span の範囲で作り、add_node で開く。
+ * 新しいブロックの要素を返す。失敗したら NULL（add_node と同じ）
+ */
+static mnd_md_open_block_t *add_block(mnd_md_parser_t *parser, mnd_md_kind_t kind, mnd_span_t span)
+{
+    mnd_md_node_t *node = mnd_md_node_new(parser->doc, kind, span);
+
+    if (node == NULL)
+    {
+        return NULL;
+    }
+
+    return add_node(parser, node);
 }
 
 /* 行の残りが引用の記号で始まるか（インデント 3 以下の `>`） */
@@ -497,12 +605,80 @@ static bool match_indented_code(const mnd_md_parser_t *parser, block_line_t *lin
     return false;
 }
 
+/* 現在の行のカーソルから、方言の規則のコンテキストを作る */
+static void dialect_ctx_from_line(mnd_md_block_ctx_t *ctx, mnd_md_parser_t *parser,
+                                  mnd_md_block_ctx_mode_t mode, const mnd_md_block_rule_t *rule,
+                                  const block_line_t *line)
+{
+    mnd_md_block_ctx_init(ctx, parser, mode, rule, line->phys.line_start, line->phys.line_end);
+    ctx->pos = line->cur.pos;
+    ctx->column = line->cur.column;
+    ctx->pad = line->cur.pad;
+}
+
+/* 規則が使ったバイトの後ろ（ctx のカーソル）へ line->cur を進め、line->indent を更新する */
+static void line_take_ctx_cursor(const mnd_md_parser_t *parser, block_line_t *line, const mnd_md_block_ctx_t *ctx)
+{
+    line->cur.pos = ctx->pos;
+    line->cur.column = ctx->column;
+    line->cur.pad = ctx->pad;
+    line_scan_indent(parser, line);
+}
+
 /*
- * 開いているブロックを根の次から順に、現在の行と照合する。照合できたブロックの数（根を含む）を返す。
- * 照合できたコンテナが使ったバイトの分だけ line->cur を進め、line->indent を更新する。
- * 行が閉じフェンスなら *fence_closed を真にする（行はそこで使い終わる）
+ * 開いている方言のブロック entry と現在の行を、規則の try_continue で照合する。続くなら、規則が使ったバイトの
+ * 分だけ line->cur を進めて *ok を真にし、コンテナでは自身の記号が現れた最後の行の終わりを更新する。
+ * メモリ不足か、規則が不正な結果を返したら false
  */
-static size_t match_open_blocks(mnd_md_parser_t *parser, block_line_t *line, bool *fence_closed)
+static bool match_dialect_block(mnd_md_parser_t *parser, block_line_t *line, mnd_md_open_block_t *entry,
+                                bool *ok)
+{
+    size_t index = 0;
+    const mnd_md_block_rule_t *rule = dialect_rule(parser, entry->node->kind, &index);
+    mnd_md_block_ctx_t ctx;
+    bool continued = false;
+    size_t end = 0;
+
+    *ok = false;
+    if (rule == NULL)
+    {
+        return true;
+    }
+
+    dialect_ctx_from_line(&ctx, parser, MND_MD_BLOCK_CTX_CONTINUE, rule, line);
+    continued = rule->try_continue(&ctx, entry->node);
+    if (!dialect_ctx_ok(parser, &ctx, index))
+    {
+        return false;
+    }
+
+    if (!continued)
+    {
+        return true;
+    }
+
+    line_take_ctx_cursor(parser, line, &ctx);
+    if (rule->container)
+    {
+        end = line_trimmed_end(parser, line);
+        if (end > entry->marker_end)
+        {
+            entry->marker_end = end;
+        }
+    }
+
+    *ok = true;
+
+    return true;
+}
+
+/*
+ * 開いているブロックを根の次から順に、現在の行と照合する。照合できたブロックの数（根を含む）を *out に入れる。
+ * 照合できたコンテナが使ったバイトの分だけ line->cur を進め、line->indent を更新する。
+ * 行が閉じフェンスなら *fence_closed を真にする（行はそこで使い終わる）。
+ * メモリ不足か、方言の規則が不正な結果を返したら false
+ */
+static bool match_open_blocks(mnd_md_parser_t *parser, block_line_t *line, size_t *out, bool *fence_closed)
 {
     size_t matched = 1;
     size_t i = 0;
@@ -569,7 +745,12 @@ static size_t match_open_blocks(mnd_md_parser_t *parser, block_line_t *line, boo
                    && ((node->as.html_block.type == 6) || (node->as.html_block.type == 7)));
             break;
         default:
+            /* 方言のブロックは規則の try_continue */
             ok = false;
+            if (!match_dialect_block(parser, line, entry, &ok))
+            {
+                return false;
+            }
             break;
         }
 
@@ -581,7 +762,9 @@ static size_t match_open_blocks(mnd_md_parser_t *parser, block_line_t *line, boo
         matched = i + 1;
     }
 
-    return matched;
+    *out = matched;
+
+    return true;
 }
 
 /*
@@ -860,10 +1043,143 @@ static bool start_setext_heading(mnd_md_parser_t *parser, const block_line_t *li
 }
 
 /*
+ * 規則の try_start が開いたブロック（ctx->opened）を木に加える。引き取る段落の行があれば、段落を閉じる前に
+ * 作業用の配列へ移し、ノードの範囲の開始をその最初の行の内容の開始にする。照合できなかったブロックを閉じ、
+ * 規則が使ったバイトの分だけ line->cur を進める。コンテナなら *container_started を真にする（行の残りで
+ * 続けて開始を試す）。リーフなら、引き取った行と行の残りをリーフの行にして *done を真にする。
+ * *matched を開いているブロックの数にする。メモリ不足か、方言の規則が不正な結果を返したら false
+ */
+static bool start_dialect_block(mnd_md_parser_t *parser, block_line_t *line, const mnd_md_block_ctx_t *ctx,
+                                size_t *matched, bool *done, bool *container_started)
+{
+    mnd_md_node_t *node = ctx->opened;
+    mnd_md_open_block_t *entry = NULL;
+    size_t count = parser->leaf_lines.count;
+    size_t i = 0;
+
+    mnd_md_array_clear(&parser->dialect_lines);
+    if (ctx->take > 0)
+    {
+        /* 段落（最も内側の開いているブロック）の最後の take 行を移す。段落は add_node が閉じる */
+        for (i = count - ctx->take; i < count; i++)
+        {
+            if (!mnd_md_array_append(&parser->dialect_lines, mnd_md_array_at(&parser->leaf_lines, i)))
+            {
+                return false;
+            }
+        }
+
+        parser->leaf_lines.count = count - ctx->take;
+        node->span.start = ((const mnd_md_line_t *)parser->dialect_lines.items)[0].content.start;
+        node->span.end = node->span.start;
+    }
+
+    if (!close_to(parser, *matched))
+    {
+        return false;
+    }
+
+    entry = add_node(parser, node);
+    if (entry == NULL)
+    {
+        return false;
+    }
+
+    *matched = open_count(parser);
+    line_take_ctx_cursor(parser, line, ctx);
+    if (ctx->rule->container)
+    {
+        entry->marker_end = line_trimmed_end(parser, line);
+        *container_started = true;
+        return true;
+    }
+
+    /* リーフ: 開いたときの最も内側のリーフ（段落）は閉じたので、leaf_lines は空である */
+    for (i = 0; i < parser->dialect_lines.count; i++)
+    {
+        if (!mnd_md_array_append(&parser->leaf_lines, mnd_md_array_at(&parser->dialect_lines, i)))
+        {
+            return false;
+        }
+    }
+
+    mnd_md_array_clear(&parser->dialect_lines);
+    *done = true;
+
+    return leaf_add_line(parser, line, line->cur.pos, line->phys.line_end, line->cur.pad, false);
+}
+
+/*
+ * 方言のブロックの規則を登録順に試す（設計の「ブロックの段階」の 3。空行でない行で、インデントが 4 桁以上なら
+ * 段落の中だけ）。
+ * 最も内側の開いているブロックが段落なら、それが中断しようとしている段落で、段落を中断できない規則は試さない。
+ * 規則がブロックを開いたら start_dialect_block で木に加え、*started を真にする（*done と *container_started は
+ * start_dialect_block のとおり）。どの規則も開かなければ何もしない。
+ * 開かずに true を返す、開いて false を返す、コンテナが 1 バイトも使わない、は不正な結果とする。
+ * メモリ不足か、規則が不正な結果を返したら false
+ */
+static bool try_dialect_starts(mnd_md_parser_t *parser, block_line_t *line, size_t *matched, bool *started,
+                               bool *done, bool *container_started)
+{
+    const mnd_md_dialect_t *dialect = parser->dialect;
+    size_t i = 0;
+
+    for (i = 0; i < dialect->block_rule_count; i++)
+    {
+        const mnd_md_block_rule_t *rule = &dialect->block_rules[i];
+        mnd_md_node_t *tip = open_tip(parser);
+        mnd_md_block_ctx_t ctx;
+        bool opened = false;
+
+        if ((tip->kind == MND_MD_PARAGRAPH) && !rule->can_interrupt_paragraph)
+        {
+            continue;
+        }
+
+        dialect_ctx_from_line(&ctx, parser, MND_MD_BLOCK_CTX_START, rule, line);
+        if (tip->kind == MND_MD_PARAGRAPH)
+        {
+            ctx.paragraph = tip;
+            ctx.paragraph_lines = parser->leaf_lines.count;
+            ctx.paragraph_matched = (*matched == open_count(parser));
+        }
+
+        opened = rule->try_start(&ctx);
+        if (!dialect_ctx_ok(parser, &ctx, i))
+        {
+            return false;
+        }
+
+        if (!opened)
+        {
+            if (ctx.opened != NULL)
+            {
+                return dialect_fail(parser, &ctx, i);
+            }
+
+            continue;
+        }
+
+        if ((ctx.opened == NULL)
+            || (rule->container && (ctx.pos == line->cur.pos) && (ctx.column == line->cur.column)
+                && (ctx.pad == line->cur.pad)))
+        {
+            return dialect_fail(parser, &ctx, i);
+        }
+
+        *started = true;
+
+        return start_dialect_block(parser, line, &ctx, matched, done, container_started);
+    }
+
+    return true;
+}
+
+/*
  * 照合できたブロックの中で、新しいブロックの開始を試す（設計の「ブロックの段階」の 3）。
  * コンテナが開始したら、行の残りで続けて試す。何か開始したら *started を真にし、行を使い終わる
- * リーフ（ATX 見出し、Setext 見出し、テーマ区切り、開きフェンス）なら *done も真にする。
- * *matched は、開始したときに開いているブロックの数になる。メモリ不足なら false
+ * リーフ（ATX 見出し、Setext 見出し、テーマ区切り、開きフェンス、方言のリーフ）なら *done も真にする。
+ * *matched は、開始したときに開いているブロックの数になる。メモリ不足か、方言の規則が不正な結果を返したら false
  */
 static bool try_block_starts(mnd_md_parser_t *parser, block_line_t *line, size_t *matched,
                              bool *started, bool *done)
@@ -873,6 +1189,7 @@ static bool try_block_starts(mnd_md_parser_t *parser, block_line_t *line, size_t
     mnd_md_code_block_t fence;
     mnd_md_html_start_t html;
     int level = 0;
+    bool container_started = false;
 
     for (;;)
     {
@@ -881,7 +1198,7 @@ static bool try_block_starts(mnd_md_parser_t *parser, block_line_t *line, size_t
         size_t pos = line->indent.pos;
         size_t end = line->phys.line_end;
 
-        if (accepts_lines(container))
+        if (accepts_lines(parser, container))
         {
             /* コードブロックと HTML ブロックの中では、ブロックは始まらない */
             break;
@@ -904,11 +1221,44 @@ static bool try_block_starts(mnd_md_parser_t *parser, block_line_t *line, size_t
                 }
 
                 *started = true;
+                break;
             }
+
+            /*
+             * 段落の中では方言のブロックの規則だけを試す（CommonMark のブロックの開始はインデント 3 以下に限る）。
+             * コンテナが開始したら、行の残りで続けて試す
+             */
+            container_started = false;
+            if (!try_dialect_starts(parser, line, matched, started, done, &container_started))
+            {
+                return false;
+            }
+
+            if (container_started)
+            {
+                continue;
+            }
+
             break;
         }
 
-        /* 5.1: 方言のブロックの規則を登録順に試す */
+        /* 方言のブロックの規則を登録順に試す（CommonMark の規則より前。cmark-gfm と同じ） */
+        container_started = false;
+        if (!try_dialect_starts(parser, line, matched, started, done, &container_started))
+        {
+            return false;
+        }
+
+        if (*done)
+        {
+            return true;
+        }
+
+        if (container_started)
+        {
+            continue;
+        }
+
         if (line_starts_block_quote(parser, line))
         {
             if (!start_block_quote(parser, line, matched))
@@ -1066,11 +1416,11 @@ static bool open_paragraph(mnd_md_parser_t *parser, const block_line_t *line)
 }
 
 /*
- * 最も内側の開いているリーフ（コードブロック、HTML ブロック）に、コンテナと自身が使ったバイトの後ろから
- * 行を加える（タブの一部を使ったなら pad を記録する）。HTML ブロックの種類 1〜5 は、行が終了条件を
+ * 最も内側の開いているリーフ（コードブロック、HTML ブロック、方言のリーフ）に、コンテナと自身が使ったバイトの
+ * 後ろから行を加える（タブの一部を使ったなら pad を記録する）。HTML ブロックの種類 1〜5 は、行が終了条件を
  * 満たせば閉じる。メモリ不足なら false
  */
-static bool add_line_to_code_or_html(mnd_md_parser_t *parser, const block_line_t *line)
+static bool add_line_to_accepting_leaf(mnd_md_parser_t *parser, const block_line_t *line)
 {
     const mnd_md_node_t *tip = open_tip(parser);
     int type = 0;
@@ -1109,7 +1459,11 @@ static bool process_line(mnd_md_parser_t *parser, const mnd_md_phys_line_t *phys
     line_scan_indent(parser, &line);
 
     /* 2: 開いているブロックの照合 */
-    matched = match_open_blocks(parser, &line, &fence_closed);
+    if (!match_open_blocks(parser, &line, &matched, &fence_closed))
+    {
+        return false;
+    }
+
     if (fence_closed)
     {
         /* 閉じフェンスの行: フェンスコードブロック（最も内側）を閉じ、行を使い終わる */
@@ -1156,9 +1510,9 @@ static bool process_line(mnd_md_parser_t *parser, const mnd_md_phys_line_t *phys
     }
 
     record_blank_line(parser, &line);
-    if (accepts_lines(open_tip(parser)))
+    if (accepts_lines(parser, open_tip(parser)))
     {
-        return add_line_to_code_or_html(parser, &line);
+        return add_line_to_accepting_leaf(parser, &line);
     }
 
     if (open_tip(parser)->kind == MND_MD_PARAGRAPH)

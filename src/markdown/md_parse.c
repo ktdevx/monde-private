@@ -2,6 +2,7 @@
 
 #include "markdown/md.h"
 #include "markdown/md_block.h"
+#include "markdown/md_dialect.h"
 #include "markdown/md_inline.h"
 #include "markdown/md_internal.h"
 #include "markdown/md_lines.h"
@@ -45,6 +46,7 @@ static void parser_free_work(mnd_md_parser_t *parser)
 {
     mnd_md_array_free(&parser->open);
     mnd_md_array_free(&parser->leaf_lines);
+    mnd_md_array_free(&parser->dialect_lines);
 }
 
 /* 失敗時の後始末: 作業用の配列と文書をすべて解放する */
@@ -80,6 +82,7 @@ bool mnd_md_parse(const char *data, size_t len, const mnd_md_options_t *options,
                   mnd_md_doc_t **out, mnd_diag_list_t *diags)
 {
     static const mnd_md_options_t default_options = MND_MD_OPTIONS_INIT;
+    const mnd_md_dialect_t *dialect = NULL;
     mnd_md_parser_t parser;
     size_t invalid_offset = 0;
     size_t line = 0;
@@ -90,11 +93,18 @@ bool mnd_md_parse(const char *data, size_t len, const mnd_md_options_t *options,
         options = &default_options;
     }
 
-    /* オプションの検査（1.4）。方言の規則の検査はここに加える */
+    /* オプションの検査（1.4） */
     if (options->body_start > len)
     {
         mnd_diag_add(diags, MND_SEVERITY_ERROR, options->path, 0,
                      "body start offset %zu exceeds content length %zu", options->body_start, len);
+        return false;
+    }
+
+    /* 方言の規則の検査（7.1、7.2）。方言を指定しなければ CommonMark */
+    dialect = (options->dialect != NULL) ? options->dialect : &mnd_md_commonmark;
+    if (!mnd_md_dialect_check(dialect, options->path, diags))
+    {
         return false;
     }
 
@@ -115,19 +125,32 @@ bool mnd_md_parse(const char *data, size_t len, const mnd_md_options_t *options,
     parser.body_start = options->body_start;
     parser.path = options->path;
     parser.allocator = mnd_md_allocator_or_default(options->allocator);
-    parser.dialect = options->dialect;
+    parser.dialect = dialect;
     parser.doc = NULL;
     parser.line_index = NULL;
+    parser.rule_failed = false;
+    parser.rule_index = 0;
+    parser.rule_line = 0;
     mnd_md_array_init(&parser.open, sizeof(mnd_md_open_block_t), parser.allocator);
     mnd_md_array_init(&parser.leaf_lines, sizeof(mnd_md_line_t), parser.allocator);
+    mnd_md_array_init(&parser.dialect_lines, sizeof(mnd_md_line_t), parser.allocator);
 
     parser.doc = mnd_md_doc_create(data, len, parser.allocator);
     if ((parser.doc == NULL) || !parser_build_line_index(&parser) || !mnd_md_block_run(&parser)
         || !mnd_md_inline_run(&parser))
     {
-        /* ここまでの失敗はメモリ不足だけである（8.2） */
+        /* 方言の規則が不正な結果を返したのでなければ、ここまでの失敗はメモリ不足である（8.2） */
         parser_discard(&parser);
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, options->path, 0, "out of memory");
+        if (parser.rule_failed)
+        {
+            mnd_diag_add(diags, MND_SEVERITY_ERROR, options->path, parser.rule_line,
+                         "dialect \"%s\": rule %zu returned an invalid result", mnd_md_dialect_name(dialect),
+                         parser.rule_index);
+        }
+        else
+        {
+            mnd_diag_add(diags, MND_SEVERITY_ERROR, options->path, 0, "out of memory");
+        }
         return false;
     }
 
