@@ -114,12 +114,13 @@ typedef struct mnd_md_link
 {
     mnd_md_ref_kind_t ref_kind;
     mnd_span_t text;        /* リンクテキスト、または画像の alt（[ と ] の内側） */
-    mnd_span_t label;       /* 参照ラベル（FULL は 2 つ目の [] の内側、COLLAPSED と SHORTCUT は text と同じ） */
+    /* 参照ラベル（FULL は 2 つ目の [] の内側、COLLAPSED と SHORTCUT は text と同じ、INLINE は text.end の空の範囲） */
+    mnd_span_t label;
     const mnd_md_node_t *def; /* 参照形式のとき、対応するリンク参照定義のノード */
     mnd_span_t dest;        /* リンク先（参照形式では定義の dest） */
     bool dest_angle;
     bool has_title;
-    mnd_span_t title;       /* タイトル（参照形式では定義の title） */
+    mnd_span_t title;       /* タイトル（参照形式では定義の title。タイトルがなければ dest.end の空の範囲） */
     char title_delim;
 } mnd_md_link_t;
 

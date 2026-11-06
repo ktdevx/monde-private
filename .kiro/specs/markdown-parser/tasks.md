@@ -124,7 +124,7 @@
   - _Depends: 1.2, 2.5_
   - _Requirements: 2.7, 2.8, 6.2, 6.3_
 
-- [ ] 4. インラインの段階
+- [x] 4. インラインの段階
 - [x] 4.1 行のカーソルと、リンクと強調を除くインラインを実装し、解析の入口から呼ぶ
   - 段落と見出しの行の内容を順に読むカーソルを作り、すべての位置を原文のオフセットで記録する。コードブロック・HTML ブロック・リンク参照定義ではインラインを解析しない
   - テキスト、ソフト改行、ハード改行（2 つ以上の空白とバックスラッシュ）、バックスラッシュエスケープ、実体参照と数値文字参照、コードスパン（閉じのない長さの記録）、自動リンク（URI とメールアドレス）、生の HTML を認識する。最後の行の末尾の空白はどのノードにも含めない
@@ -141,7 +141,7 @@
   - _Boundary: Delims、InlineParser_
   - _Requirements: 5.1, 5.9_
 
-- [ ] 4.3 リンクと画像を実装する
+- [x] 4.3 リンクと画像を実装する
   - 角括弧のスタックで `[` と `![` を記録し、`]` で、インライン形式（リンク先・タイトル・行をまたぐ空白）、完全参照、省略参照、ショートカット参照の順に判定する。参照は定義の表で解決し、定義がなければテキストのまま残す。リンクの中のリンクを作らないように、外側の角括弧を使えなくする。リンクを閉じるときは、角括弧の位置を下限として強調の処理を呼ぶ
   - リンク全体・テキスト（alt）・リンク先・タイトル・参照ラベルの範囲と、参照形式の定義のノードを記録する。参照形式では、リンク先とタイトルに定義の範囲を使う
   - 完了時: inline・linkref スイートで、インラインリンクの各範囲、`<>` のリンク先と空のリンク先、画像の alt と alt の中の強調、4 種類の参照の形式と参照ラベル、参照形式のリンク先とタイトルが定義の範囲であること、参照より後ろの定義の解決、定義のない `[foo]` がテキストになることのテストが合格し、tree_check を満たす
@@ -226,3 +226,5 @@
 - 3.4: 定義の表は `struct mnd_md_doc` の `refs`（オープンアドレス法、スロットは文書のアリーナ）。インラインの段階（4.3）では、ラベルの論理的な文字列を `mnd_md_linkref_normalize` で要素の大きさ 1 の `mnd_md_array_t` に正規化し、`mnd_md_linkref_lookup(doc, items, count)` で引く。ラベルの上限 `MND_MD_LINKREF_LABEL_MAX`（999）は符号位置で数える。正規化はアンエスケープしない。タイトルのない定義の `title` は `dest.end` の空の範囲で `title_delim` は 0。定義だけの段落が `---` の行で取り除かれると、テーマ区切りになる（commonmark.js と同じ）。
 - 4.1: `mnd_md_inline_run(parser)`（md_inline.h）は親へのポインタで前順にたどり、PARAGRAPH と HEADING を解析する。リーフごとの `inline_state_t` の位置は、行の内容をつないだ文字列（行の境目は `\n`、最後の行の末尾の空白とタブを除く）の添え字で、`map_pos`／`map_span` で原文のオフセットに戻す。テキストは [text_start, k) を `text_flush` で出す。4.2・4.3 は `is_special` と `parse_leaf` の switch に文字を足し、スタックを `inline_state_t` に置く。改行の範囲は `lines[i+1].prefix.start` で終わる。注意（6.1）: `mnd_md_logical_text` は行の境目でだけ接する空でない行を含めないため、内容が行の境目で始まるか終わるコードスパンでは境目の `\n` が落ちる。HTML 出力で補うこと。
 - 4.2: Delims の API は `mnd_md_delim_classify`、`mnd_md_delim_push`、`mnd_md_delim_process(parser, stack, stack_bottom)`（処理のあと `stack_bottom` から上のエントリを取り除く）。4.3 はリンクの中身を包んだあとで、角括弧を積んだときの区切り記号の数を `stack_bottom` にして呼ぶ。`openers_bottom` の枠（`BOTTOM_CHARS`、`bottom_index`）は `*` と `_` だけなので、5.2 は方言の区切り記号の文字の枠と `match_delims` の経路（3 の倍数の規則は適用しない）を加える。md_inline.c の `merge_texts` は、リーフの終わりに原文で隣り合うテキストの兄弟をまとめる（使われなかった区切り記号は前後のテキストと 1 つになる）。
+- 4.3: 角括弧のスタックは `inline_state_t` の `brackets`（`bracket_t`）。`handle_open_bracket`／`handle_close_bracket` が spec の look for link or image のとおりに動き、リンクの中のリンクは `inactive_below` で O(1) で防ぐ。リンクが決まると開きのテキストのノードを置き換えて後ろの兄弟を子にし、`mnd_md_delim_process(parser, &st->delims, opener.delim_bottom)` を呼ぶ（5.2 の方言の区切り記号もこの経路を通る）。インライン形式の `label` は `text.end` の空の範囲、タイトルのないときの `title` は `dest.end` の空の範囲で `title_delim` は 0。参照形式の `dest`／`title` は `def` のノードの中の範囲なので、6.1 は `def` をリーフとして論理的な文字列を得る。画像の子は alt のインライン。`title_fail` は記録の位置以降の開きだけを失敗にする。囲まないリンク先の括弧の深さは最大 `DEST_PAREN_DEPTH_MAX`（32）。`[foo][ ]` はリンクにならず、空の囲まないリンク先は直後が `)` のときだけ認める（commonmark.js どおり）。
+- 4.3 の後続: インラインの囲まないリンク先は NUL を U+FFFD として受け付けるが、`md_linkref.c` の `scan_destination` は NUL で止まり `[a]: b\0c` が定義にならない。LinkRef 側で直す（6.3 または 7.1 で扱う）。

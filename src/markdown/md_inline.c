@@ -1,6 +1,6 @@
 /*
  * InlineParser: インラインの段階（テキスト、エスケープ、実体参照、コードスパン、自動リンク、生の HTML、改行、
- * 強調の区切り記号、リンク）
+ * 強調の区切り記号、リンクと画像）
  */
 
 #include "markdown/md.h"
@@ -9,6 +9,7 @@
 #include "markdown/md_html.h"
 #include "markdown/md_inline.h"
 #include "markdown/md_internal.h"
+#include "markdown/md_linkref.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -32,12 +33,34 @@
 /* 置換文字 U+FFFD */
 #define REPLACEMENT_CP 0xFFFDUL
 
+/*
+ * 角括弧で囲まないリンク先の、エスケープされない括弧の入れ子の最大の深さ（spec は少なくとも 3 を求め、
+ * 上限を設けてよいとする。cmark と同じ 32）。閉じの括弧のない `(` の繰り返しを短く打ち切る（8.3）
+ */
+#define DEST_PAREN_DEPTH_MAX 32
+
+/* リンクタイトルの開きの記号の種類の数（`"`、`'`、`(`） */
+#define TITLE_KINDS 3
+
 /* バッククォートの並び（論理的な文字列の中の、前後にバッククォートがない最長の並び） */
 typedef struct backtick_run
 {
     size_t start;
     size_t len;
 } backtick_run_t;
+
+/*
+ * 角括弧のスタックの要素（spec の付録の bracket）。`[` か `![` の位置と、それを表すテキストのノードを持つ。
+ * スタックは要素の大きさが sizeof(bracket_t) の作業用の配列で、積んだ順に並ぶ
+ */
+typedef struct bracket
+{
+    mnd_md_node_t *node;            /* `[` または `![` のテキストのノード */
+    size_t pos;                     /* `[` または `!` の text の位置 */
+    size_t delim_bottom;            /* 積んだときの区切り記号のスタックの要素数（強調の処理の下限） */
+    bool image;                     /* `![` */
+    bool bracket_after;             /* この後ろに角括弧を積んだ（省略参照とショートカット参照を試さない） */
+} bracket_t;
 
 /*
  * 1 つのリーフのインラインの解析の作業状態（行のカーソル）。
@@ -47,8 +70,7 @@ typedef struct backtick_run
  * map_pos で原文のオフセットに戻し、ノードの範囲はすべて原文のオフセットで記録する。行の内容は行末記号を
  * 含まないので、text の '\n' は行の境目だけである。段落と見出しの行の pad は 0 なので、補う空白は入れない。
  *
- * 作業用の配列は、すべてのリーフで使い回す（mnd_md_inline_run が最後に解放する）。
- * 角括弧のスタック（4.3）も、ここに加える
+ * 作業用の配列は、すべてのリーフで使い回す（mnd_md_inline_run が最後に解放する）
  */
 typedef struct inline_state
 {
@@ -59,6 +81,14 @@ typedef struct inline_state
     mnd_md_array_t runs;            /* バッククォートの並び（backtick_run_t。長さ、開始の順に並べる） */
     bool runs_ready;                /* runs をこのリーフについて作った */
     mnd_md_array_t delims;          /* 区切り記号のスタック（mnd_md_delim_t。md_delim.h） */
+    mnd_md_array_t brackets;        /* 角括弧のスタック（bracket_t） */
+    mnd_md_array_t label;           /* 正規化したラベル（char。参照の解決に使う） */
+    /*
+     * 角括弧のスタックの添字がこの値より小さい `[`（画像でないもの）は、使えない（リンクの中のリンクを作らない）。
+     * リンクを作るたびに、残っている要素の数にする。要素を 1 つずつ印を付けて回らないので、リンクの数と
+     * 角括弧の数の積の時間にならない（8.3）。積むときは、その位置より上の古い値を残さないように縮める
+     */
+    size_t inactive_below;
     const char *s;                  /* text の先頭 */
     size_t len;                     /* text の長さ */
     size_t pos;                     /* 次に読む位置 */
@@ -72,6 +102,13 @@ typedef struct inline_state
     size_t pi_fail;
     size_t cdata_fail;
     size_t decl_fail;
+    /*
+     * 閉じのないリンクタイトルの記録（8.3）。開きの記号の種類（`"`、`'`、`(`）ごとに、閉じの記号を探して text の
+     * 終わりまで見つからなかった開きの位置のうち、最も前のもの。タイトルの開きの位置は単調に増えない
+     * （`<>` のリンク先は `](` と空白を含められる）ので、記録より後ろ（同じ位置を含む）の開きだけを失敗とし、
+     * 前の開きからは探す（scan_link_title）
+     */
+    size_t title_fail[TITLE_KINDS];
 } inline_state_t;
 
 /* 特別な文字の処理の結果 */
@@ -123,12 +160,13 @@ static int hex_value(unsigned char c)
 }
 
 /*
- * インラインの特別な文字か（テキストの読み飛ばしを止める文字）。`[`、`]`、`!`（4.3）と
- * 方言の開始文字（5.2）は、それぞれのタスクがここと parse_leaf の分岐に加える
+ * インラインの特別な文字か（テキストの読み飛ばしを止める文字）。方言の開始文字（5.2）は、
+ * そのタスクがここと parse_leaf の分岐に加える
  */
 static bool is_special(unsigned char c)
 {
-    return ((c == '\n') || (c == '\\') || (c == '`') || (c == '&') || (c == '<') || (c == '*') || (c == '_'));
+    return ((c == '\n') || (c == '\\') || (c == '`') || (c == '&') || (c == '<') || (c == '*') || (c == '_')
+            || (c == '[') || (c == ']') || (c == '!'));
 }
 
 /* 位置の対応 */
@@ -917,6 +955,566 @@ static match_result_t handle_delims(inline_state_t *st, size_t k)
     return MATCH_DONE;
 }
 
+/* リンクと画像 */
+
+/* text の範囲 [a, b)（a <= b。空でもよい）の原文の範囲。b は文字の位置か、行の境目か、text の終わり */
+static mnd_span_t map_range(const inline_state_t *st, size_t a, size_t b)
+{
+    mnd_span_t span;
+
+    span.start = map_pos(st, a);
+    span.end = map_pos(st, b);
+
+    return span;
+}
+
+/* 空白、タブ、行の境目か（リンクの中の空白。段落の行の境目は 2 つ続かないので、高々 1 つの行の境目になる） */
+static bool is_link_space(unsigned char c)
+{
+    return ((c == ' ') || (c == '\t') || (c == '\n'));
+}
+
+/* text の位置 p から、空白・タブ・行の境目を読み飛ばした位置 */
+static size_t skip_link_spaces(const inline_state_t *st, size_t p)
+{
+    while ((p < st->len) && is_link_space((unsigned char)st->s[p]))
+    {
+        p++;
+    }
+
+    return p;
+}
+
+/* text の位置 p がエスケープ（`\` と ASCII の句読点）の始まりか */
+static bool is_escape_at(const inline_state_t *st, size_t p)
+{
+    return ((st->s[p] == '\\') && ((p + 1) < st->len) && is_ascii_punct((unsigned char)st->s[p + 1]));
+}
+
+/*
+ * text の位置 p から角括弧で囲まないリンク先を読み、その後ろの位置を *end に入れる。ASCII の制御文字と空白を
+ * 含まず、エスケープされない括弧が釣り合う並び（深さは DEST_PAREN_DEPTH_MAX まで）。NUL は spec のとおり
+ * U+FFFD として扱い、リンク先に含めてよい。空の並びは、直後が `)` のときだけ認める（commonmark.js と同じ）
+ */
+static bool scan_bare_dest(const inline_state_t *st, size_t p, size_t *end)
+{
+    size_t q = p;
+    size_t depth = 0;
+    unsigned char c = 0;
+
+    while (q < st->len)
+    {
+        c = (unsigned char)st->s[q];
+        if (is_escape_at(st, q))
+        {
+            q += 2;
+            continue;
+        }
+
+        if (c == '(')
+        {
+            depth++;
+            if (depth > DEST_PAREN_DEPTH_MAX)
+            {
+                return false;
+            }
+        }
+        else if (c == ')')
+        {
+            if (depth == 0)
+            {
+                break;
+            }
+
+            depth--;
+        }
+        else if ((c == ' ') || ((c < 0x20) && (c != 0)) || (c == 0x7F))
+        {
+            break;
+        }
+
+        q++;
+    }
+
+    if ((depth != 0) || ((q == p) && ((q >= st->len) || (st->s[q] != ')'))))
+    {
+        return false;
+    }
+
+    *end = q;
+
+    return true;
+}
+
+/*
+ * text の位置 p（`<`）から角括弧で囲んだリンク先を読む。改行とエスケープされない `<` を含まない `>` までで、
+ * 内側の終わり（`>` の位置）を *close に入れる
+ */
+static bool scan_angle_dest(const inline_state_t *st, size_t p, size_t *close)
+{
+    size_t q = p + 1;
+    unsigned char c = 0;
+
+    while (q < st->len)
+    {
+        c = (unsigned char)st->s[q];
+        if ((c == '\n') || (c == '<'))
+        {
+            return false;
+        }
+
+        if (c == '>')
+        {
+            *close = q;
+            return true;
+        }
+
+        q += is_escape_at(st, q) ? 2 : 1;
+    }
+
+    return false;
+}
+
+/*
+ * text の位置 p からリンクタイトル（`"..."`、`'...'`、`(...)`。行をまたいでよく、括弧の形はエスケープされない
+ * `(` を含まない）を読み、閉じの記号の位置を *close に入れる。閉じの記号が終わりまでないことを記録し、
+ * 記録より後ろの同じ種類の開きからは探さない（8.3）。
+ * 位置 f から終わりまで探して閉じの記号がなかったとき、f より後ろの開き p は、f からの走査で閉じの記号として
+ * 見つからなかったのでエスケープされた位置にあり、f からの走査は p の直後で字句の区切りがそろう。したがって
+ * p からの走査は f からの走査の後半と同じになり、やはり終わりまで閉じの記号がない。f より前の開きからの走査は
+ * 範囲が広いので、記録を使わずに探す
+ */
+static bool scan_link_title(inline_state_t *st, size_t p, size_t *close)
+{
+    unsigned char open = (unsigned char)st->s[p];
+    unsigned char closer = 0;
+    size_t kind = 0;
+    size_t q = p + 1;
+    unsigned char c = 0;
+
+    if (open == '"')
+    {
+        closer = '"';
+        kind = 0;
+    }
+    else if (open == '\'')
+    {
+        closer = '\'';
+        kind = 1;
+    }
+    else if (open == '(')
+    {
+        closer = ')';
+        kind = 2;
+    }
+    else
+    {
+        return false;
+    }
+
+    if ((st->title_fail[kind] != NO_POS) && (p >= st->title_fail[kind]))
+    {
+        return false;
+    }
+
+    while (q < st->len)
+    {
+        c = (unsigned char)st->s[q];
+        if (c == closer)
+        {
+            *close = q;
+            return true;
+        }
+
+        if ((open == '(') && (c == '('))
+        {
+            return false;
+        }
+
+        q += is_escape_at(st, q) ? 2 : 1;
+    }
+
+    if ((st->title_fail[kind] == NO_POS) || (p < st->title_fail[kind]))
+    {
+        st->title_fail[kind] = p;
+    }
+
+    return false;
+}
+
+/*
+ * text の位置 k（`]`）の後ろのインライン形式 `(dest "title")` を読む。認めたら、リンク先・タイトルを link に
+ * 入れ、`)` の後ろの位置を *end に入れる
+ */
+static bool scan_inline_link(inline_state_t *st, size_t k, mnd_md_link_t *link, size_t *end)
+{
+    size_t p = k + 1;
+    size_t dest_start = 0;
+    size_t dest_end = 0;
+    size_t after_dest = 0;
+    size_t close = 0;
+
+    if ((p >= st->len) || (st->s[p] != '('))
+    {
+        return false;
+    }
+
+    p = skip_link_spaces(st, p + 1);
+    if ((p < st->len) && (st->s[p] == '<'))
+    {
+        if (!scan_angle_dest(st, p, &close))
+        {
+            return false;
+        }
+
+        dest_start = p + 1;
+        dest_end = close;
+        after_dest = close + 1;
+        link->dest_angle = true;
+    }
+    else
+    {
+        if (!scan_bare_dest(st, p, &dest_end))
+        {
+            return false;
+        }
+
+        dest_start = p;
+        after_dest = dest_end;
+        link->dest_angle = false;
+    }
+
+    link->dest = map_range(st, dest_start, dest_end);
+    link->has_title = false;
+    link->title.start = link->dest.end;
+    link->title.end = link->dest.end;
+    link->title_delim = 0;
+
+    p = skip_link_spaces(st, after_dest);
+    if ((p > after_dest) && (p < st->len) && scan_link_title(st, p, &close))
+    {
+        link->has_title = true;
+        link->title = map_range(st, p + 1, close);
+        link->title_delim = st->s[p];
+        p = skip_link_spaces(st, close + 1);
+    }
+
+    if ((p >= st->len) || (st->s[p] != ')'))
+    {
+        return false;
+    }
+
+    *end = p + 1;
+
+    return true;
+}
+
+/*
+ * text の位置 p（`[`）からリンクラベルを読む。内側は MND_MD_LINKREF_LABEL_MAX 文字（コードポイント）まで、
+ * エスケープされない角括弧を含まない。`]` の位置を *close に入れる（内側は空や空白だけでもよい）
+ */
+static bool scan_ref_label(const inline_state_t *st, size_t p, size_t *close)
+{
+    size_t q = p + 1;
+    size_t chars = 0;
+    unsigned char c = 0;
+
+    while (q < st->len)
+    {
+        c = (unsigned char)st->s[q];
+        if (c == ']')
+        {
+            *close = q;
+            return true;
+        }
+
+        if (c == '[')
+        {
+            return false;
+        }
+
+        if (is_escape_at(st, q))
+        {
+            chars += 2;
+            q += 2;
+        }
+        else
+        {
+            if ((c & 0xC0) != 0x80)
+            {
+                chars++;
+            }
+
+            q++;
+        }
+
+        if (chars > MND_MD_LINKREF_LABEL_MAX)
+        {
+            return false;
+        }
+    }
+
+    return false;
+}
+
+/* text の範囲 [a, b) のコードポイントの数が MND_MD_LINKREF_LABEL_MAX 以下か（数えるのは上限の少し先まで） */
+static bool label_within_limit(const inline_state_t *st, size_t a, size_t b)
+{
+    size_t chars = 0;
+    size_t q = 0;
+
+    for (q = a; q < b; q++)
+    {
+        if (((unsigned char)st->s[q] & 0xC0) != 0x80)
+        {
+            chars++;
+            if (chars > MND_MD_LINKREF_LABEL_MAX)
+            {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+/*
+ * text の範囲 [a, b) をラベルとして正規化し、定義の表から引く。見つからなければ *def に NULL。
+ * メモリ不足なら false
+ */
+static bool lookup_label(inline_state_t *st, size_t a, size_t b, const mnd_md_node_t **def)
+{
+    *def = NULL;
+    if (!label_within_limit(st, a, b))
+    {
+        return true;
+    }
+
+    mnd_md_array_clear(&st->label);
+    if (!mnd_md_linkref_normalize(st->s + a, b - a, &st->label))
+    {
+        return false;
+    }
+
+    if (st->label.count > 0)
+    {
+        *def = mnd_md_linkref_lookup(st->parser->doc, (const char *)st->label.items, st->label.count);
+    }
+
+    return true;
+}
+
+/*
+ * text の位置 k（`]`）の後ろの参照形式を、完全参照、省略参照、ショートカット参照の順に判定する。
+ * 開きの bracket の内側は [text_start, k)。完全参照のラベルがあれば、その定義だけを試す（ないならリンクに
+ * しない）。省略参照とショートカット参照は、内側に角括弧を積んでいないときだけ試す（ラベルが角括弧を含まない）。
+ * 認めたら、形式・ラベル・定義とその範囲を link に入れ、リンクの終わりの位置を *end に入れて *found を真にする。
+ * メモリ不足なら false
+ */
+static bool resolve_reference(inline_state_t *st, const bracket_t *opener, size_t text_start, size_t k,
+                              mnd_md_link_t *link, size_t *end, bool *found)
+{
+    const mnd_md_node_t *def = NULL;
+    size_t close = 0;
+    size_t label_start = text_start;
+    size_t label_end = k;
+    size_t link_end = k + 1;
+    mnd_md_ref_kind_t kind = MND_MD_REF_SHORTCUT;
+
+    *found = false;
+    if (((k + 1) < st->len) && (st->s[k + 1] == '[') && scan_ref_label(st, k + 1, &close))
+    {
+        link_end = close + 1;
+        if (close > (k + 2))
+        {
+            kind = MND_MD_REF_FULL;
+            label_start = k + 2;
+            label_end = close;
+        }
+        else
+        {
+            kind = MND_MD_REF_COLLAPSED;
+        }
+    }
+
+    if ((kind != MND_MD_REF_FULL) && opener->bracket_after)
+    {
+        return true;
+    }
+
+    if (!lookup_label(st, label_start, label_end, &def))
+    {
+        return false;
+    }
+
+    if (def == NULL)
+    {
+        return true;
+    }
+
+    link->ref_kind = kind;
+    link->label = map_range(st, label_start, label_end);
+    link->def = def;
+    link->dest = def->as.link_ref_def.dest;
+    link->dest_angle = def->as.link_ref_def.dest_angle;
+    link->has_title = def->as.link_ref_def.has_title;
+    link->title = def->as.link_ref_def.title;
+    link->title_delim = def->as.link_ref_def.title_delim;
+    *end = link_end;
+    *found = true;
+
+    return true;
+}
+
+/*
+ * text の位置 k（`[`）、または `![`（k は `!`）。開きのテキストのノードを作って角括弧のスタックに積む。
+ * `!` の後ろが `[` でなければ、`!` はテキスト
+ */
+static match_result_t handle_open_bracket(inline_state_t *st, size_t k)
+{
+    bool image = (st->s[k] == '!');
+    size_t width = image ? 2 : 1;
+    mnd_md_node_t *node = NULL;
+    bracket_t *last = NULL;
+    bracket_t *b = NULL;
+
+    if (image && (((k + 1) >= st->len) || (st->s[k + 1] != '[')))
+    {
+        return MATCH_NONE;
+    }
+
+    if (!text_flush(st, k))
+    {
+        return MATCH_OOM;
+    }
+
+    node = emit_logical(st, MND_MD_TEXT, k, k + width);
+    if (node == NULL)
+    {
+        return MATCH_OOM;
+    }
+
+    if (st->inactive_below > st->brackets.count)
+    {
+        st->inactive_below = st->brackets.count;
+    }
+
+    last = (bracket_t *)mnd_md_array_last(&st->brackets);
+    if (last != NULL)
+    {
+        last->bracket_after = true;
+    }
+
+    b = (bracket_t *)mnd_md_array_push(&st->brackets);
+    if (b == NULL)
+    {
+        return MATCH_OOM;
+    }
+
+    b->node = node;
+    b->pos = k;
+    b->delim_bottom = st->delims.count;
+    b->image = image;
+    b->bracket_after = false;
+    st->pos = k + width;
+
+    return MATCH_DONE;
+}
+
+/*
+ * text の位置 k（`]`）。spec の look for link or image。角括弧のスタックの最上位の開きを見て、使えないか
+ * （リンクの中のリンク）、インライン形式・参照形式のどれにもならなければ、開きを取り除いて `]` をテキストに
+ * する。リンクか画像になれば、開きのテキストの後ろの兄弟を子にしたノードで開きのテキストを置き換え、
+ * 開きの位置を下限として強調を処理する。リンクなら、残っているすべての `[` を使えなくする
+ */
+static match_result_t handle_close_bracket(inline_state_t *st, size_t k)
+{
+    bracket_t opener;
+    bracket_t *top = (bracket_t *)mnd_md_array_last(&st->brackets);
+    mnd_md_node_t *node = NULL;
+    mnd_md_node_t *child = NULL;
+    mnd_md_node_t *next = NULL;
+    mnd_md_link_t link;
+    size_t text_start = 0;
+    size_t end = 0;
+    bool found = false;
+
+    if (top == NULL)
+    {
+        return MATCH_NONE;
+    }
+
+    opener = *top;
+    mnd_md_array_pop(&st->brackets);
+    if (!opener.image && (st->brackets.count < st->inactive_below))
+    {
+        /* pop のあとの要素数は、取り除いた開きの添字 */
+        return MATCH_NONE;
+    }
+
+    memset(&link, 0, sizeof(link));
+    text_start = opener.pos + (opener.image ? 2 : 1);
+    if (scan_inline_link(st, k, &link, &end))
+    {
+        link.ref_kind = MND_MD_REF_INLINE;
+        link.label.start = map_pos(st, k);
+        link.label.end = link.label.start;
+        found = true;
+    }
+    else
+    {
+        memset(&link, 0, sizeof(link));
+        if (!resolve_reference(st, &opener, text_start, k, &link, &end, &found))
+        {
+            return MATCH_OOM;
+        }
+    }
+
+    if (!found)
+    {
+        return MATCH_NONE;
+    }
+
+    if (!text_flush(st, k))
+    {
+        return MATCH_OOM;
+    }
+
+    node = mnd_md_node_new(st->parser->doc, opener.image ? MND_MD_IMAGE : MND_MD_LINK,
+                           map_range(st, opener.pos, end));
+    if (node == NULL)
+    {
+        return MATCH_OOM;
+    }
+
+    link.text = map_range(st, text_start, k);
+    node->as.link = link;
+    mnd_md_parser_set_node_lines(st->parser, node);
+
+    for (child = opener.node->next; child != NULL; child = next)
+    {
+        next = child->next;
+        mnd_md_node_append_child(node, child);
+    }
+
+    mnd_md_node_insert_after(opener.node, node);
+    mnd_md_node_unlink(opener.node);
+
+    if (!mnd_md_delim_process(st->parser, &st->delims, opener.delim_bottom))
+    {
+        return MATCH_OOM;
+    }
+
+    if (!opener.image)
+    {
+        st->inactive_below = st->brackets.count;
+    }
+
+    st->pos = end;
+
+    return MATCH_DONE;
+}
+
 /* リーフ */
 
 /* 前順で node の部分木の次のノード（root の部分木を出たら NULL） */
@@ -1041,8 +1639,14 @@ static bool parse_leaf(inline_state_t *st, mnd_md_node_t *leaf)
     st->pi_fail = NO_POS;
     st->cdata_fail = NO_POS;
     st->decl_fail = NO_POS;
+    for (k = 0; k < TITLE_KINDS; k++)
+    {
+        st->title_fail[k] = NO_POS;
+    }
+    st->inactive_below = 0;
     st->pos = 0;
     mnd_md_array_clear(&st->delims);
+    mnd_md_array_clear(&st->brackets);
     if (!build_text(st))
     {
         return false;
@@ -1071,6 +1675,13 @@ static bool parse_leaf(inline_state_t *st, mnd_md_node_t *leaf)
         case '*':
         case '_':
             result = handle_delims(st, k);
+            break;
+        case '[':
+        case '!':
+            result = handle_open_bracket(st, k);
+            break;
+        case ']':
+            result = handle_close_bracket(st, k);
             break;
         default:
             /* 特別でない文字の並びはまとめてテキストにする */
@@ -1126,6 +1737,8 @@ bool mnd_md_inline_run(mnd_md_parser_t *parser)
     mnd_md_array_init(&st.line_starts, sizeof(size_t), parser->allocator);
     mnd_md_array_init(&st.runs, sizeof(backtick_run_t), parser->allocator);
     mnd_md_array_init(&st.delims, sizeof(mnd_md_delim_t), parser->allocator);
+    mnd_md_array_init(&st.brackets, sizeof(bracket_t), parser->allocator);
+    mnd_md_array_init(&st.label, 1, parser->allocator);
 
     /* 前順に再帰なしでたどる。インラインのリーフの子（作ったインラインのノード）には降りない */
     while (node != NULL)
@@ -1154,6 +1767,8 @@ bool mnd_md_inline_run(mnd_md_parser_t *parser)
     mnd_md_array_free(&st.line_starts);
     mnd_md_array_free(&st.runs);
     mnd_md_array_free(&st.delims);
+    mnd_md_array_free(&st.brackets);
+    mnd_md_array_free(&st.label);
 
     return ok;
 }
