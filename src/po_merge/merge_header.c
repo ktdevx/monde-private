@@ -335,7 +335,6 @@ bool mnd_merge_header(mnd_po_entry_t *dst, const mnd_po_entry_t *old_header,
     if (!merge_header_build(dst, old_header, template_header))
     {
         mnd_po_entry_free(dst);
-
         return false;
     }
 

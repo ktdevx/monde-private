@@ -142,10 +142,8 @@ static size_t mnd_po_read_char_len(unsigned char lead)
     {
         return 3;
     }
-    else
-    {
-        return 4;
-    }
+
+    return 4;
 }
 
 /*
@@ -171,7 +169,7 @@ static void mnd_po_read_show(const char *s, size_t len, char out[MND_PO_READ_SHO
 
         if (control)
         {
-            if (n + 1 > MND_PO_READ_SHOW_MAX)
+            if ((n + 1) > MND_PO_READ_SHOW_MAX)
             {
                 break;
             }
@@ -181,7 +179,7 @@ static void mnd_po_read_show(const char *s, size_t len, char out[MND_PO_READ_SHO
         }
         else
         {
-            if (n + char_len > MND_PO_READ_SHOW_MAX)
+            if ((n + char_len) > MND_PO_READ_SHOW_MAX)
             {
                 break;
             }
@@ -226,15 +224,12 @@ static mnd_po_lex_status_t mnd_po_read_unescape_error(mnd_po_reader_t *reader, s
         mnd_diag_add(reader->diags, MND_SEVERITY_ERROR, reader->path, line,
                      "invalid escape sequence '\\%s'", shown);
         reader->errors++;
-
         return MND_PO_LEX_ERROR;
     case MND_PO_UNESCAPE_NUL:
         mnd_po_read_error(reader, line, "string contains a NUL byte");
-
         return MND_PO_LEX_ERROR;
     case MND_PO_UNESCAPE_BAD_UTF8:
         mnd_po_read_error(reader, line, "invalid UTF-8 sequence");
-
         return MND_PO_LEX_ERROR;
     case MND_PO_UNESCAPE_NO_MEMORY:
     case MND_PO_UNESCAPE_OK:
@@ -272,7 +267,6 @@ static mnd_po_lex_status_t mnd_po_read_literal(mnd_po_reader_t *reader, size_t l
     if (i >= len)
     {
         mnd_po_read_error(reader, line, "unterminated string");
-
         return MND_PO_LEX_ERROR;
     }
 
@@ -282,7 +276,6 @@ static mnd_po_lex_status_t mnd_po_read_literal(mnd_po_reader_t *reader, size_t l
         if (!mnd_po_read_is_blank(s[i]))
         {
             mnd_po_read_error(reader, line, "unexpected text after string");
-
             return MND_PO_LEX_ERROR;
         }
     }
@@ -354,7 +347,6 @@ static bool mnd_po_read_match_keyword(const char *word, size_t len, mnd_po_keywo
         {
             *keyword = names[i].keyword;
             *index = 0;
-
             return true;
         }
     }
@@ -362,7 +354,6 @@ static bool mnd_po_read_match_keyword(const char *word, size_t len, mnd_po_keywo
     if (mnd_po_read_msgstr_index(word, len, index))
     {
         *keyword = MND_PO_KEYWORD_MSGSTR_INDEXED;
-
         return true;
     }
 
@@ -383,7 +374,6 @@ static mnd_po_lex_status_t mnd_po_read_lex_code(mnd_po_reader_t *reader, const c
     if (s[0] == '"')
     {
         line->kind = MND_PO_LINE_STRING;
-
         return mnd_po_read_literal(reader, line->number, s, len, &line->value);
     }
 
@@ -401,7 +391,7 @@ static mnd_po_lex_status_t mnd_po_read_lex_code(mnd_po_reader_t *reader, const c
         mnd_diag_add(reader->diags, MND_SEVERITY_ERROR, reader->path, line->number,
                      "unknown keyword '%s'", shown);
         reader->errors++;
-
+    
         return MND_PO_LEX_ERROR;
     }
 
@@ -417,7 +407,7 @@ static mnd_po_lex_status_t mnd_po_read_lex_code(mnd_po_reader_t *reader, const c
         mnd_diag_add(reader->diags, MND_SEVERITY_ERROR, reader->path, line->number,
                      "missing string after '%s'", shown);
         reader->errors++;
-
+    
         return MND_PO_LEX_ERROR;
     }
 
@@ -440,7 +430,6 @@ static mnd_po_lex_status_t mnd_po_read_lex_marked(mnd_po_reader_t *reader, const
     if (i >= len)
     {
         line->kind = MND_PO_LINE_IGNORED;
-
         return MND_PO_LEX_OK;
     }
 
@@ -455,7 +444,6 @@ static mnd_po_lex_status_t mnd_po_read_lex_comment(mnd_po_reader_t *reader, cons
     if ((len > 0) && (memchr(s, '\0', len) != NULL))
     {
         mnd_po_read_error(reader, line->number, "string contains a NUL byte");
-
         return MND_PO_LEX_ERROR;
     }
 
@@ -488,7 +476,6 @@ static mnd_po_lex_status_t mnd_po_read_lex(mnd_po_reader_t *reader, const char *
     if (len == 0)
     {
         line->kind = MND_PO_LINE_BLANK;
-
         return MND_PO_LEX_OK;
     }
 
@@ -531,9 +518,9 @@ static mnd_po_lex_status_t mnd_po_read_lex(mnd_po_reader_t *reader, const char *
     {
         return mnd_po_read_lex_comment(reader, s + 2, len - 2, MND_PO_LINE_FLAGS, line);
     }
-    else
+
+    /* "#" の後ろが空白なら 1 つ除く。そのほかの文字なら "#" の後ろの全部 */
     {
-        /* "#" の後ろが空白なら 1 つ除く。そのほかの文字なら "#" の後ろの全部 */
         size_t skip = ((len > 1) && (s[1] == ' ')) ? 2 : 1;
 
         return mnd_po_read_lex_comment(reader, s + skip, len - skip, MND_PO_LINE_TRANSLATOR,
@@ -822,7 +809,6 @@ static bool mnd_po_read_leave_entry(mnd_po_reader_t *reader, size_t line, bool *
     else if (reader->state != MND_PO_READ_STATE_COMMENTS)
     {
         mnd_po_read_invalid(reader, line, mnd_po_read_missing_fault(reader->state), 0);
-
         return true;
     }
 
@@ -854,7 +840,6 @@ static void mnd_po_read_set_target(mnd_po_reader_t *reader, mnd_buf_t *target,
 static bool mnd_po_read_set(mnd_buf_t *buf, const mnd_buf_t *value)
 {
     mnd_buf_clear(buf);
-
     return mnd_buf_append(buf, value->data, value->len);
 }
 
@@ -941,7 +926,6 @@ static bool mnd_po_read_keyword_transition(const mnd_po_reader_t *reader,
         if (state != MND_PO_READ_STATE_COMMENTS)
         {
             *fault = mnd_po_read_missing_fault(state);
-
             return false;
         }
 
@@ -951,7 +935,6 @@ static bool mnd_po_read_keyword_transition(const mnd_po_reader_t *reader,
         if (!before_id)
         {
             *fault = MND_PO_READ_FAULT_MISSING_MSGSTR;
-
             return false;
         }
 
@@ -1003,14 +986,12 @@ static bool mnd_po_read_keyword_transition(const mnd_po_reader_t *reader,
     if (before_id)
     {
         *fault = MND_PO_READ_FAULT_MISSING_MSGID;
-
         return false;
     }
 
     if ((state == MND_PO_READ_STATE_ID) || (state == MND_PO_READ_STATE_SINGLE))
     {
         *fault = MND_PO_READ_FAULT_FORM_MISMATCH;
-
         return false;
     }
 
@@ -1018,7 +999,6 @@ static bool mnd_po_read_keyword_transition(const mnd_po_reader_t *reader,
     if (line->index != *expected)
     {
         *fault = MND_PO_READ_FAULT_INDEX_ORDER;
-
         return false;
     }
 
@@ -1051,21 +1031,18 @@ static bool mnd_po_read_step_keyword(mnd_po_reader_t *reader, const mnd_po_line_
             || (!line->obsolete && reader->has_obsolete_previous))
         {
             mnd_po_read_invalid(reader, line->number, MND_PO_READ_FAULT_MIXED, 0);
-
             return true;
         }
     }
     else if (line->obsolete != entry->obsolete)
     {
         mnd_po_read_invalid(reader, line->number, MND_PO_READ_FAULT_MIXED, 0);
-
         return true;
     }
 
     if (!mnd_po_read_keyword_transition(reader, line, &next, &fault, &expected))
     {
         mnd_po_read_invalid(reader, line->number, fault, expected);
-
         return true;
     }
 
@@ -1125,21 +1102,18 @@ static bool mnd_po_read_step_string(mnd_po_reader_t *reader, const mnd_po_line_t
     else if (reader->state == MND_PO_READ_STATE_COMMENTS)
     {
         mnd_po_read_invalid(reader, line->number, MND_PO_READ_FAULT_MISSING_MSGID, 0);
-
         return true;
     }
 
     if ((reader->target == NULL) || (reader->target_previous != line->previous))
     {
         mnd_po_read_invalid(reader, line->number, MND_PO_READ_FAULT_MISSING_MSGID, 0);
-
         return true;
     }
 
     if (reader->target_obsolete != line->obsolete)
     {
         mnd_po_read_invalid(reader, line->number, MND_PO_READ_FAULT_MIXED, 0);
-
         return true;
     }
 
@@ -1264,14 +1238,11 @@ static bool mnd_po_read_is_resync(const char *s, size_t len)
     if (mnd_po_read_starts_with(s, len, "#~|") || mnd_po_read_starts_with(s, len, "#|"))
     {
         i = (s[1] == '~') ? 3 : 2;
-
         return mnd_po_read_skip_blanks(s + i, len - i) < (len - i);
     }
-
-    if (mnd_po_read_starts_with(s, len, "#~"))
+    else if (mnd_po_read_starts_with(s, len, "#~"))
     {
         i = 2 + mnd_po_read_skip_blanks(s + 2, len - 2);
-
         return mnd_po_read_starts_entry_keyword(s + i, len - i);
     }
 

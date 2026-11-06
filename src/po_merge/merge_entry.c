@@ -293,7 +293,6 @@ bool mnd_merge_entry_copy(mnd_po_entry_t *dst, const mnd_po_entry_t *src)
     if (!merge_entry_copy_all(dst, src, true))
     {
         mnd_po_entry_free(dst);
-
         return false;
     }
 
@@ -307,7 +306,6 @@ bool mnd_merge_combine(mnd_po_entry_t *dst, const mnd_po_entry_t *old_entry,
         || !merge_entry_adjust_plural(dst, old_entry, template_entry, nplurals))
     {
         mnd_po_entry_free(dst);
-
         return false;
     }
 
@@ -332,7 +330,6 @@ bool mnd_merge_fresh(mnd_po_entry_t *dst, const mnd_po_entry_t *template_entry, 
         || (fill_empty && !merge_entry_push_copies(&dst->msgstr, "", 0, nplurals)))
     {
         mnd_po_entry_free(dst);
-
         return false;
     }
 
@@ -362,7 +359,6 @@ bool mnd_merge_obsolete(mnd_po_entry_t *dst, const mnd_po_entry_t *old_entry)
     if (!merge_entry_copy_all(dst, &source, true))
     {
         mnd_po_entry_free(dst);
-
         return false;
     }
 

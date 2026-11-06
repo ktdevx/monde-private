@@ -138,6 +138,7 @@ size_t mnd_merge_lcs(const mnd_merge_pattern_t *pattern, const char *s, size_t l
     {
         v[w] = ~UINT64_C(0);
     }
+
     v[words - 1] = top_mask;
 
     for (i = 0; i < len; i++)
@@ -163,6 +164,7 @@ size_t mnd_merge_lcs(const mnd_merge_pattern_t *pattern, const char *s, size_t l
             carry = sum_carry;
             borrow = diff_borrow;
         }
+
         /* 問い合わせの長さを超えるビットへの桁上がりを捨てる */
         v[words - 1] &= top_mask;
     }
@@ -217,10 +219,12 @@ size_t mnd_merge_upper_numerator(const char *a, size_t alen, const char *b, size
 
     memset(count_a, 0, sizeof(count_a));
     memset(count_b, 0, sizeof(count_b));
+
     for (i = 0; i < alen; i++)
     {
         count_a[pa[i]]++;
     }
+
     for (i = 0; i < blen; i++)
     {
         count_b[pb[i]]++;

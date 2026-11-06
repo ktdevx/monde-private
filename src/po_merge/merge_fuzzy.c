@@ -287,7 +287,6 @@ bool mnd_merge_fuzzy_init(mnd_merge_fuzzy_t *fuzzy, const mnd_po_catalog_t *cata
     if (!register_candidates(fuzzy))
     {
         mnd_merge_fuzzy_free(fuzzy);
-
         return false;
     }
 
@@ -301,7 +300,6 @@ bool mnd_merge_fuzzy_init(mnd_merge_fuzzy_t *fuzzy, const mnd_po_catalog_t *cata
             if (!index_list_push(&fuzzy->by_length[msgid->len], n))
             {
                 mnd_merge_fuzzy_free(fuzzy);
-
                 return false;
             }
         }
@@ -309,7 +307,6 @@ bool mnd_merge_fuzzy_init(mnd_merge_fuzzy_t *fuzzy, const mnd_po_catalog_t *cata
         if (!add_grams(fuzzy, msgid, n))
         {
             mnd_merge_fuzzy_free(fuzzy);
-
             return false;
         }
     }

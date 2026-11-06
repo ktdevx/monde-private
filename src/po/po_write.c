@@ -36,10 +36,8 @@ static size_t mnd_po_write_char_len(unsigned char lead)
     {
         return 3;
     }
-    else
-    {
-        return 4;
-    }
+
+    return 4;
 }
 
 /*

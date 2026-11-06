@@ -265,7 +265,6 @@ static bool mnd_po_init_insert_header(mnd_po_catalog_t *catalog, const char *lan
     if (!ok)
     {
         mnd_buf_free(&msgstr);
-
         return false;
     }
 
@@ -273,7 +272,6 @@ static bool mnd_po_init_insert_header(mnd_po_catalog_t *catalog, const char *lan
     if (header == NULL)
     {
         mnd_buf_free(&msgstr);
-
         return false;
     }
 
@@ -321,7 +319,6 @@ bool mnd_po_init(mnd_po_catalog_t *catalog, const char *language, const char *re
     if (!ok)
     {
         mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0, "out of memory");
-
         return false;
     }
 

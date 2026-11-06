@@ -46,6 +46,7 @@ typedef enum mnd_po_unescape_status
 /* 引用符の内側の lit[0..len) をアンエスケープして out の末尾に加える */
 mnd_po_unescape_status_t mnd_po_unescape(const char *lit, size_t len, mnd_buf_t *out,
                                          size_t *bad_offset);
+
 /* s[0..len) をエスケープして out の末尾に加える */
 bool mnd_po_escape(const char *s, size_t len, mnd_buf_t *out);
 
@@ -76,8 +77,10 @@ typedef enum mnd_po_lb
 
 /* 解決前のクラス。LineBreak.txt にないコードポイントは、その既定値（ID、PR、XX） */
 mnd_po_lb_t mnd_po_ucd_lb(uint32_t cp);
+
 /* 0、1、2。cp > 0x10FFFF は 1 */
 int mnd_po_ucd_width(uint32_t cp);
+
 /* 一般カテゴリが Mn または Mc なら true（SA → CM の解決に使う） */
 bool mnd_po_ucd_is_mark(uint32_t cp);
 
@@ -102,9 +105,11 @@ typedef struct mnd_po_ucd_range
 /* value は mnd_po_lb_t（XX 以外）。LineBreak.txt の既定値を反映済みで、表にないものは XX */
 extern const mnd_po_ucd_range_t mnd_po_ucd_lb_ranges[];
 extern const size_t mnd_po_ucd_lb_count;
+
 /* value は文字幅（0 または 2）。表にないものは 1 */
 extern const mnd_po_ucd_range_t mnd_po_ucd_width_ranges[];
 extern const size_t mnd_po_ucd_width_count;
+
 /* 一般カテゴリが Mn または Mc の範囲。value は常に 1 */
 extern const mnd_po_ucd_range_t mnd_po_ucd_mark_ranges[];
 extern const size_t mnd_po_ucd_mark_count;

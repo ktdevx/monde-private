@@ -45,6 +45,7 @@ static void key_write(unsigned char *dst, const mnd_po_entry_t *entry)
     {
         dst[pos] = (unsigned char)MND_MERGE_KEY_HAS_MSGCTXT;
         pos++;
+
         if (entry->msgctxt.len > 0)
         {
             memcpy(dst + pos, entry->msgctxt.data, entry->msgctxt.len);
@@ -59,6 +60,7 @@ static void key_write(unsigned char *dst, const mnd_po_entry_t *entry)
 
     dst[pos] = (unsigned char)MND_MERGE_KEY_SEPARATOR;
     pos++;
+
     if (entry->msgid.len > 0)
     {
         memcpy(dst + pos, entry->msgid.data, entry->msgid.len);
@@ -141,7 +143,6 @@ bool mnd_merge_key_index_init(mnd_merge_key_index_t *index, const mnd_po_catalog
     if (index->work == NULL)
     {
         mnd_merge_key_index_free(index);
-
         return false;
     }
 
@@ -183,6 +184,7 @@ bool mnd_merge_key_index_add(mnd_merge_key_index_t *index, size_t entry_index,
     }
 
     key = &index->keys[entry_index];
+
     /* キーの長さは 2 以上なので、len == 0 はまだ作っていないことを表す */
     if (key->len == 0)
     {

@@ -159,7 +159,6 @@ bool mnd_po_header_set(mnd_po_entry_t *header, const char *name, const char *val
     if (!ok)
     {
         mnd_buf_free(&result);
-
         return false;
     }
 

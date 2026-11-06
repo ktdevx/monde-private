@@ -20,7 +20,6 @@ static bool mnd_po_grow_cap(size_t count, size_t cap, size_t elem_size, size_t *
     if (count < cap)
     {
         *out_cap = cap;
-
         return true;
     }
 
@@ -135,7 +134,6 @@ bool mnd_po_strings_push(mnd_po_strings_t *list, const char *data, size_t len)
     if (!mnd_buf_append(&item, data, len))
     {
         mnd_buf_free(&item);
-
         return false;
     }
 
@@ -145,7 +143,6 @@ bool mnd_po_strings_push(mnd_po_strings_t *list, const char *data, size_t len)
         if (items == NULL)
         {
             mnd_buf_free(&item);
-
             return false;
         }
 
@@ -175,7 +172,6 @@ bool mnd_po_refs_push(mnd_po_refs_t *refs, const char *file, size_t line)
     if (!mnd_buf_append_str(&item.file, file))
     {
         mnd_buf_free(&item.file);
-
         return false;
     }
 
@@ -185,7 +181,6 @@ bool mnd_po_refs_push(mnd_po_refs_t *refs, const char *file, size_t line)
         if (items == NULL)
         {
             mnd_buf_free(&item.file);
-
             return false;
         }
 
@@ -392,7 +387,6 @@ bool mnd_po_catalog_find(const mnd_po_catalog_t *catalog, const char *msgctxt,
         if (mnd_po_buf_equals(&entry->msgid, msgid))
         {
             *index = i;
-
             return true;
         }
     }
@@ -411,7 +405,6 @@ bool mnd_po_catalog_header(const mnd_po_catalog_t *catalog, size_t *index)
         if (!entry->obsolete && !entry->has_msgctxt && (entry->msgid.len == 0))
         {
             *index = i;
-
             return true;
         }
     }
@@ -459,7 +452,6 @@ bool mnd_po_find_duplicate(const mnd_po_catalog_t *catalog, size_t from, size_t 
             {
                 *first = i;
                 *second = j;
-
                 return true;
             }
         }

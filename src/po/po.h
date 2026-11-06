@@ -80,7 +80,10 @@ bool mnd_po_strings_push(mnd_po_strings_t *list, const char *data, size_t len);
 bool mnd_po_refs_push(mnd_po_refs_t *refs, const char *file, size_t line);
 
 void mnd_po_catalog_init(mnd_po_catalog_t *catalog);
-void mnd_po_catalog_free(mnd_po_catalog_t *catalog);  /* 初期状態・解放済みに対しても安全 */
+
+/* 初期状態・解放済みに対しても安全 */
+void mnd_po_catalog_free(mnd_po_catalog_t *catalog);
+
 /*
  * 初期化したエントリを末尾（または index の位置）に加えて返す。失敗時は NULL。
  * 既存のエントリへのポインタは無効になる

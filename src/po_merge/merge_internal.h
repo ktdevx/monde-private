@@ -38,7 +38,10 @@ typedef struct mnd_merge_hash
 } mnd_merge_hash_t;
 
 void mnd_merge_hash_init(mnd_merge_hash_t *hash);
-void mnd_merge_hash_free(mnd_merge_hash_t *hash);  /* 初期状態に戻す。初期状態・解放済みに対しても安全 */
+
+/* 初期状態に戻す。初期状態・解放済みに対しても安全 */
+void mnd_merge_hash_free(mnd_merge_hash_t *hash);
+
 /* key が既にあれば *existing に既存の値を入れて *inserted を偽にする。キーは複製しない */
 bool mnd_merge_hash_insert(mnd_merge_hash_t *hash, const void *key, size_t len,
                            size_t value, bool *inserted, size_t *existing);
@@ -66,11 +69,13 @@ typedef struct mnd_merge_pattern
 bool mnd_merge_pattern_set(mnd_merge_pattern_t *pattern, const char *s, size_t len);
 void mnd_merge_pattern_free(mnd_merge_pattern_t *pattern);  /* 空の状態に戻す */
 size_t mnd_merge_lcs(const mnd_merge_pattern_t *pattern, const char *s, size_t len);
+
 /*
  * (double)(2 × numerator) / (double)sum を返す（sum == 0 なら 1.0）。numerator は LCS（2 倍する前）。
  * 比較値は mnd_merge_ratio(LCS, |q| + |c|)
  */
 double mnd_merge_ratio(size_t numerator, size_t sum);
+
 /*
  * 長さと出現数による上限の分子（2 × LCS の上限。設計の「分子」と同じく 2 倍した後の値で、常に偶数）。
  * 上限 u は mnd_merge_ratio(分子 / 2, |a| + |b|) で、(double)(分子) / (double)(|a| + |b|) と等しい
@@ -106,13 +111,17 @@ typedef struct mnd_merge_key_index
 
 /* catalog の索引を空の状態で用意する（エントリはまだ登録しない）。false はメモリ不足 */
 bool mnd_merge_key_index_init(mnd_merge_key_index_t *index, const mnd_po_catalog_t *catalog);
-void mnd_merge_key_index_free(mnd_merge_key_index_t *index);  /* 初期化に失敗した後・解放済みに対しても安全 */
+
+/* 初期化に失敗した後・解放済みに対しても安全 */
+void mnd_merge_key_index_free(mnd_merge_key_index_t *index);
+
 /*
  * entry_index（init の時点の catalog->count 未満）のキーを登録する。
  * 既にあれば登録せず *existing に先の添字を入れて true、*added を偽にする。false はメモリ不足
  */
 bool mnd_merge_key_index_add(mnd_merge_key_index_t *index, size_t entry_index,
                              bool *added, size_t *existing);
+
 /*
  * key の msgctxt の有無・msgctxt・msgid と同じキーの登録済みの添字を探す。領域を確保しない
  * （作業領域を書き換えるため、同じ索引を複数のスレッドから同時に使わない）
@@ -124,6 +133,7 @@ bool mnd_merge_key_index_find(const mnd_merge_key_index_t *index, const mnd_po_e
 
 /* 4-gram の文字数（UTF-8 の文字） */
 #define MND_MERGE_FUZZY_GRAM_CHARS 4
+
 /* バイト長ごとの列を持つ msgid のバイト長の上限 */
 #define MND_MERGE_FUZZY_SHORT_MAX_LEN 28
 
@@ -160,12 +170,14 @@ typedef struct mnd_merge_fuzzy
 /* catalog の訳のあるエントリ（ヘッダを除く）を登録する */
 bool mnd_merge_fuzzy_init(mnd_merge_fuzzy_t *fuzzy, const mnd_po_catalog_t *catalog);
 void mnd_merge_fuzzy_free(mnd_merge_fuzzy_t *fuzzy);
+
 /*
  * query の msgctxt と msgid に最も近い候補を探す。見つかれば *found に catalog の添字を入れて
  * *has_found を真にする。false はメモリ不足だけを表す。検索は fuzzy の登録内容を変えない
  */
 bool mnd_merge_fuzzy_search(mnd_merge_fuzzy_t *fuzzy, const mnd_po_entry_t *query,
                             bool *has_found, size_t *found);
+
 /*
  * query の msgid について調べる候補の番号を、調べる順に touched[0..touched_count) に入れる。
  * 4 文字以上なら 4-gram の数え上げの降順・番号の昇順、4 文字未満ならバイト長の範囲の列の
@@ -178,18 +190,23 @@ void mnd_merge_fuzzy_order(mnd_merge_fuzzy_t *fuzzy, const mnd_po_entry_t *query
 
 /* src を dst（初期化済み）に複製する。失敗時は dst を初期状態に戻して false */
 bool mnd_merge_entry_copy(mnd_po_entry_t *dst, const mnd_po_entry_t *src);
+
 /* combine(d, r, force_fuzzy)。nplurals は 1 以上 */
 bool mnd_merge_combine(mnd_po_entry_t *dst, const mnd_po_entry_t *old_entry,
                        const mnd_po_entry_t *template_entry, bool force_fuzzy, size_t nplurals);
+
 /*
  * fresh(r)。r の複製で、複数形で msgstr がすべて空（1 個もない場合を含む）なら空文字列
  * nplurals 個にする。nplurals は 1 以上。失敗時は dst を初期状態に戻して false
  */
 bool mnd_merge_fresh(mnd_po_entry_t *dst, const mnd_po_entry_t *template_entry, size_t nplurals);
+
 /* 廃止エントリの複製（抽出コメントと参照を除く）。失敗時は dst を初期状態に戻して false */
 bool mnd_merge_obsolete(mnd_po_entry_t *dst, const mnd_po_entry_t *old_entry);
+
 /* 手順 6: fuzzy でない、または訳がなければ前回の msgid を消す */
 void mnd_merge_tidy_previous(mnd_po_entry_t *entry);
+
 /* 訳がある（msgstr が 1 個以上で、最初の msgstr が空でない） */
 bool mnd_merge_has_translation(const mnd_po_entry_t *entry);
 
@@ -197,12 +214,14 @@ bool mnd_merge_has_translation(const mnd_po_entry_t *entry);
 
 /* Plural-Forms から nplurals を読めない、または範囲外のときの値 */
 #define MND_MERGE_NPLURALS_DEFAULT 2
+
 /* nplurals として受け付ける上限 */
 #define MND_MERGE_NPLURALS_MAX 100
 
 /* old_header と template_header（NULL 可）から dst（初期化済み）にヘッダを作る */
 bool mnd_merge_header(mnd_po_entry_t *dst, const mnd_po_entry_t *old_header,
                       const mnd_po_entry_t *template_header);
+
 /* header（NULL 可）の Plural-Forms から nplurals を返す。1〜100 以外は 2 */
 size_t mnd_merge_nplurals(const mnd_po_entry_t *header);
 

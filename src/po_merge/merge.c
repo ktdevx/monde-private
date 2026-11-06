@@ -32,18 +32,15 @@ static size_t merge_char_len(unsigned char c)
     {
         return 1;
     }
-
-    if (c >= 0xF0)
+    else if (c >= 0xF0)
     {
         return 4;
     }
-
-    if (c >= 0xE0)
+    else if (c >= 0xE0)
     {
         return 3;
     }
-
-    if (c >= 0xC0)
+    else if (c >= 0xC0)
     {
         return 2;
     }
@@ -231,7 +228,6 @@ static bool merge_index_old(merge_state_t *state)
     if (!mnd_merge_key_index_init(&state->old_index, old_catalog))
     {
         mnd_merge_key_index_free(&state->old_index);
-
         return false;
     }
 

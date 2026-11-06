@@ -21,7 +21,6 @@ static size_t decode_char(const char *s, size_t len, size_t i, uint32_t *cp)
     if (lead < 0x80)
     {
         *cp = lead;
-
         return 1;
     }
 
@@ -44,7 +43,6 @@ static size_t decode_char(const char *s, size_t len, size_t i, uint32_t *cp)
     if (count > (len - i))
     {
         *cp = lead;
-
         return 1;
     }
 
@@ -113,6 +111,7 @@ static bool escape_segment(const char *seg, size_t len, mnd_buf_t *esc, mnd_buf_
 
     mnd_buf_clear(esc);
     mnd_buf_clear(ebreaks);
+
     if (len == 0)
     {
         return true;

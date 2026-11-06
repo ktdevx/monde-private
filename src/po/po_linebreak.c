@@ -202,7 +202,6 @@ static size_t mnd_po_lb_decode(const unsigned char *s, size_t len, size_t i, uin
     if (c < 0x80)
     {
         *cp = c;
-
         return 1;
     }
 
@@ -224,14 +223,12 @@ static size_t mnd_po_lb_decode(const unsigned char *s, size_t len, size_t i, uin
     else
     {
         *cp = 0xFFFD;
-
         return 1;
     }
 
     if (n > (len - i))
     {
         *cp = 0xFFFD;
-
         return 1;
     }
 
@@ -240,7 +237,6 @@ static size_t mnd_po_lb_decode(const unsigned char *s, size_t len, size_t i, uin
         if ((s[i + k] & 0xC0) != 0x80)
         {
             *cp = 0xFFFD;
-
             return 1;
         }
     
@@ -378,6 +374,7 @@ void mnd_po_linebreaks(const char *s, size_t len, unsigned char *breaks)
 
                 brk = (pair == 'D') || ((pair == 'I') && space);
             }
+
             next_hl_hyphen = (prev == MND_PO_LB_HL)
                              && ((cls == MND_PO_LB_HY) || (cls == MND_PO_LB_BA));
             last = cls;
