@@ -6,19 +6,79 @@
 #include <string.h>
 
 /* 種類 1 のタグ名（開始条件と終了条件） */
-static const char *const raw_tag_names[] = { "pre", "script", "style", "textarea" };
+static const char *const raw_tag_names[] =
+{
+    "pre",
+    "script",
+    "style",
+    "textarea"
+};
 
 /* 種類 6 のタグ名（spec 0.31.2 の一覧） */
-static const char *const block_tag_names[] = {
-    "address", "article", "aside", "base", "basefont", "blockquote", "body",
-    "caption", "center", "col", "colgroup", "dd", "details", "dialog",
-    "dir", "div", "dl", "dt", "fieldset", "figcaption", "figure",
-    "footer", "form", "frame", "frameset",
-    "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "hr",
-    "html", "iframe", "legend", "li", "link", "main", "menu", "menuitem",
-    "nav", "noframes", "ol", "optgroup", "option", "p", "param",
-    "search", "section", "summary", "table", "tbody", "td",
-    "tfoot", "th", "thead", "title", "tr", "track", "ul"
+static const char *const block_tag_names[] =
+{
+    "address",
+    "article",
+    "aside",
+    "base",
+    "basefont",
+    "blockquote",
+    "body",
+    "caption",
+    "center",
+    "col",
+    "colgroup",
+    "dd",
+    "details",
+    "dialog",
+    "dir",
+    "div",
+    "dl",
+    "dt",
+    "fieldset",
+    "figcaption",
+    "figure",
+    "footer",
+    "form",
+    "frame",
+    "frameset",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "head",
+    "header",
+    "hr",
+    "html",
+    "iframe",
+    "legend",
+    "li",
+    "link",
+    "main",
+    "menu",
+    "menuitem",
+    "nav",
+    "noframes",
+    "ol",
+    "optgroup",
+    "option",
+    "p",
+    "param",
+    "search",
+    "section",
+    "summary",
+    "table",
+    "tbody",
+    "td",
+    "tfoot",
+    "th",
+    "thead",
+    "title",
+    "tr",
+    "track",
+    "ul"
 };
 
 static bool is_ascii_letter(char c)
@@ -63,6 +123,7 @@ static bool equals_ignore_case(const char *data, size_t pos, size_t len, const c
     {
         return false;
     }
+
     for (i = 0; i < len; i++)
     {
         if (ascii_lower(data[pos + i]) != name[i])
@@ -102,6 +163,7 @@ static size_t find_after(const char *data, size_t pos, size_t end, const char *s
         {
             return i + len;
         }
+
         i++;
     }
 
@@ -126,10 +188,12 @@ static size_t skip_whitespace(const char *data, size_t pos, size_t end)
         else if (((data[i] == '\n') || (data[i] == '\r')) && !line_ending)
         {
             line_ending = true;
+
             if ((data[i] == '\r') && ((i + 1) < end) && (data[i + 1] == '\n'))
             {
                 i++;
             }
+
             i++;
         }
         else
@@ -150,7 +214,9 @@ static size_t scan_tag_name(const char *data, size_t pos, size_t end)
     {
         return pos;
     }
+
     i++;
+
     while ((i < end) && (is_ascii_letter(data[i]) || is_ascii_digit(data[i]) || (data[i] == '-')))
     {
         i++;
@@ -168,7 +234,9 @@ static size_t scan_attribute_name(const char *data, size_t pos, size_t end)
     {
         return pos;
     }
+
     i++;
+
     while ((i < end) && (is_ascii_letter(data[i]) || is_ascii_digit(data[i]) || (data[i] == '_')
                          || (data[i] == '.') || (data[i] == ':') || (data[i] == '-')))
     {
@@ -194,6 +262,7 @@ static size_t scan_attribute_value(const char *data, size_t pos, size_t end)
     {
         return pos;
     }
+
     if ((data[i] == '"') || (data[i] == '\''))
     {
         char quote = data[i];
@@ -203,6 +272,7 @@ static size_t scan_attribute_value(const char *data, size_t pos, size_t end)
         {
             i++;
         }
+
         if (i >= end)
         {
             return pos;
@@ -210,6 +280,7 @@ static size_t scan_attribute_value(const char *data, size_t pos, size_t end)
 
         return i + 1;
     }
+
     while ((i < end) && !is_unquoted_value_excluded(data[i]))
     {
         i++;
@@ -235,16 +306,19 @@ static size_t scan_attribute(const char *data, size_t pos, size_t end)
     {
         return pos;
     }
+
     name_end = scan_attribute_name(data, name_start, end);
     if (name_end == name_start)
     {
         return pos;
     }
+
     eq = skip_whitespace(data, name_end, end);
     if ((eq >= end) || (data[eq] != '='))
     {
         return name_end;
     }
+
     value_start = skip_whitespace(data, eq + 1, end);
     value_end = scan_attribute_value(data, value_start, end);
     if (value_end == value_start)
@@ -264,11 +338,13 @@ size_t mnd_md_html_open_tag(const char *data, size_t pos, size_t end)
     {
         return 0;
     }
+
     i = scan_tag_name(data, pos + 1, end);
     if (i == (pos + 1))
     {
         return 0;
     }
+
     for (;;)
     {
         next = scan_attribute(data, i, end);
@@ -276,13 +352,16 @@ size_t mnd_md_html_open_tag(const char *data, size_t pos, size_t end)
         {
             break;
         }
+
         i = next;
     }
+
     i = skip_whitespace(data, i, end);
     if ((i < end) && (data[i] == '/'))
     {
         i++;
     }
+
     if ((i >= end) || (data[i] != '>'))
     {
         return 0;
@@ -299,11 +378,13 @@ size_t mnd_md_html_closing_tag(const char *data, size_t pos, size_t end)
     {
         return 0;
     }
+
     i = scan_tag_name(data, pos + 2, end);
     if (i == (pos + 2))
     {
         return 0;
     }
+
     i = skip_whitespace(data, i, end);
     if ((i >= end) || (data[i] != '>'))
     {
@@ -321,14 +402,17 @@ size_t mnd_md_html_comment(const char *data, size_t pos, size_t end)
     {
         return 0;
     }
+
     if (starts_with(data, pos + 4, end, ">"))
     {
         return 5;
     }
+
     if (starts_with(data, pos + 4, end, "->"))
     {
         return 6;
     }
+
     after = find_after(data, pos + 4, end, "-->");
     if (after == 0)
     {
@@ -346,6 +430,7 @@ size_t mnd_md_html_processing_instruction(const char *data, size_t pos, size_t e
     {
         return 0;
     }
+
     after = find_after(data, pos + 2, end, "?>");
     if (after == 0)
     {
@@ -363,6 +448,7 @@ size_t mnd_md_html_declaration(const char *data, size_t pos, size_t end)
     {
         return 0;
     }
+
     after = find_after(data, pos + 3, end, ">");
     if (after == 0)
     {
@@ -380,6 +466,7 @@ size_t mnd_md_html_cdata(const char *data, size_t pos, size_t end)
     {
         return 0;
     }
+
     after = find_after(data, pos + 9, end, "]]>");
     if (after == 0)
     {
@@ -397,23 +484,28 @@ size_t mnd_md_html_tag(const char *data, size_t pos, size_t end)
     {
         return 0;
     }
+
     len = mnd_md_html_open_tag(data, pos, end);
     if (len == 0)
     {
         len = mnd_md_html_closing_tag(data, pos, end);
     }
+
     if (len == 0)
     {
         len = mnd_md_html_comment(data, pos, end);
     }
+
     if (len == 0)
     {
         len = mnd_md_html_processing_instruction(data, pos, end);
     }
+
     if (len == 0)
     {
         len = mnd_md_html_cdata(data, pos, end);
     }
+
     if (len == 0)
     {
         len = mnd_md_html_declaration(data, pos, end);
@@ -459,6 +551,7 @@ static bool is_start_condition_6(const char *data, size_t pos, size_t end)
     {
         name_start++;
     }
+
     name_end = scan_alnum(data, name_start, end);
     if (!in_names(data, name_start, name_end - name_start, block_tag_names,
                   sizeof(block_tag_names) / sizeof(block_tag_names[0])))
@@ -508,6 +601,7 @@ static bool is_start_condition_7(const char *data, size_t pos, size_t end)
     {
         len = mnd_md_html_closing_tag(data, pos, end);
     }
+
     if (len == 0)
     {
         return false;
@@ -551,6 +645,7 @@ bool mnd_md_html_block_start(const char *data, size_t pos, size_t end, mnd_md_ht
             type = 7;
         }
     }
+
     out->type = type;
     out->interrupts_paragraph = ((type != 0) && (type != 7));
 
@@ -588,6 +683,7 @@ bool mnd_md_html_block_end(const char *data, size_t pos, size_t end, int type)
     {
         return false;
     }
+
     switch (type)
     {
     case 1:

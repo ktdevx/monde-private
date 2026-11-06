@@ -74,6 +74,7 @@ bool mnd_md_size_mul(size_t count, size_t elem_size, size_t *out)
     {
         return false;
     }
+
     *out = count * elem_size;
 
     return true;
@@ -95,12 +96,14 @@ static mnd_md_arena_chunk_t *chunk_new(mnd_md_arena_t *arena, size_t cap)
     {
         return NULL;
     }
+
     chunk = (mnd_md_arena_chunk_t *)arena->allocator.alloc(arena->allocator.ctx,
                                                            MND_MD_ARENA_HEADER_SIZE + cap);
     if (chunk == NULL)
     {
         return NULL;
     }
+
     chunk->next = NULL;
     chunk->cap = cap;
     chunk->used = 0;
@@ -125,11 +128,13 @@ void *mnd_md_arena_alloc(mnd_md_arena_t *arena, size_t size)
     {
         return NULL;
     }
+
     rounded = ((size + (MND_MD_ARENA_ALIGN - 1)) / MND_MD_ARENA_ALIGN) * MND_MD_ARENA_ALIGN;
     if (rounded == 0)
     {
         rounded = MND_MD_ARENA_ALIGN;
     }
+
     if ((head != NULL) && ((head->cap - head->used) >= rounded))
     {
         ptr = chunk_data(head) + head->used;
@@ -138,6 +143,7 @@ void *mnd_md_arena_alloc(mnd_md_arena_t *arena, size_t size)
 
         return ptr;
     }
+
     if (rounded > MND_MD_ARENA_BIG_SIZE)
     {
         /* 専用の塊。切り出し中の塊はそのまま先頭に残す */
@@ -146,7 +152,9 @@ void *mnd_md_arena_alloc(mnd_md_arena_t *arena, size_t size)
         {
             return NULL;
         }
+    
         chunk->used = rounded;
+    
         if (head != NULL)
         {
             chunk->next = head->next;
@@ -156,16 +164,19 @@ void *mnd_md_arena_alloc(mnd_md_arena_t *arena, size_t size)
         {
             arena->chunks = chunk;
         }
+
         ptr = chunk_data(chunk);
         memset(ptr, 0, size);
 
         return ptr;
     }
+
     chunk = chunk_new(arena, MND_MD_ARENA_CHUNK_SIZE);
     if (chunk == NULL)
     {
         return NULL;
     }
+
     chunk->next = head;
     arena->chunks = chunk;
     chunk->used = rounded;
@@ -210,6 +221,7 @@ void mnd_md_arena_free(mnd_md_arena_t *arena)
         arena->allocator.free(arena->allocator.ctx, chunk);
         chunk = next;
     }
+
     arena->chunks = NULL;
 }
 
@@ -237,11 +249,13 @@ bool mnd_md_array_reserve(mnd_md_array_t *array, size_t additional)
     {
         return false;
     }
+
     needed = array->count + additional;
     if (needed <= array->cap)
     {
         return true;
     }
+
     new_cap = (array->cap == 0) ? MND_MD_ARRAY_MIN_CAP : array->cap;
     while (new_cap < needed)
     {
@@ -254,21 +268,25 @@ bool mnd_md_array_reserve(mnd_md_array_t *array, size_t additional)
             new_cap *= 2;
         }
     }
+
     if (!mnd_md_size_mul(new_cap, array->elem_size, &bytes))
     {
         return false;
     }
+
     items = array->allocator.alloc(array->allocator.ctx, bytes);
     if (items == NULL)
     {
         return false;
     }
+
     /* count * elem_size は、確保済みの容量の範囲なのでオーバーフローしない */
     old_bytes = array->count * array->elem_size;
     if (old_bytes > 0)
     {
         memcpy(items, array->items, old_bytes);
     }
+
     array->allocator.free(array->allocator.ctx, array->items);
     array->items = items;
     array->cap = new_cap;
@@ -284,6 +302,7 @@ void *mnd_md_array_push(mnd_md_array_t *array)
     {
         return NULL;
     }
+
     slot = (unsigned char *)array->items + (array->count * array->elem_size);
     memset(slot, 0, array->elem_size);
     array->count++;
@@ -299,6 +318,7 @@ bool mnd_md_array_append(mnd_md_array_t *array, const void *elem)
     {
         return false;
     }
+
     memcpy(slot, elem, array->elem_size);
 
     return true;

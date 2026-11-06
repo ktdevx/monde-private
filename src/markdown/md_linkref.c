@@ -63,6 +63,7 @@ static int cursor_peek(const cursor_t *cur)
     {
         return (unsigned char)cur->data[cur->pos];
     }
+
     if ((cur->li + 1) < cur->count)
     {
         return '\n';
@@ -146,8 +147,10 @@ static bool scan_label(cursor_t *cur, mnd_span_t *label)
     {
         return false;
     }
+
     cursor_advance(cur);
     label->start = cur->pos;
+
     for (;;)
     {
         int c = cursor_peek(cur);
@@ -156,10 +159,12 @@ static bool scan_label(cursor_t *cur, mnd_span_t *label)
         {
             return false;
         }
+
         if (c == ']')
         {
             break;
         }
+
         if (c == '\\')
         {
             /* エスケープした文字は 1 バイトの ASCII なので、進めたバイトの数が文字数 */
@@ -172,17 +177,21 @@ static bool scan_label(cursor_t *cur, mnd_span_t *label)
             {
                 chars++;
             }
+
             if ((c != ' ') && (c != '\t') && (c != '\n'))
             {
                 nonblank = true;
             }
+
             cursor_advance(cur);
         }
+
         if (chars > MND_MD_LINKREF_LABEL_MAX)
         {
             return false;
         }
     }
+
     label->end = cur->pos;
     cursor_advance(cur);
 
@@ -202,6 +211,7 @@ static bool scan_destination(cursor_t *cur, mnd_span_t *dest, bool *angle)
     {
         cursor_advance(cur);
         dest->start = cur->pos;
+
         for (;;)
         {
             c = cursor_peek(cur);
@@ -209,10 +219,12 @@ static bool scan_destination(cursor_t *cur, mnd_span_t *dest, bool *angle)
             {
                 return false;
             }
+
             if (c == '>')
             {
                 break;
             }
+
             if (c == '\\')
             {
                 (void)cursor_skip_escape(cur);
@@ -222,6 +234,7 @@ static bool scan_destination(cursor_t *cur, mnd_span_t *dest, bool *angle)
                 cursor_advance(cur);
             }
         }
+
         dest->end = cur->pos;
         cursor_advance(cur);
         *angle = true;
@@ -230,6 +243,7 @@ static bool scan_destination(cursor_t *cur, mnd_span_t *dest, bool *angle)
     }
 
     dest->start = cur->pos;
+
     for (;;)
     {
         c = cursor_peek(cur);
@@ -237,11 +251,13 @@ static bool scan_destination(cursor_t *cur, mnd_span_t *dest, bool *angle)
         {
             break;
         }
+
         if (c == '\\')
         {
             (void)cursor_skip_escape(cur);
             continue;
         }
+
         if (c == '(')
         {
             depth++;
@@ -252,10 +268,13 @@ static bool scan_destination(cursor_t *cur, mnd_span_t *dest, bool *angle)
             {
                 break;
             }
+
             depth--;
         }
+
         cursor_advance(cur);
     }
+
     dest->end = cur->pos;
     *angle = false;
 
@@ -283,8 +302,10 @@ static bool scan_title(cursor_t *cur, mnd_span_t *title, char *delim)
     {
         return false;
     }
+
     cursor_advance(cur);
     title->start = cur->pos;
+
     for (;;)
     {
         int c = cursor_peek(cur);
@@ -293,14 +314,17 @@ static bool scan_title(cursor_t *cur, mnd_span_t *title, char *delim)
         {
             return false;
         }
+
         if (c == close)
         {
             break;
         }
+
         if ((open == '(') && (c == '('))
         {
             return false;
         }
+
         if (c == '\\')
         {
             (void)cursor_skip_escape(cur);
@@ -310,6 +334,7 @@ static bool scan_title(cursor_t *cur, mnd_span_t *title, char *delim)
             cursor_advance(cur);
         }
     }
+
     title->end = cur->pos;
     cursor_advance(cur);
     *delim = (char)open;
@@ -338,6 +363,7 @@ static bool scan_definition(const char *data, const mnd_md_line_t *lines, size_t
     {
         return false;
     }
+
     cursor_advance(&cur);
     cursor_skip_spnl(&cur);
     if (!scan_destination(&cur, &out->dest, &out->dest_angle))
@@ -352,10 +378,12 @@ static bool scan_definition(const char *data, const mnd_md_line_t *lines, size_t
         /* タイトルはリンク先と空白か改行で区切られていなければならない */
         out->has_title = scan_title(&cur, &out->title, &out->title_delim);
     }
+
     if (out->has_title && !cursor_rest_blank(&cur))
     {
         out->has_title = false;
     }
+
     if (!out->has_title)
     {
         cur = before_title;
@@ -364,6 +392,7 @@ static bool scan_definition(const char *data, const mnd_md_line_t *lines, size_t
             return false;
         }
     }
+
     out->used = cur.li + 1;
 
     return true;
@@ -383,6 +412,7 @@ static size_t decode_utf8(const unsigned char *s, size_t pos, size_t len, uint32
         *cp = b;
         return 1;
     }
+
     if ((b >= 0xC2) && (b <= 0xDF))
     {
         n = 2;
@@ -406,11 +436,13 @@ static size_t decode_utf8(const unsigned char *s, size_t pos, size_t len, uint32
         *cp = 0xFFFDu;
         return 1;
     }
+
     if (n > (len - pos))
     {
         *cp = 0xFFFDu;
         return 1;
     }
+
     for (i = 1; i < n; i++)
     {
         if ((s[pos + i] & 0xC0) != 0x80)
@@ -418,13 +450,16 @@ static size_t decode_utf8(const unsigned char *s, size_t pos, size_t len, uint32
             *cp = 0xFFFDu;
             return 1;
         }
+
         v = (v << 6) | (s[pos + i] & 0x3Fu);
     }
+
     if ((v < min) || (v > 0x10FFFFu) || ((v >= 0xD800u) && (v <= 0xDFFFu)))
     {
         *cp = 0xFFFDu;
         return 1;
     }
+
     *cp = v;
 
     return n;
@@ -443,6 +478,7 @@ static bool array_append_bytes(mnd_md_array_t *out, const char *bytes, size_t le
     {
         return false;
     }
+
     if (len > 0)
     {
         memcpy((char *)out->items + out->count, bytes, len);
@@ -472,18 +508,22 @@ bool mnd_md_linkref_normalize(const char *text, size_t len, mnd_md_array_t *out)
             pending_space = (out->count > start);
             continue;
         }
+
         if (pending_space)
         {
             if (!array_append_bytes(out, " ", 1))
             {
                 return false;
             }
+
             pending_space = false;
         }
+
         if (cp == 0)
         {
             cp = 0xFFFDu;
         }
+
         n = mnd_md_unicode_fold(cp, folded);
         if (n == 0)
         {
@@ -532,11 +572,13 @@ static mnd_md_linkref_slot_t *table_probe(const mnd_md_linkref_table_t *table, c
         {
             return slot;
         }
+
         if ((slot->hash == hash) && (slot->len == len)
             && (memcmp(slot->def->as.link_ref_def.norm_label, norm, len) == 0))
         {
             return slot;
         }
+
         i = (i + 1) & mask;
     }
 }
@@ -553,6 +595,7 @@ static bool table_grow(mnd_md_doc_t *doc)
     {
         return false;
     }
+
     grown.count = table->count;
     grown.slots = (mnd_md_linkref_slot_t *)mnd_md_arena_alloc_array(&doc->arena, grown.cap,
                                                                      sizeof(*grown.slots));
@@ -560,6 +603,7 @@ static bool table_grow(mnd_md_doc_t *doc)
     {
         return false;
     }
+
     for (i = 0; i < table->cap; i++)
     {
         const mnd_md_linkref_slot_t *slot = &table->slots[i];
@@ -569,6 +613,7 @@ static bool table_grow(mnd_md_doc_t *doc)
             *table_probe(&grown, slot->def->as.link_ref_def.norm_label, slot->len, slot->hash) = *slot;
         }
     }
+
     *table = grown;
 
     return true;
@@ -593,6 +638,7 @@ static bool table_add(mnd_md_doc_t *doc, const mnd_md_node_t *def, size_t len)
             return false;
         }
     }
+
     slot = table_probe(table, norm, len, hash);
     if (slot->def == NULL)
     {
@@ -613,6 +659,7 @@ const mnd_md_node_t *mnd_md_linkref_lookup(const mnd_md_doc_t *doc, const char *
     {
         return NULL;
     }
+
     slot = table_probe(&doc->refs, norm, len, label_hash(norm, len));
 
     return slot->def;
@@ -636,10 +683,12 @@ static bool label_logical_text(const char *data, const mnd_md_line_t *lines, siz
         {
             return false;
         }
+
         if (((i + 1) >= count) || (lines[i + 1].content.start > label.end))
         {
             break;
         }
+
         if (!array_append_bytes(text, "\n", 1))
         {
             return false;
@@ -669,11 +718,13 @@ static bool add_definition(mnd_md_parser_t *parser, mnd_md_node_t *paragraph, co
     {
         return false;
     }
+
     node->lines = (const mnd_md_line_t *)mnd_md_arena_dup(&doc->arena, lines, scan->used * sizeof(*lines));
     if (node->lines == NULL)
     {
         return false;
     }
+
     node->line_count = scan->used;
 
     mnd_md_array_clear(text);
@@ -683,15 +734,18 @@ static bool add_definition(mnd_md_parser_t *parser, mnd_md_node_t *paragraph, co
     {
         return false;
     }
+
     label = (char *)mnd_md_arena_alloc(&doc->arena, norm->count + 1);
     if (label == NULL)
     {
         return false;
     }
+
     if (norm->count > 0)
     {
         memcpy(label, norm->items, norm->count);
     }
+
     label[norm->count] = '\0';
 
     def = &node->as.link_ref_def;
@@ -699,6 +753,7 @@ static bool add_definition(mnd_md_parser_t *parser, mnd_md_node_t *paragraph, co
     def->dest = scan->dest;
     def->dest_angle = scan->dest_angle;
     def->has_title = scan->has_title;
+
     if (scan->has_title)
     {
         def->title = scan->title;
@@ -710,6 +765,7 @@ static bool add_definition(mnd_md_parser_t *parser, mnd_md_node_t *paragraph, co
         def->title.start = scan->dest.end;
         def->title.end = scan->dest.end;
     }
+
     def->norm_label = label;
     mnd_md_node_insert_before(paragraph, node);
     mnd_md_parser_set_node_lines(parser, node);
@@ -728,6 +784,7 @@ bool mnd_md_linkref_take(mnd_md_parser_t *parser, mnd_md_node_t *paragraph, cons
     *taken = 0;
     mnd_md_array_init(&text, 1, parser->allocator);
     mnd_md_array_init(&norm, 1, parser->allocator);
+
     while (i < count)
     {
         def_scan_t scan;
@@ -737,13 +794,16 @@ bool mnd_md_linkref_take(mnd_md_parser_t *parser, mnd_md_node_t *paragraph, cons
         {
             break;
         }
+
         if (!add_definition(parser, paragraph, lines + i, &scan, &text, &norm))
         {
             ok = false;
             break;
         }
+
         i += scan.used;
     }
+
     mnd_md_array_free(&text);
     mnd_md_array_free(&norm);
     *taken = i;

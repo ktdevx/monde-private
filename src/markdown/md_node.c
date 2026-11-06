@@ -18,6 +18,7 @@ mnd_md_doc_t *mnd_md_doc_create(const char *data, size_t len, const mnd_md_alloc
     {
         return NULL;
     }
+
     memset(doc, 0, sizeof(*doc));
     doc->data = data;
     doc->len = len;
@@ -73,6 +74,7 @@ void mnd_md_doc_free(mnd_md_doc_t *doc)
     {
         return;
     }
+
     /* ノードはすべてアリーナにあるので、木をたどらずに塊をまとめて解放する（深さに依存しない） */
     allocator = doc->arena.allocator;
     mnd_md_arena_free(&doc->arena);
@@ -89,6 +91,7 @@ mnd_md_node_t *mnd_md_node_new(mnd_md_doc_t *doc, mnd_md_kind_t kind, mnd_span_t
     {
         return NULL;
     }
+
     /* アリーナは 0 で埋める。ポインタの欄は明示的に NULL にする */
     node->kind = kind;
     node->span = span;
@@ -114,6 +117,7 @@ void mnd_md_node_unlink(mnd_md_node_t *node)
     {
         parent->first_child = node->next;
     }
+
     if (node->next != NULL)
     {
         node->next->prev = node->prev;
@@ -122,6 +126,7 @@ void mnd_md_node_unlink(mnd_md_node_t *node)
     {
         parent->last_child = node->prev;
     }
+
     node->parent = NULL;
     node->prev = NULL;
     node->next = NULL;
@@ -132,6 +137,7 @@ void mnd_md_node_append_child(mnd_md_node_t *parent, mnd_md_node_t *node)
     mnd_md_node_unlink(node);
     node->parent = parent;
     node->prev = parent->last_child;
+
     if (parent->last_child != NULL)
     {
         parent->last_child->next = node;
@@ -140,6 +146,7 @@ void mnd_md_node_append_child(mnd_md_node_t *parent, mnd_md_node_t *node)
     {
         parent->first_child = node;
     }
+
     parent->last_child = node;
 }
 
@@ -149,10 +156,12 @@ void mnd_md_node_insert_before(mnd_md_node_t *sibling, mnd_md_node_t *node)
     {
         return;
     }
+
     mnd_md_node_unlink(node);
     node->parent = sibling->parent;
     node->prev = sibling->prev;
     node->next = sibling;
+
     if (sibling->prev != NULL)
     {
         sibling->prev->next = node;
@@ -161,6 +170,7 @@ void mnd_md_node_insert_before(mnd_md_node_t *sibling, mnd_md_node_t *node)
     {
         sibling->parent->first_child = node;
     }
+
     sibling->prev = node;
 }
 
@@ -170,10 +180,12 @@ void mnd_md_node_insert_after(mnd_md_node_t *sibling, mnd_md_node_t *node)
     {
         return;
     }
+
     mnd_md_node_unlink(node);
     node->parent = sibling->parent;
     node->prev = sibling;
     node->next = sibling->next;
+
     if (sibling->next != NULL)
     {
         sibling->next->prev = node;
@@ -182,6 +194,7 @@ void mnd_md_node_insert_after(mnd_md_node_t *sibling, mnd_md_node_t *node)
     {
         sibling->parent->last_child = node;
     }
+
     sibling->next = node;
 }
 
@@ -194,16 +207,19 @@ const mnd_md_node_t *mnd_md_node_next(const mnd_md_node_t *node, const mnd_md_no
     {
         return NULL;
     }
+
     if (node->first_child != NULL)
     {
         return node->first_child;
     }
+
     while ((node != NULL) && (node != root))
     {
         if (node->next != NULL)
         {
             return node->next;
         }
+
         node = node->parent;
     }
 

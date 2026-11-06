@@ -110,11 +110,11 @@ static int hex_value(unsigned char c)
     {
         return c - '0';
     }
-    if ((c >= 'a') && (c <= 'f'))
+    else if ((c >= 'a') && (c <= 'f'))
     {
         return c - 'a' + 10;
     }
-    if ((c >= 'A') && (c <= 'F'))
+    else if ((c >= 'A') && (c <= 'F'))
     {
         return c - 'A' + 10;
     }
@@ -192,6 +192,7 @@ static mnd_md_node_t *emit_node(inline_state_t *st, mnd_md_kind_t kind, mnd_span
     {
         return NULL;
     }
+
     mnd_md_parser_set_node_lines(st->parser, node);
     mnd_md_node_append_child(st->leaf, node);
 
@@ -251,10 +252,12 @@ static match_result_t handle_newline(inline_state_t *st, size_t k)
             spaces_start--;
         }
     }
+
     if (!text_flush(st, spaces_start))
     {
         return MATCH_OOM;
     }
+
     span.start = map_pos(st, spaces_start);
     span.end = st->leaf->lines[i + 1].prefix.start;
     node = emit_node(st, ((k - spaces_start) >= 2) ? MND_MD_HARD_BREAK : MND_MD_SOFT_BREAK, span);
@@ -262,6 +265,7 @@ static match_result_t handle_newline(inline_state_t *st, size_t k)
     {
         return MATCH_OOM;
     }
+
     st->pos = k + 1;
 
     return MATCH_DONE;
@@ -283,6 +287,7 @@ static match_result_t handle_backslash(inline_state_t *st, size_t k)
     {
         return MATCH_NONE;
     }
+
     next = (unsigned char)st->s[k + 1];
     if (next == '\n')
     {
@@ -290,6 +295,7 @@ static match_result_t handle_backslash(inline_state_t *st, size_t k)
         {
             return MATCH_OOM;
         }
+
         span.start = map_pos(st, k);
         span.end = st->leaf->lines[line_of(st, k) + 1].prefix.start;
         node = emit_node(st, MND_MD_HARD_BREAK, span);
@@ -297,24 +303,29 @@ static match_result_t handle_backslash(inline_state_t *st, size_t k)
         {
             return MATCH_OOM;
         }
+
         node->as.hard_break.backslash = true;
         st->pos = k + 2;
 
         return MATCH_DONE;
     }
+
     if (!is_ascii_punct(next))
     {
         return MATCH_NONE;
     }
+
     if (!text_flush(st, k))
     {
         return MATCH_OOM;
     }
+
     node = emit_logical(st, MND_MD_ESCAPE, k, k + 2);
     if (node == NULL)
     {
         return MATCH_OOM;
     }
+
     node->as.escape.ch = (char)next;
     st->pos = k + 2;
 
@@ -330,20 +341,21 @@ static unsigned char encode_utf8(unsigned long cp, char out[8])
     {
         cp = REPLACEMENT_CP;
     }
+
     if (cp < 0x80UL)
     {
         out[0] = (char)cp;
 
         return 1;
     }
-    if (cp < 0x800UL)
+    else if (cp < 0x800UL)
     {
         out[0] = (char)(0xC0UL | (cp >> 6));
         out[1] = (char)(0x80UL | (cp & 0x3FUL));
 
         return 2;
     }
-    if (cp < 0x10000UL)
+    else if (cp < 0x10000UL)
     {
         out[0] = (char)(0xE0UL | (cp >> 12));
         out[1] = (char)(0x80UL | ((cp >> 6) & 0x3FUL));
@@ -351,6 +363,7 @@ static unsigned char encode_utf8(unsigned long cp, char out[8])
 
         return 3;
     }
+
     out[0] = (char)(0xF0UL | (cp >> 18));
     out[1] = (char)(0x80UL | ((cp >> 12) & 0x3FUL));
     out[2] = (char)(0x80UL | ((cp >> 6) & 0x3FUL));
@@ -376,11 +389,13 @@ static bool scan_numeric_ref(const inline_state_t *st, size_t k, unsigned long *
     {
         return false;
     }
+
     if ((s[p] == 'x') || (s[p] == 'X'))
     {
         hex = true;
         p++;
     }
+
     while ((p < st->len) && (digits <= (hex ? HEX_DIGITS_MAX : DEC_DIGITS_MAX)))
     {
         digit = hex ? hex_value(s[p]) : (is_ascii_digit(s[p]) ? (s[p] - '0') : -1);
@@ -388,18 +403,22 @@ static bool scan_numeric_ref(const inline_state_t *st, size_t k, unsigned long *
         {
             break;
         }
+
         value = (value * (hex ? 16UL : 10UL)) + (unsigned long)digit;
         digits++;
         p++;
     }
+
     if ((digits == 0) || (digits > (hex ? HEX_DIGITS_MAX : DEC_DIGITS_MAX)))
     {
         return false;
     }
+
     if ((p >= st->len) || (s[p] != ';'))
     {
         return false;
     }
+
     *cp = value;
     *next = p + 1;
 
@@ -433,25 +452,30 @@ static match_result_t handle_entity(inline_state_t *st, size_t k)
         {
             p++;
         }
+
         if ((p >= st->len) || (st->s[p] != ';')
             || !mnd_md_entity_lookup(st->s + k + 1, p - (k + 1), &utf8, &utf8_len))
         {
             return MATCH_NONE;
         }
+
         ref.numeric = false;
         ref.len = (unsigned char)utf8_len;
         memcpy(ref.text, utf8, utf8_len);
         next = p + 1;
     }
+
     if (!text_flush(st, k))
     {
         return MATCH_OOM;
     }
+
     node = emit_logical(st, MND_MD_CHAR_REF, k, next);
     if (node == NULL)
     {
         return MATCH_OOM;
     }
+
     node->as.char_ref = ref;
     st->pos = next;
 
@@ -470,6 +494,7 @@ static int compare_runs(const void *a, const void *b)
     {
         return (x->len < y->len) ? -1 : 1;
     }
+
     if (x->start != y->start)
     {
         return (x->start < y->start) ? -1 : 1;
@@ -497,23 +522,28 @@ static bool collect_runs(inline_state_t *st)
             p++;
             continue;
         }
+    
         start = p;
         while ((p < st->len) && (st->s[p] == '`'))
         {
             p++;
         }
+
         run = (backtick_run_t *)mnd_md_array_push(&st->runs);
         if (run == NULL)
         {
             return false;
         }
+
         run->start = start;
         run->len = p - start;
     }
+
     if (st->runs.count > 1)
     {
         qsort(st->runs.items, st->runs.count, sizeof(backtick_run_t), compare_runs);
     }
+
     st->runs_ready = true;
 
     return true;
@@ -539,6 +569,7 @@ static size_t find_closing_run(const inline_state_t *st, size_t len, size_t from
             hi = mid;
         }
     }
+
     if ((lo < st->runs.count) && (runs[lo].len == len))
     {
         return runs[lo].start;
@@ -562,11 +593,14 @@ static match_result_t handle_backticks(inline_state_t *st, size_t k)
     {
         open_end++;
     }
+
     ticks = open_end - k;
+
     if (!st->runs_ready && !collect_runs(st))
     {
         return MATCH_OOM;
     }
+
     close = find_closing_run(st, ticks, open_end);
     if (close == NO_POS)
     {
@@ -575,15 +609,18 @@ static match_result_t handle_backticks(inline_state_t *st, size_t k)
 
         return MATCH_DONE;
     }
+
     if (!text_flush(st, k))
     {
         return MATCH_OOM;
     }
+
     node = emit_logical(st, MND_MD_CODE_SPAN, k, close + ticks);
     if (node == NULL)
     {
         return MATCH_OOM;
     }
+
     node->as.code_span.ticks = ticks;
     node->as.code_span.content.start = map_pos(st, open_end);
     node->as.code_span.content.end = map_pos(st, close);
@@ -613,11 +650,14 @@ static size_t scan_email_autolink(const inline_state_t *st, size_t k)
     {
         p++;
     }
+
     if ((p == (k + 1)) || (p >= st->len) || (s[p] != '@'))
     {
         return 0;
     }
+
     p++;
+
     for (;;)
     {
         label_start = p;
@@ -625,19 +665,23 @@ static size_t scan_email_autolink(const inline_state_t *st, size_t k)
         {
             p++;
         }
+
         if ((p == label_start) || ((p - label_start) > DOMAIN_LABEL_MAX) || (s[label_start] == '-')
             || (s[p - 1] == '-') || (p >= st->len))
         {
             return 0;
         }
+
         if (s[p] == '>')
         {
             return p + 1;
         }
+
         if (s[p] != '.')
         {
             return 0;
         }
+
         p++;
     }
 }
@@ -655,21 +699,27 @@ static size_t scan_uri_autolink(const inline_state_t *st, size_t k)
     {
         return 0;
     }
+
     p++;
+
     while ((p < st->len) && ((p - (k + 1)) < SCHEME_MAX)
            && (is_ascii_alnum(s[p]) || (s[p] == '+') || (s[p] == '.') || (s[p] == '-')))
     {
         p++;
     }
+
     if (((p - (k + 1)) < SCHEME_MIN) || (p >= st->len) || (s[p] != ':'))
     {
         return 0;
     }
+
     p++;
+
     while ((p < st->len) && (s[p] > 0x20) && (s[p] != 0x7F) && (s[p] != '<') && (s[p] != '>'))
     {
         p++;
     }
+
     if ((p >= st->len) || (s[p] != '>'))
     {
         return 0;
@@ -700,6 +750,7 @@ static size_t scan_html_memo(const inline_state_t *st, size_t k, size_t *fail,
     {
         return 0;
     }
+
     len = scan(st->s, k, st->len);
     if (len == 0)
     {
@@ -724,31 +775,35 @@ static size_t scan_html(inline_state_t *st, size_t k)
     {
         return 0;
     }
+
     c = (unsigned char)st->s[k + 1];
     if (is_ascii_letter(c))
     {
         return mnd_md_html_open_tag(st->s, k, st->len);
     }
-    if (c == '/')
+    else if (c == '/')
     {
         return mnd_md_html_closing_tag(st->s, k, st->len);
     }
-    if (c == '?')
+    else if (c == '?')
     {
         return scan_html_memo(st, k, &st->pi_fail, mnd_md_html_processing_instruction);
     }
-    if (c != '!')
+    else if (c != '!')
     {
         return 0;
     }
+
     if (text_starts_with(st, k, "<!--"))
     {
         return scan_html_memo(st, k, &st->comment_fail, mnd_md_html_comment);
     }
+
     if (text_starts_with(st, k, "<![CDATA["))
     {
         return scan_html_memo(st, k, &st->cdata_fail, mnd_md_html_cdata);
     }
+
     if (((k + 2) < st->len) && is_ascii_letter((unsigned char)st->s[k + 2]))
     {
         return scan_html_memo(st, k, &st->decl_fail, mnd_md_html_declaration);
@@ -773,37 +828,45 @@ static match_result_t handle_lt(inline_state_t *st, size_t k)
     {
         end = scan_uri_autolink(st, k);
     }
+
     if (end != 0)
     {
         if (!text_flush(st, k))
         {
             return MATCH_OOM;
         }
+    
         node = emit_logical(st, MND_MD_AUTOLINK, k, end);
         if (node == NULL)
         {
             return MATCH_OOM;
         }
+    
         node->as.autolink.email = email;
         node->as.autolink.dest = map_span(st, k + 1, end - 1);
         st->pos = end;
 
         return MATCH_DONE;
     }
+
     end = scan_html(st, k);
     if (end == 0)
     {
         return MATCH_NONE;
     }
+
     end += k;
+
     if (!text_flush(st, k))
     {
         return MATCH_OOM;
     }
+
     if (emit_logical(st, MND_MD_HTML_INLINE, k, end) == NULL)
     {
         return MATCH_OOM;
     }
+
     st->pos = end;
 
     return MATCH_DONE;
@@ -828,6 +891,7 @@ static match_result_t handle_delims(inline_state_t *st, size_t k)
     {
         end++;
     }
+
     mnd_md_delim_classify(st->s, st->len, k, end, (ch == '_'), &can_open, &can_close);
     if (!can_open && !can_close)
     {
@@ -836,15 +900,18 @@ static match_result_t handle_delims(inline_state_t *st, size_t k)
 
         return MATCH_DONE;
     }
+
     if (!text_flush(st, k))
     {
         return MATCH_OOM;
     }
+
     node = emit_logical(st, MND_MD_TEXT, k, end);
     if ((node == NULL) || !mnd_md_delim_push(&st->delims, node, ch, end - k, can_open, can_close))
     {
         return MATCH_OOM;
     }
+
     st->pos = end;
 
     return MATCH_DONE;
@@ -861,6 +928,7 @@ static mnd_md_node_t *next_after_subtree(mnd_md_node_t *node, const mnd_md_node_
         {
             return node->next;
         }
+
         node = node->parent;
     }
 
@@ -889,8 +957,10 @@ static void merge_texts(inline_state_t *st, mnd_md_node_t *leaf)
                 mnd_md_node_unlink(next);
                 next = node->next;
             }
+
             mnd_md_parser_set_node_lines(st->parser, node);
         }
+
         if (node->first_child != NULL)
         {
             node = node->first_child;
@@ -918,6 +988,7 @@ static bool build_text(inline_state_t *st)
 
     mnd_md_array_clear(&st->text);
     mnd_md_array_clear(&st->line_starts);
+
     for (i = 0; i < count; i++)
     {
         start = (size_t *)mnd_md_array_push(&st->line_starts);
@@ -925,8 +996,10 @@ static bool build_text(inline_state_t *st)
         {
             return false;
         }
+
         *start = st->text.count;
         end = lines[i].content.end;
+
         if ((i + 1) == count)
         {
             while ((end > lines[i].content.start) && ((data[end - 1] == ' ') || (data[end - 1] == '\t')))
@@ -934,11 +1007,13 @@ static bool build_text(inline_state_t *st)
                 end--;
             }
         }
+
         n = end - lines[i].content.start;
         if (!mnd_md_array_reserve(&st->text, n + 1))
         {
             return false;
         }
+
         memcpy((char *)st->text.items + st->text.count, data + lines[i].content.start, n);
         st->text.count += n;
         if (((i + 1) < count) && !mnd_md_array_append(&st->text, "\n"))
@@ -946,6 +1021,7 @@ static bool build_text(inline_state_t *st)
             return false;
         }
     }
+
     st->s = (const char *)st->text.items;
     st->len = st->text.count;
 
@@ -971,6 +1047,7 @@ static bool parse_leaf(inline_state_t *st, mnd_md_node_t *leaf)
     {
         return false;
     }
+
     while (st->pos < st->len)
     {
         k = st->pos;
@@ -1007,20 +1084,24 @@ static bool parse_leaf(inline_state_t *st, mnd_md_node_t *leaf)
             result = MATCH_DONE;
             break;
         }
+
         if (result == MATCH_OOM)
         {
             return false;
         }
+
         if (result == MATCH_NONE)
         {
             text_begin(st, k);
             st->pos = k + 1;
         }
     }
+
     if (!text_flush(st, st->len) || !mnd_md_delim_process(st->parser, &st->delims, 0))
     {
         return false;
     }
+
     merge_texts(st, leaf);
 
     return true;
@@ -1056,6 +1137,7 @@ bool mnd_md_inline_run(mnd_md_parser_t *parser)
                 ok = false;
                 break;
             }
+
             node = next_after_subtree(node, root);
         }
         else if (node->first_child != NULL)

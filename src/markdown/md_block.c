@@ -59,6 +59,7 @@ static bool open_push(mnd_md_parser_t *parser, mnd_md_node_t *node)
     {
         return false;
     }
+
     entry->node = node;
 
     return true;
@@ -179,6 +180,7 @@ static bool leaf_add_line(mnd_md_parser_t *parser, const block_line_t *line, siz
     {
         return false;
     }
+
     rec->line = mnd_md_parser_line_of(parser, content_start);
     rec->prefix.start = line->phys.line_start;
     rec->prefix.end = content_start;
@@ -223,6 +225,7 @@ static bool paragraph_take_definitions(mnd_md_parser_t *parser, mnd_md_node_t *n
     {
         return false;
     }
+
     if (taken > 0)
     {
         memmove(lines, lines + taken, (count - taken) * sizeof(*lines));
@@ -232,6 +235,7 @@ static bool paragraph_take_definitions(mnd_md_parser_t *parser, mnd_md_node_t *n
             node->span.start = lines[0].content.start;
         }
     }
+
     *remains = (parser->leaf_lines.count > 0);
 
     return true;
@@ -262,13 +266,16 @@ static bool leaf_finalize(mnd_md_parser_t *parser, mnd_md_node_t *node)
         {
             return false;
         }
+
         if (!remains)
         {
             mnd_md_node_unlink(node);
         }
     }
+
     items = (const mnd_md_line_t *)parser->leaf_lines.items;
     count = parser->leaf_lines.count;
+
     if ((node->kind == MND_MD_CODE_BLOCK) && !fenced)
     {
         while ((count > 0) && line_content_is_blank(parser, &items[count - 1]))
@@ -276,6 +283,7 @@ static bool leaf_finalize(mnd_md_parser_t *parser, mnd_md_node_t *node)
             count--;
         }
     }
+
     if (count > 0)
     {
         lines = (mnd_md_line_t *)mnd_md_arena_alloc_array(&parser->doc->arena, count, sizeof(*lines));
@@ -283,9 +291,11 @@ static bool leaf_finalize(mnd_md_parser_t *parser, mnd_md_node_t *node)
         {
             return false;
         }
+
         memcpy(lines, items, count * sizeof(*lines));
         first = &lines[0];
         last = &lines[count - 1];
+
         switch (node->kind)
         {
         case MND_MD_PARAGRAPH:
@@ -308,6 +318,7 @@ static bool leaf_finalize(mnd_md_parser_t *parser, mnd_md_node_t *node)
             break;
         }
     }
+
     node->lines = lines;
     node->line_count = count;
     mnd_md_array_clear(&parser->leaf_lines);
@@ -332,6 +343,7 @@ static void container_finalize(mnd_md_node_t *node, const mnd_md_open_block_t *e
     {
         end = node->last_child->span.end;
     }
+
     node->span.end = end;
 }
 
@@ -352,6 +364,7 @@ static bool close_tip(mnd_md_parser_t *parser)
     {
         container_finalize(node, &closed);
     }
+
     mnd_md_parser_set_node_lines(parser, node);
     mnd_md_array_pop(&parser->open);
     open_tip_entry(parser)->last_child_blank = ends_with_blank(&closed);
@@ -392,11 +405,13 @@ static mnd_md_open_block_t *add_block(mnd_md_parser_t *parser, mnd_md_kind_t kin
             return NULL;
         }
     }
+
     node = mnd_md_node_new(parser->doc, kind, span);
     if (node == NULL)
     {
         return NULL;
     }
+
     parent_entry = open_tip_entry(parser);
     parent = parent_entry->node;
     if ((parent->last_child != NULL) && parent_entry->last_child_blank)
@@ -411,6 +426,7 @@ static mnd_md_open_block_t *add_block(mnd_md_parser_t *parser, mnd_md_kind_t kin
             parent->parent->as.list.tight = false;
         }
     }
+
     parent_entry->last_child_blank = false;
     mnd_md_node_append_child(parent, node);
     if (!open_push(parser, node))
@@ -456,6 +472,7 @@ static void match_fenced_code(const mnd_md_parser_t *parser, block_line_t *line,
         *closed = true;
         return;
     }
+
     line_skip_columns(parser, line, code->fence_indent);
 }
 
@@ -470,6 +487,7 @@ static bool match_indented_code(const mnd_md_parser_t *parser, block_line_t *lin
         line_skip_columns(parser, line, BLOCK_CODE_INDENT);
         return true;
     }
+
     if (line->indent.blank)
     {
         line_advance_to_nonspace(parser, line);
@@ -554,10 +572,12 @@ static size_t match_open_blocks(mnd_md_parser_t *parser, block_line_t *line, boo
             ok = false;
             break;
         }
+
         if (!ok)
         {
             break;
         }
+
         matched = i + 1;
     }
 
@@ -579,11 +599,13 @@ static bool start_block_quote(mnd_md_parser_t *parser, block_line_t *line, size_
     {
         return false;
     }
+
     entry = add_block(parser, MND_MD_BLOCK_QUOTE, span);
     if (entry == NULL)
     {
         return false;
     }
+
     line_consume_block_quote_marker(parser, line);
     entry->marker_end = line_trimmed_end(parser, line);
     *matched = open_count(parser);
@@ -612,6 +634,7 @@ static bool start_list_item(mnd_md_parser_t *parser, block_line_t *line,
     {
         return false;
     }
+
     tip = open_tip(parser);
     if ((tip->kind != MND_MD_LIST) || (tip->as.list.ordered != marker->ordered)
         || (tip->as.list.marker != marker->marker))
@@ -623,16 +646,19 @@ static bool start_list_item(mnd_md_parser_t *parser, block_line_t *line,
         {
             return false;
         }
+
         entry->node->as.list.ordered = marker->ordered;
         entry->node->as.list.marker = marker->marker;
         entry->node->as.list.start = marker->start;
         entry->node->as.list.tight = true;
     }
+
     entry = add_block(parser, MND_MD_ITEM, marker->span);
     if (entry == NULL)
     {
         return false;
     }
+
     entry->node->as.item.marker = marker->span;
     entry->node->as.item.content_indent = content_indent;
     entry->marker_end = line_trimmed_end(parser, line);
@@ -660,11 +686,13 @@ static mnd_md_node_t *start_leaf(mnd_md_parser_t *parser, mnd_md_kind_t kind, mn
     {
         return NULL;
     }
+
     entry = add_block(parser, kind, span);
     if (entry == NULL)
     {
         return NULL;
     }
+
     *matched = open_count(parser);
 
     return entry->node;
@@ -687,6 +715,7 @@ static bool start_indented_code(mnd_md_parser_t *parser, block_line_t *line, siz
     {
         return false;
     }
+
     node->as.code_block.fenced = false;
 
     return true;
@@ -709,6 +738,7 @@ static bool start_atx_heading(mnd_md_parser_t *parser, const block_line_t *line,
     {
         return false;
     }
+
     node->as.heading = *heading;
     if (!leaf_add_line(parser, line, heading->content.start, heading->content.end, 0, false))
     {
@@ -735,6 +765,7 @@ static bool start_fenced_code(mnd_md_parser_t *parser, const block_line_t *line,
     {
         return false;
     }
+
     node->as.code_block = *fence;
     node->as.code_block.fence_indent = line->indent.indent;
 
@@ -755,6 +786,7 @@ static bool start_html_block(mnd_md_parser_t *parser, const block_line_t *line, 
     {
         return false;
     }
+
     node->as.html_block.type = type;
 
     return true;
@@ -798,6 +830,7 @@ static bool start_setext_heading(mnd_md_parser_t *parser, const block_line_t *li
     {
         return false;
     }
+
     if (!remains)
     {
         /* 段落の位置には定義のノードが残る。段落は空行で終わっていないので、親の記録は変わらない */
@@ -805,6 +838,7 @@ static bool start_setext_heading(mnd_md_parser_t *parser, const block_line_t *li
         mnd_md_array_pop(&parser->open);
         return true;
     }
+
     lines = (const mnd_md_line_t *)parser->leaf_lines.items;
     last = &lines[parser->leaf_lines.count - 1];
     content_end = last->content.end;
@@ -812,6 +846,7 @@ static bool start_setext_heading(mnd_md_parser_t *parser, const block_line_t *li
     {
         content_end--;
     }
+
     node->kind = MND_MD_HEADING;
     node->as.heading.level = level;
     node->as.heading.setext = true;
@@ -851,11 +886,13 @@ static bool try_block_starts(mnd_md_parser_t *parser, block_line_t *line, size_t
             /* コードブロックと HTML ブロックの中では、ブロックは始まらない */
             break;
         }
+
         if (line->indent.blank)
         {
             /* 空行からはブロックが始まらない */
             break;
         }
+
         if (line->indent.indent >= BLOCK_CODE_INDENT)
         {
             /* 最も内側の開いているブロックが段落でなければ（遅延継続行でもなければ）、インデントコード */
@@ -865,10 +902,12 @@ static bool try_block_starts(mnd_md_parser_t *parser, block_line_t *line, size_t
                 {
                     return false;
                 }
+
                 *started = true;
             }
             break;
         }
+
         /* 5.1: 方言のブロックの規則を登録順に試す */
         if (line_starts_block_quote(parser, line))
         {
@@ -876,9 +915,11 @@ static bool try_block_starts(mnd_md_parser_t *parser, block_line_t *line, size_t
             {
                 return false;
             }
+
             *started = true;
             continue;
         }
+
         memset(&heading, 0, sizeof(heading));
         if (mnd_md_scan_atx_heading(data, pos, end, &heading))
         {
@@ -886,6 +927,7 @@ static bool try_block_starts(mnd_md_parser_t *parser, block_line_t *line, size_t
             *done = true;
             return start_atx_heading(parser, line, &heading, matched);
         }
+
         memset(&fence, 0, sizeof(fence));
         if (mnd_md_scan_open_fence(data, pos, end, &fence))
         {
@@ -893,6 +935,7 @@ static bool try_block_starts(mnd_md_parser_t *parser, block_line_t *line, size_t
             *done = true;
             return start_fenced_code(parser, line, &fence, matched);
         }
+
         /* 種類 7 は、段落（遅延継続行の候補を含む）を中断しない */
         if (mnd_md_html_block_start(data, pos, end, &html)
             && (html.interrupts_paragraph || (open_tip(parser)->kind != MND_MD_PARAGRAPH)))
@@ -900,6 +943,7 @@ static bool try_block_starts(mnd_md_parser_t *parser, block_line_t *line, size_t
             *started = true;
             return start_html_block(parser, line, html.type, matched);
         }
+
         if (container->kind == MND_MD_PARAGRAPH)
         {
             level = mnd_md_scan_setext_underline(data, pos, end);
@@ -911,12 +955,14 @@ static bool try_block_starts(mnd_md_parser_t *parser, block_line_t *line, size_t
                 {
                     return false;
                 }
+
                 if (converted)
                 {
                     *started = true;
                     *done = true;
                     return true;
                 }
+
                 /* 段落がすべて定義だったので見出しにならない。ほかのブロックの開始を続けて試す */
                 if (*matched > open_count(parser))
                 {
@@ -924,12 +970,14 @@ static bool try_block_starts(mnd_md_parser_t *parser, block_line_t *line, size_t
                 }
             }
         }
+
         if (mnd_md_scan_thematic_break(data, pos, end, NULL))
         {
             *started = true;
             *done = true;
             return start_thematic_break(parser, line, matched);
         }
+
         if (mnd_md_scan_list_marker(data, pos, end, &marker))
         {
             /* 段落を中断できるのは、空でなく、順序付きなら開始番号が 1 の項目だけ */
@@ -941,10 +989,12 @@ static bool try_block_starts(mnd_md_parser_t *parser, block_line_t *line, size_t
                 {
                     return false;
                 }
+
                 *started = true;
                 continue;
             }
         }
+
         break;
     }
 
@@ -970,6 +1020,7 @@ static void record_blank_line(mnd_md_parser_t *parser, const block_line_t *line)
     {
         tip_entry->last_child_blank = true;
     }
+
     if ((node->kind == MND_MD_BLOCK_QUOTE)
         || ((node->kind == MND_MD_CODE_BLOCK) && node->as.code_block.fenced))
     {
@@ -980,6 +1031,7 @@ static void record_blank_line(mnd_md_parser_t *parser, const block_line_t *line)
     {
         last_line_blank = false;
     }
+
     for (;;)
     {
         mnd_md_open_block_t *entry = open_entry(parser, i);
@@ -989,10 +1041,12 @@ static void record_blank_line(mnd_md_parser_t *parser, const block_line_t *line)
         {
             entry->last_child_blank = ends_with_blank(open_entry(parser, i + 1));
         }
+
         if (i == 0)
         {
             break;
         }
+
         i--;
     }
 }
@@ -1025,6 +1079,7 @@ static bool add_line_to_code_or_html(mnd_md_parser_t *parser, const block_line_t
     {
         return false;
     }
+
     if (tip->kind == MND_MD_HTML_BLOCK)
     {
         type = tip->as.html_block.type;
@@ -1062,14 +1117,17 @@ static bool process_line(mnd_md_parser_t *parser, const mnd_md_phys_line_t *phys
         {
             return false;
         }
+
         record_blank_line(parser, &line);
         return true;
     }
+
     /* 3: 新しいブロックの開始 */
     if (!try_block_starts(parser, &line, &matched, &started, &done))
     {
         return false;
     }
+
     if (done)
     {
         /* 行を使い終わるリーフが始まった */
@@ -1096,19 +1154,23 @@ static bool process_line(mnd_md_parser_t *parser, const mnd_md_phys_line_t *phys
     {
         return false;
     }
+
     record_blank_line(parser, &line);
     if (accepts_lines(open_tip(parser)))
     {
         return add_line_to_code_or_html(parser, &line);
     }
+
     if (open_tip(parser)->kind == MND_MD_PARAGRAPH)
     {
         return leaf_add_line(parser, &line, line.indent.pos, line.phys.line_end, 0, false);
     }
+
     if (line.indent.blank)
     {
         return true;
     }
+
     if (!open_paragraph(parser, &line))
     {
         return false;
@@ -1127,6 +1189,7 @@ bool mnd_md_block_run(mnd_md_parser_t *parser)
     {
         return false;
     }
+
     while (mnd_md_lines_next(parser->data, parser->len, &pos, &phys))
     {
         if (!process_line(parser, &phys))
@@ -1140,6 +1203,7 @@ bool mnd_md_block_run(mnd_md_parser_t *parser)
     {
         return false;
     }
+
     root->span.start = parser->body_start;
     root->span.end = parser->len;
     mnd_md_parser_set_node_lines(parser, root);

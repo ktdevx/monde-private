@@ -20,10 +20,12 @@ static int mnd_md_entity_compare(const char *name, size_t len, const mnd_md_enti
     {
         return c;
     }
+
     if (len < entry->name_len)
     {
         return -1;
     }
+
     if (len > entry->name_len)
     {
         return 1;
@@ -59,7 +61,6 @@ bool mnd_md_entity_lookup(const char *name, size_t len, const unsigned char **ut
         {
             *utf8 = mnd_md_entity_entries[mid].utf8;
             *utf8_len = mnd_md_entity_entries[mid].len;
-
             return true;
         }
     }

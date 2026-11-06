@@ -20,12 +20,16 @@ bool mnd_md_lines_next(const char *data, size_t end, size_t *pos, mnd_md_phys_li
     {
         i++;
     }
+
     if (i < end)
     {
-        eol_len = 1;
         if ((data[i] == '\r') && ((i + 1) < end) && (data[i + 1] == '\n'))
         {
             eol_len = 2;
+        }
+        else
+        {
+            eol_len = 1;
         }
     }
 
@@ -52,6 +56,7 @@ static size_t count_lf(const char *data, size_t len)
         {
             break;
         }
+
         count++;
         p++;
     }
@@ -75,17 +80,20 @@ bool mnd_md_line_index_build(mnd_md_line_index_t *index, const char *data, size_
     {
         return true;
     }
+
     count = count_lf(data, len);
     if (count == 0)
     {
         return true;
     }
+
     /* 容量の計算のオーバーフローは mnd_md_arena_alloc_array が確保の前に検査する */
     lf = (size_t *)mnd_md_arena_alloc_array(arena, count, sizeof(size_t));
     if (lf == NULL)
     {
         return false;
     }
+
     for (i = 0; i < len; i++)
     {
         if (data[i] == '\n')
@@ -94,6 +102,7 @@ bool mnd_md_line_index_build(mnd_md_line_index_t *index, const char *data, size_
             n++;
         }
     }
+
     index->lf = lf;
     index->lf_count = n;
 

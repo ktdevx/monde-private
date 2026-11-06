@@ -12,9 +12,9 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-typedef struct mnd_md_block_ctx mnd_md_block_ctx_t;   /* 不透明 */
-typedef struct mnd_md_inline_ctx mnd_md_inline_ctx_t; /* 不透明 */
-typedef struct mnd_md_post_ctx mnd_md_post_ctx_t;     /* 不透明 */
+typedef struct mnd_md_block_ctx mnd_md_block_ctx_t;
+typedef struct mnd_md_inline_ctx mnd_md_inline_ctx_t;
+typedef struct mnd_md_post_ctx mnd_md_post_ctx_t;
 
 /* ブロックの規則のコンテキストが示す、現在の行の状態 */
 typedef struct mnd_md_line_view

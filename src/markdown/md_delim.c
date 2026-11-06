@@ -54,6 +54,7 @@ static uint32_t decode_at(const unsigned char *s, size_t len, size_t pos)
         cp &= 0x1FU;
         extra = 1;
     }
+
     for (i = 1; (i <= extra) && ((pos + i) < len); i++)
     {
         cp = (cp << 6) | (uint32_t)(s[pos + i] & 0x3FU);
@@ -100,10 +101,12 @@ void mnd_md_delim_classify(const char *s, size_t len, size_t start, size_t end, 
     {
         before = decode_before(u, len, start);
     }
+
     if (end < len)
     {
         after = decode_at(u, len, end);
     }
+
     before_space = is_whitespace(before);
     after_space = is_whitespace(after);
     before_punct = mnd_md_unicode_is_punct(before);
@@ -111,6 +114,7 @@ void mnd_md_delim_classify(const char *s, size_t len, size_t start, size_t end, 
 
     left = (!after_space && (!after_punct || before_space || before_punct));
     right = (!before_space && (!before_punct || after_space || after_punct));
+
     if (intraword)
     {
         *can_open = (left && (!right || before_punct));
@@ -136,6 +140,7 @@ bool mnd_md_delim_push(mnd_md_array_t *stack, mnd_md_node_t *node, unsigned char
     {
         return false;
     }
+
     delim->node = node;
     delim->ch = ch;
     delim->run.length = length;
@@ -144,6 +149,7 @@ bool mnd_md_delim_push(mnd_md_array_t *stack, mnd_md_node_t *node, unsigned char
     delim->run.can_close = can_close;
     delim->next = MND_MD_DELIM_NONE;
     delim->prev = MND_MD_DELIM_NONE;
+
     if (index > 0)
     {
         /* 処理の外では、配列の要素はすべて連結されている */
@@ -167,10 +173,12 @@ static void unlink_delim(mnd_md_delim_t *items, size_t index)
     {
         items[prev].next = next;
     }
+
     if (next != MND_MD_DELIM_NONE)
     {
         items[next].prev = prev;
     }
+
     items[index].prev = MND_MD_DELIM_NONE;
     items[index].next = MND_MD_DELIM_NONE;
 }
@@ -212,6 +220,7 @@ static mnd_md_node_t *make_emph(mnd_md_parser_t *parser, mnd_md_delim_t *opener,
     {
         return NULL;
     }
+
     emph->as.emph.delim = (char)opener->ch;
     emph->as.emph.open.start = span.start;
     emph->as.emph.open.end = open_text->span.end;
@@ -230,6 +239,7 @@ static mnd_md_node_t *make_emph(mnd_md_parser_t *parser, mnd_md_delim_t *opener,
         next = child->next;
         mnd_md_node_append_child(emph, child);
     }
+
     mnd_md_node_insert_after(open_text, emph);
 
     return emph;
@@ -252,11 +262,13 @@ bool mnd_md_delim_process(mnd_md_parser_t *parser, mnd_md_array_t *stack, size_t
     {
         return true;
     }
+
     /* 探索の下限は「この添字以上の開きだけを探す」値で持つ（spec の openers_bottom は排他の下限の要素） */
     for (i = 0; i < BOTTOM_COUNT; i++)
     {
         openers_bottom[i] = stack_bottom;
     }
+
     /* 処理の範囲の要素を、下の要素から切り離す */
     items[stack_bottom].prev = MND_MD_DELIM_NONE;
 
@@ -268,6 +280,7 @@ bool mnd_md_delim_process(mnd_md_parser_t *parser, mnd_md_array_t *stack, size_t
             closer = items[closer].next;
             continue;
         }
+
         bottom = bottom_index(&items[closer]);
         found = false;
         for (opener = items[closer].prev;
@@ -281,16 +294,19 @@ bool mnd_md_delim_process(mnd_md_parser_t *parser, mnd_md_array_t *stack, size_t
                 break;
             }
         }
+
         old_closer = closer;
         if (!found)
         {
             /* 以後、この組の閉じは old_closer より前の開きを探さない */
             openers_bottom[bottom] = old_closer;
             closer = items[closer].next;
+
             if (!items[old_closer].run.can_open)
             {
                 unlink_delim(items, old_closer);
             }
+
             continue;
         }
 
@@ -298,19 +314,21 @@ bool mnd_md_delim_process(mnd_md_parser_t *parser, mnd_md_array_t *stack, size_t
         if (make_emph(parser, &items[opener], &items[closer], use) == NULL)
         {
             stack->count = stack_bottom;
-
             return false;
         }
+
         /* 開きと閉じの間の要素を取り除く */
         while ((items[opener].next != MND_MD_DELIM_NONE) && (items[opener].next != closer))
         {
             unlink_delim(items, items[opener].next);
         }
+
         if (items[opener].run.length == 0)
         {
             mnd_md_node_unlink(items[opener].node);
             unlink_delim(items, opener);
         }
+
         if (items[closer].run.length == 0)
         {
             mnd_md_node_unlink(items[closer].node);
