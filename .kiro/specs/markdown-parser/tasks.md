@@ -162,7 +162,7 @@
   - _Depends: 4.2, 4.3_
   - _Requirements: 7.2, 7.4, 7.6_
 
-- [ ] 6. spec による検証
+- [x] 6. spec による検証
 - [x] 6.1 テスト専用の HTML 出力を作る
   - commonmark.js と同じ規則で、構文木を HTML にする（ブロックの改行の位置、タイトなリスト、コードブロックの言語のクラス、`<hr />` と `<br />`、エスケープ、URL のパーセントエンコード、画像の alt の文字列、NUL の U+FFFD）。コードブロック・コードスパン・タイトル・URL の文字列は論理的な文字列とアンエスケープで作る。再帰を使わない
   - 完了時: render スイートで、spec の各節から 1 例ずつ選び、テストに直接書いた例（段落、見出し、コード、引用、リスト、HTML、リンク、画像、強調）の出力が期待 HTML と完全に一致するテストが合格する
@@ -177,19 +177,19 @@
   - _Depends: 1.4, 2.6, 2.7, 5.2, 6.1_
   - _Requirements: 9.2, 9.3, 9.4_
 
-- [ ] 6.3 spec のブロックの節の不一致を直す
+- [x] 6.3 spec のブロックの節の不一致を直す
   - Tabs、Precedence、Thematic breaks、ATX headings、Setext headings、Indented code blocks、Fenced code blocks、HTML blocks、Link reference definitions、Paragraphs、Blank lines、Block quotes、List items、Lists の節で一致しない例を、ブロックの段階とリンク参照の部品（必要なら HTML 出力）で直す。spec.txt と期待 HTML は変えない
   - 完了時: 上の節の例が spec スイートの html と ranges で合格する。原因がインラインや区切り記号の部品にある例は、番号を記録して 6.4 に引き継ぐ
   - _Boundary: BlockParser、LinkRef、html_render_
   - _Requirements: 9.2, 9.4_
 
-- [ ] 6.4 spec のインラインの節の不一致を直す
+- [x] 6.4 spec のインラインの節の不一致を直す
   - Backslash escapes、Entity and numeric character references、Code spans、Emphasis and strong emphasis、Links、Images、Autolinks、Raw HTML、Hard line breaks、Soft line breaks、Textual content の節で一致しない例を、インラインと区切り記号の部品（必要なら HTML 出力）で直す
   - 完了時: 上の節のすべての例が spec スイートの html と ranges で合格する
   - _Boundary: InlineParser、Delims、html_render_
   - _Requirements: 9.2, 9.4_
 
-- [ ] 6.5 spec の全例による検証を通す（統合）
+- [x] 6.5 spec の全例による検証を通す（統合）
   - 6.3 と 6.4 の修正の組み合わせで残った不一致（節をまたぐもの）を直し、全例の合格を確かめる
   - 完了時: spec スイートの html、ranges、empty_dialect のテストが、全 652 例で合格する
   - _Requirements: 7.5, 9.2, 9.3, 9.4_
@@ -234,3 +234,4 @@
 - 6.1: html_render の API は `mnd_md_html_render(doc, &out)`（tests/markdown/html_render.h。out の末尾に追加し、メモリ不足で false）。文字列は `span_text`（`mnd_md_logical_text` に、4.1 の注意の行の境目の `\n` を補う）で作り、参照形式は `def` をリーフにする。`MND_MD_KIND_DIALECT` 以上の種類と LINK_REF_DEF は子だけを出す。行のないコードブロックは空。`line_included` は md_text.c の `line_in_span` と同じ判定を複製しているので、片方を変えたらもう片方も直す。6.1 の時点で、全 652 例が完全一致した（scratch での確認）。
 - 6.1 の後続（検討）: 行の境目で始まるか終わる範囲で `\n` が落ちる問題は、translation-units の msgid にも影響する。Text の契約を改めるか、利用者ごとに補う責任を design.md に書く。
 - 6.2: spec スイートは file・html・ranges・empty_dialect の 4 つ。例の番号・行・節、節ごとの失敗数、完全一致しなかった例の数は、失敗した検査の直前の NAOS_NOTE として出る（Naos は合格したときにメモを表示しないので、合格した実行では件数が見えない）。空の方言との比較は、前順で全ノードの全フィールドと HTML を比べる。6.2 の時点で、3 つとも全 652 例で合格した。
+- 6.3〜6.5: 6.2 の時点で spec スイートの html・ranges・empty_dialect が全 652 例で合格していたため（gcc の Release と clang の Debug の両方で確認）、ブロックとインラインの節には直すべき不一致がなく、コードは変えていない。差分がないので、タスクごとのレビューは行わず、spec スイートの合格を新しい証拠として完了とした。
