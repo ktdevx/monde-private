@@ -11,6 +11,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
 /*
@@ -27,6 +28,7 @@ typedef struct block_line
     mnd_md_phys_line_t phys;    /* 物理的な行 */
     mnd_md_scan_pos_t cur;      /* コンテナが使ったバイトの後ろ */
     mnd_md_scan_indent_t indent; /* cur からのインデントと最初の空白でない文字 */
+    size_t no_break_pos;        /* テーマ区切りの判定が最後に失敗した位置（失敗していなければ SIZE_MAX） */
 } block_line_t;
 
 static size_t open_count(const mnd_md_parser_t *parser)
@@ -1176,6 +1178,46 @@ static bool try_dialect_starts(mnd_md_parser_t *parser, block_line_t *line, size
 }
 
 /*
+ * line の位置 pos（インデントを除いた最初の空白でない文字）からテーマ区切りが始まるか（8.3）。
+ * `- - - … - a` のように、同じ行の後ろの位置で何度も判定すると、毎回行末まで走査して入れ子の深さの二乗の
+ * 時間がかかる。そこで、判定が失敗した位置を no_break_pos に覚え、そこから pos までが同じ記号の文字と空白・タブ
+ * だけなら、pos からの判定も失敗する（失敗した判定の残りの部分なので、記号の数が減るか、同じ不正な文字を含む）
+ * として走査しない（cmark の thematic_break_kill_pos と同じ考え方）。間の文字を見る走査は、no_break_pos を
+ * pos に進めるので、1 行で合わせて行の長さに比例する
+ */
+static bool line_starts_thematic_break(const mnd_md_parser_t *parser, block_line_t *line, size_t pos,
+                                       size_t end)
+{
+    const char *data = parser->data;
+
+    if ((line->no_break_pos != SIZE_MAX) && (pos < end) && (pos >= line->no_break_pos)
+        && (data[pos] == data[line->no_break_pos]))
+    {
+        size_t i = line->no_break_pos;
+
+        while ((i < pos) && ((data[i] == data[pos]) || is_space_or_tab(data[i])))
+        {
+            i++;
+        }
+
+        if (i == pos)
+        {
+            line->no_break_pos = pos;
+            return false;
+        }
+    }
+
+    if (mnd_md_scan_thematic_break(data, pos, end, NULL))
+    {
+        return true;
+    }
+
+    line->no_break_pos = pos;
+
+    return false;
+}
+
+/*
  * 照合できたブロックの中で、新しいブロックの開始を試す（設計の「ブロックの段階」の 3）。
  * コンテナが開始したら、行の残りで続けて試す。何か開始したら *started を真にし、行を使い終わる
  * リーフ（ATX 見出し、Setext 見出し、テーマ区切り、開きフェンス、方言のリーフ）なら *done も真にする。
@@ -1321,7 +1363,7 @@ static bool try_block_starts(mnd_md_parser_t *parser, block_line_t *line, size_t
             }
         }
 
-        if (mnd_md_scan_thematic_break(data, pos, end, NULL))
+        if (line_starts_thematic_break(parser, line, pos, end))
         {
             *started = true;
             *done = true;
@@ -1456,6 +1498,7 @@ static bool process_line(mnd_md_parser_t *parser, const mnd_md_phys_line_t *phys
     line.cur.pos = phys->line_start;
     line.cur.column = 0;
     line.cur.pad = 0;
+    line.no_break_pos = SIZE_MAX;
     line_scan_indent(parser, &line);
 
     /* 2: 開いているブロックの照合 */
