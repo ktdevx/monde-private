@@ -98,14 +98,14 @@ size_t mnd_md_unicode_fold(uint32_t cp, char out[MND_MD_UNICODE_FOLD_MAX])
 
         return 1;
     }
-    if (cp < 0x800u)
+    else if (cp < 0x800u)
     {
         out[0] = (char)(0xC0u | (cp >> 6));
         out[1] = (char)(0x80u | (cp & 0x3Fu));
 
         return 2;
     }
-    if (cp < 0x10000u)
+    else if (cp < 0x10000u)
     {
         out[0] = (char)(0xE0u | (cp >> 12));
         out[1] = (char)(0x80u | ((cp >> 6) & 0x3Fu));
@@ -113,6 +113,7 @@ size_t mnd_md_unicode_fold(uint32_t cp, char out[MND_MD_UNICODE_FOLD_MAX])
 
         return 3;
     }
+
     out[0] = (char)(0xF0u | (cp >> 18));
     out[1] = (char)(0x80u | ((cp >> 12) & 0x3Fu));
     out[2] = (char)(0x80u | ((cp >> 6) & 0x3Fu));

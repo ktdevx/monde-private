@@ -37,6 +37,7 @@ static bool append_spaces(mnd_buf_t *out, size_t count)
         {
             return false;
         }
+
         count -= n;
     }
 
@@ -77,12 +78,15 @@ bool mnd_md_logical_text(const mnd_md_doc_t *doc, const mnd_md_node_t *leaf, mnd
     {
         return true;
     }
+
     end = min_size(span.end, doc->len);
     start = min_size(span.start, end);
+
     if ((leaf == NULL) || (leaf->lines == NULL) || (leaf->line_count == 0))
     {
         return mnd_buf_append(out, doc->data + start, end - start);
     }
+
     for (i = 0; i < leaf->line_count; i++)
     {
         line = &leaf->lines[i];
@@ -90,16 +94,20 @@ bool mnd_md_logical_text(const mnd_md_doc_t *doc, const mnd_md_node_t *leaf, mnd
         {
             continue;
         }
+
         if (!first && !mnd_buf_append_byte(out, '\n'))
         {
             return false;
         }
+
         first = false;
+
         /* 補う空白は内容の先頭の前にあるので、範囲が内容の先頭を含むときだけ加える */
         if ((start <= line->content.start) && !append_spaces(out, line->pad))
         {
             return false;
         }
+
         from = max_size(start, line->content.start);
         to = min_size(end, line->content.end);
         if ((from < to) && !mnd_buf_append(out, doc->data + from, to - from))
@@ -129,11 +137,11 @@ static int hex_value(unsigned char c)
     {
         return c - '0';
     }
-    if ((c >= 'a') && (c <= 'f'))
+    else if ((c >= 'a') && (c <= 'f'))
     {
         return c - 'a' + 10;
     }
-    if ((c >= 'A') && (c <= 'F'))
+    else if ((c >= 'A') && (c <= 'F'))
     {
         return c - 'A' + 10;
     }
@@ -151,6 +159,7 @@ static bool append_codepoint(mnd_buf_t *out, unsigned long cp)
     {
         cp = MD_TEXT_REPLACEMENT;
     }
+
     if (cp < 0x80UL)
     {
         bytes[0] = (unsigned char)cp;
@@ -197,6 +206,7 @@ static bool scan_numeric_ref(const unsigned char *text, size_t pos, size_t len, 
     {
         return false;
     }
+
     if ((text[p] == 'x') || (text[p] == 'X'))
     {
         p++;
@@ -206,6 +216,7 @@ static bool scan_numeric_ref(const unsigned char *text, size_t pos, size_t len, 
             digits++;
             p++;
         }
+
         if ((digits == 0) || (digits > MD_TEXT_HEX_DIGITS_MAX))
         {
             return false;
@@ -219,15 +230,18 @@ static bool scan_numeric_ref(const unsigned char *text, size_t pos, size_t len, 
             digits++;
             p++;
         }
+
         if ((digits == 0) || (digits > MD_TEXT_DEC_DIGITS_MAX))
         {
             return false;
         }
     }
+
     if ((p >= len) || (text[p] != ';'))
     {
         return false;
     }
+
     *cp = value;
     *next = p + 1;
 
@@ -247,14 +261,17 @@ static bool scan_entity_ref(const unsigned char *text, size_t pos, size_t len, c
     {
         p++;
     }
+
     if ((p >= len) || (text[p] != ';'))
     {
         return false;
     }
+
     if (!mnd_md_entity_lookup((const char *)text + pos + 1, p - (pos + 1), utf8, utf8_len))
     {
         return false;
     }
+
     *next = p + 1;
 
     return true;
@@ -274,6 +291,7 @@ bool mnd_md_unescape(const char *text, size_t len, mnd_buf_t *out)
     {
         return true;
     }
+
     while (pos < len)
     {
         if ((s[pos] == '\\') && ((pos + 1) < len) && is_ascii_punct(s[pos + 1]))
@@ -282,6 +300,7 @@ bool mnd_md_unescape(const char *text, size_t len, mnd_buf_t *out)
             {
                 return false;
             }
+
             pos += 2;
             run = pos;
         }
@@ -291,6 +310,7 @@ bool mnd_md_unescape(const char *text, size_t len, mnd_buf_t *out)
             {
                 return false;
             }
+
             pos = next;
             run = pos;
         }
@@ -300,6 +320,7 @@ bool mnd_md_unescape(const char *text, size_t len, mnd_buf_t *out)
             {
                 return false;
             }
+
             pos = next;
             run = pos;
         }

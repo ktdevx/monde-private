@@ -13,13 +13,11 @@ static size_t sequence_length(unsigned char lead, unsigned char *second_min, uns
     {
         return 1;
     }
-
-    if ((lead >= 0xC2) && (lead <= 0xDF))
+    else if ((lead >= 0xC2) && (lead <= 0xDF))
     {
         return 2;
     }
-
-    if ((lead >= 0xE0) && (lead <= 0xEF))
+    else if ((lead >= 0xE0) && (lead <= 0xEF))
     {
         if (lead == 0xE0)
         {
@@ -32,8 +30,7 @@ static size_t sequence_length(unsigned char lead, unsigned char *second_min, uns
 
         return 3;
     }
-
-    if ((lead >= 0xF0) && (lead <= 0xF4))
+    else if ((lead >= 0xF0) && (lead <= 0xF4))
     {
         if (lead == 0xF0)
         {

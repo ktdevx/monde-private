@@ -67,6 +67,7 @@ static FILE *mnd_file_open(const char *path, const char *mode, const char **reas
     return fp;
 #else
     *reason = NULL;
+
     return fopen(path, mode);
 #endif
 }

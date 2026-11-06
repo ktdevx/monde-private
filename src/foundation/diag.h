@@ -46,7 +46,10 @@ void mnd_diag_add(mnd_diag_list_t *list, mnd_severity_t severity,
     MND_PRINTF_LIKE(5, 6);
 
 size_t mnd_diag_list_count(const mnd_diag_list_t *list);
-const mnd_diag_t *mnd_diag_list_at(const mnd_diag_list_t *list, size_t index); /* index < count */
+
+/* index < count */
+const mnd_diag_t *mnd_diag_list_at(const mnd_diag_list_t *list, size_t index);
+
 /* エラーの診断が 1 つ以上ある、または dropped なら true */
 bool mnd_diag_list_has_error(const mnd_diag_list_t *list);
 

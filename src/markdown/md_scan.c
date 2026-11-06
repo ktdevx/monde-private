@@ -20,6 +20,7 @@ static bool rest_is_blank(const char *data, size_t pos, size_t end)
         {
             return false;
         }
+
         i++;
     }
 
@@ -90,6 +91,7 @@ size_t mnd_md_scan_skip_columns(const char *data, size_t end, mnd_md_scan_pos_t 
         cur->column += take;
         removed += take;
     }
+
     while ((removed < columns) && (cur->pos < end) && is_space_or_tab(data[cur->pos]))
     {
         /* cur->pad はここでは 0 なので、data[pos] の桁は cur->column */
@@ -105,6 +107,7 @@ size_t mnd_md_scan_skip_columns(const char *data, size_t end, mnd_md_scan_pos_t 
             /* タブの一部だけを使う: タブを越えて進み、残りを pad にする */
             cur->pad = width - take;
         }
+
         cur->pos++;
         cur->column += take;
         removed += take;
@@ -124,6 +127,7 @@ void mnd_md_scan_indent(const char *data, size_t end, const mnd_md_scan_pos_t *c
         column = mnd_md_scan_next_column(column, data[pos]);
         pos++;
     }
+
     out->pos = pos;
     out->column = column;
     out->indent = column - cur->column;
@@ -140,11 +144,13 @@ bool mnd_md_scan_thematic_break(const char *data, size_t pos, size_t end, char *
     {
         return false;
     }
+
     c = data[pos];
     if ((c != '*') && (c != '-') && (c != '_'))
     {
         return false;
     }
+
     while (i < end)
     {
         if (data[i] == c)
@@ -155,12 +161,15 @@ bool mnd_md_scan_thematic_break(const char *data, size_t pos, size_t end, char *
         {
             return false;
         }
+
         i++;
     }
+
     if (count < 3)
     {
         return false;
     }
+
     if (ch != NULL)
     {
         *ch = c;
@@ -181,6 +190,7 @@ bool mnd_md_scan_atx_heading(const char *data, size_t pos, size_t end, mnd_md_he
     {
         return false;
     }
+
     if ((open_end < end) && !is_space_or_tab(data[open_end]))
     {
         return false;
@@ -196,6 +206,7 @@ bool mnd_md_scan_atx_heading(const char *data, size_t pos, size_t end, mnd_md_he
     {
         hashes--;
     }
+
     if (hashes < stop)
     {
         if (hashes == start)
@@ -214,6 +225,7 @@ bool mnd_md_scan_atx_heading(const char *data, size_t pos, size_t end, mnd_md_he
         start = open_end;
         stop = open_end;
     }
+
     out->level = (int)level;
     out->setext = false;
     out->content.start = start;
@@ -231,11 +243,13 @@ int mnd_md_scan_setext_underline(const char *data, size_t pos, size_t end)
     {
         return 0;
     }
+
     c = data[pos];
     if ((c != '=') && (c != '-'))
     {
         return 0;
     }
+
     count = count_run(data, pos, end, c);
     if (!rest_is_blank(data, pos + count, end))
     {
@@ -257,16 +271,19 @@ bool mnd_md_scan_open_fence(const char *data, size_t pos, size_t end, mnd_md_cod
     {
         return false;
     }
+
     c = data[pos];
     if ((c != '`') && (c != '~'))
     {
         return false;
     }
+
     len = count_run(data, pos, end, c);
     if (len < 3)
     {
         return false;
     }
+
     if (c == '`')
     {
         /* バッククォートのフェンスの情報文字列はバッククォートを含まない */
@@ -278,6 +295,7 @@ bool mnd_md_scan_open_fence(const char *data, size_t pos, size_t end, mnd_md_cod
             }
         }
     }
+
     info_start = skip_spaces(data, pos + len, end);
     info_end = trim_end(data, info_start, end);
 
@@ -310,6 +328,7 @@ bool mnd_md_scan_close_fence(const char *data, size_t pos, size_t end, char fenc
     {
         return false;
     }
+
     len = count_run(data, pos, end, fence_char);
     if (len < fence_len)
     {
@@ -330,6 +349,7 @@ bool mnd_md_scan_list_marker(const char *data, size_t pos, size_t end, mnd_md_sc
     {
         return false;
     }
+
     if ((data[i] == '-') || (data[i] == '+') || (data[i] == '*'))
     {
         marker = data[i];
@@ -344,17 +364,21 @@ bool mnd_md_scan_list_marker(const char *data, size_t pos, size_t end, mnd_md_sc
             {
                 return false;
             }
+
             start = (start * 10UL) + (unsigned long)(data[i] - '0');
             i++;
         }
+
         if ((i == pos) || (i >= end) || ((data[i] != '.') && (data[i] != ')')))
         {
             return false;
         }
+
         ordered = true;
         marker = data[i];
         i++;
     }
+
     if ((i < end) && !is_space_or_tab(data[i]))
     {
         return false;

@@ -65,10 +65,12 @@ static bool parser_build_line_index(mnd_md_parser_t *parser)
     {
         return false;
     }
+
     if (!mnd_md_line_index_build(index, parser->data, parser->len, &parser->doc->arena))
     {
         return false;
     }
+
     parser->line_index = index;
 
     return true;
@@ -93,7 +95,6 @@ bool mnd_md_parse(const char *data, size_t len, const mnd_md_options_t *options,
     {
         mnd_diag_add(diags, MND_SEVERITY_ERROR, options->path, 0,
                      "body start offset %zu exceeds content length %zu", options->body_start, len);
-
         return false;
     }
 
@@ -104,8 +105,8 @@ bool mnd_md_parse(const char *data, size_t len, const mnd_md_options_t *options,
         {
             line = 0;
         }
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, options->path, line, "invalid UTF-8 sequence");
 
+        mnd_diag_add(diags, MND_SEVERITY_ERROR, options->path, line, "invalid UTF-8 sequence");
         return false;
     }
 
@@ -127,7 +128,6 @@ bool mnd_md_parse(const char *data, size_t len, const mnd_md_options_t *options,
         /* ここまでの失敗はメモリ不足だけである（8.2） */
         parser_discard(&parser);
         mnd_diag_add(diags, MND_SEVERITY_ERROR, options->path, 0, "out of memory");
-
         return false;
     }
 
