@@ -51,14 +51,12 @@ typedef struct mnd_args_scan
 static mnd_args_status_t finish(mnd_args_result_t *result, mnd_args_status_t status)
 {
     result->status = status;
-
     return status;
 }
 
 static mnd_args_status_t out_of_memory(mnd_args_result_t *result, mnd_diag_list_t *diags)
 {
     mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0, "out of memory while parsing arguments");
-
     return finish(result, MND_ARGS_OUT_OF_MEMORY);
 }
 
@@ -161,7 +159,6 @@ static mnd_args_status_t scan_record_value(mnd_args_scan_t *scan, size_t index, 
     if (scan->command->options[index].kind == MND_ARGS_VALUE)
     {
         mnd_args_result_set_value(scan->result, index, value);
-
         return MND_ARGS_OK;
     }
 
@@ -503,7 +500,6 @@ static mnd_args_status_t dispatch_help(const mnd_args_program_t *program, int ar
     {
         mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0, "%s: too many arguments for 'help'",
                      program->name);
-
         return finish(result, MND_ARGS_USAGE_ERROR);
     }
 
@@ -513,7 +509,6 @@ static mnd_args_status_t dispatch_help(const mnd_args_program_t *program, int ar
     {
         mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0, "%s: unknown command '%s'",
                      program->name, name);
-
         return finish(result, MND_ARGS_USAGE_ERROR);
     }
 

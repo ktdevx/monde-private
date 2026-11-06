@@ -59,6 +59,7 @@ static bool has_empty_item(const char *list)
             {
                 return true;
             }
+
             item_len = 0;
         }
         else
@@ -81,7 +82,6 @@ static void check_command_name(const mnd_args_program_t *program, size_t index,
         mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
                      DECL_PREFIX "invalid command name '%s'", shown(name));
         *ok = false;
-
         return;
     }
 
@@ -90,7 +90,6 @@ static void check_command_name(const mnd_args_program_t *program, size_t index,
         mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
                      DECL_PREFIX "command name 'help' is reserved");
         *ok = false;
-
         return;
     }
 
@@ -101,7 +100,6 @@ static void check_command_name(const mnd_args_program_t *program, size_t index,
             mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
                          DECL_PREFIX "duplicate command '%s'", name);
             *ok = false;
-
             return;
         }
     }
@@ -247,10 +245,12 @@ bool mnd_args_decl_check(const mnd_args_program_t *program, mnd_diag_list_t *dia
         const mnd_args_command_t *command = &program->commands[i];
 
         check_command_name(program, i, diags, &ok);
+
         for (k = 0; k < command->option_count; ++k)
         {
             check_option(command, k, diags, &ok);
         }
+
         check_positionals(command, diags, &ok);
     }
 

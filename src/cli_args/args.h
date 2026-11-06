@@ -92,6 +92,7 @@ typedef struct mnd_args_result
 #define MND_ARGS_RESULT_INIT { MND_ARGS_NO_COMMAND, NULL, NULL, NULL, 0, 0 }
 
 void mnd_args_result_init(mnd_args_result_t *result);
+
 /* 確保した領域を解放して初期状態に戻す。初期状態・解放済みに対しても安全 */
 void mnd_args_result_free(mnd_args_result_t *result);
 

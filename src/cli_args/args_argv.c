@@ -39,8 +39,10 @@ void mnd_args_argv_free(mnd_args_argv_t *args)
         {
             free(args->argv[i]);
         }
+
         free(args->argv);
     }
+
     mnd_args_argv_reset(args);
 }
 
@@ -79,15 +81,14 @@ bool mnd_args_argv_from_wide(int argc, wchar_t *const *wargv, mnd_args_argv_t *o
     if (count > ((SIZE_MAX / sizeof(char *)) - 1))
     {
         mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0, "out of memory while parsing arguments");
-
         return false;
     }
+
     /* calloc で確保し、未変換の要素を NULL にしておく（失敗時の解放を一様にする） */
     argv = (char **)calloc(count + 1, sizeof(char *));
     if (argv == NULL)
     {
         mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0, "out of memory while parsing arguments");
-
         return false;
     }
 
@@ -107,6 +108,7 @@ bool mnd_args_argv_from_wide(int argc, wchar_t *const *wargv, mnd_args_argv_t *o
                 mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
                              "command-line argument %d is not valid UTF-16", i);
             }
+
             out->argc = i;
             out->argv = argv;
             out->owned = true;
@@ -138,7 +140,6 @@ bool mnd_args_argv_get(int argc, char **argv, mnd_args_argv_t *out, mnd_diag_lis
     if (wargv == NULL)
     {
         mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0, "cannot read the command line");
-
         return false;
     }
 
