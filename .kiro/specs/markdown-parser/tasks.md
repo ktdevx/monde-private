@@ -194,7 +194,7 @@
   - 完了時: spec スイートの html、ranges、empty_dialect のテストが、全 652 例で合格する
   - _Requirements: 7.5, 9.2, 9.3, 9.4_
 
-- [ ] 7. 異常な入力と全体の確認
+- [x] 7. 異常な入力と全体の確認
 - [x] 7.1 メモリ不足、病的な入力、不正な UTF-8 のテストを書き、見つかった問題を直す（統合）
   - 全種類のブロックとインラインを含む中程度の文書について、n 回目の確保を失敗させる位置を 1 から順に変え、毎回 `false`・`*out` が NULL・`out of memory` の診断・確保と解放の回数が等しいことを、成功するまで確かめる
   - 10,000 段の `>`、10,000 段のリスト、10,000 個の `[`、`*a` の 10,000 回の繰り返し、`[`・`](` の繰り返し、閉じないバッククォートの繰り返しで、異常終了せずに解析が終わり、tree_check を満たすことを確かめる
@@ -203,7 +203,7 @@
   - 完了時: error スイートと spec スイートのすべてのテストが合格する
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
 
-- [ ] 7.2 代表的な例の範囲の個別テストを揃え、境界と規約を確認する
+- [x] 7.2 代表的な例の範囲の個別テストを揃え、境界と規約を確認する
   - range・lines・inline スイートで、要件 3・4・5 の受け入れ基準ごとに少なくとも 1 つ、期待する範囲をオフセットの数値で書いたテストがあることを確かめ、足りないものを加える。単独の CR を含む文書の行番号（同じ行番号になる）のテストを含める
   - `src/markdown/` に、ファイルの入出力・標準出力への書き込み・プロセスの終了と、翻訳・PO・サブコマンドの語が現れず、テスト用の HTML 出力・正規化・spec の読み込みを参照していないことを確かめる。spec.txt がインストールの対象でないことを確かめる
   - 完了時: `ctest -L markdown` がすべて合格し、上の確認の結果（検索のコマンドと結果）を作業の記録に残す
@@ -236,3 +236,9 @@
 - 6.2: spec スイートは file・html・ranges・empty_dialect の 4 つ。例の番号・行・節、節ごとの失敗数、完全一致しなかった例の数は、失敗した検査の直前の NAOS_NOTE として出る（Naos は合格したときにメモを表示しないので、合格した実行では件数が見えない）。空の方言との比較は、前順で全ノードの全フィールドと HTML を比べる。6.2 の時点で、3 つとも全 652 例で合格した。
 - 6.3〜6.5: 6.2 の時点で spec スイートの html・ranges・empty_dialect が全 652 例で合格していたため（gcc の Release と clang の Debug の両方で確認）、ブロックとインラインの節には直すべき不一致がなく、コードは変えていない。差分がないので、タスクごとのレビューは行わず、spec スイートの合格を新しい証拠として完了とした。
 - 7.1: テーマ区切りの判定は、md_block.c の `line_starts_thematic_break` が行ごとの `no_break_pos`（cmark の thematic_break_kill_pos と同じ考え方）を使い、深い `- - - …` のリストで二乗の時間になるのを避ける。LinkRef の囲まないリンク先は NUL を U+FFFD として含め、NUL 以外の制御文字で終わる（インラインと同じ。括弧の深さの上限 32 は LinkRef にはない）。病的な入力の大きさは `MND_MD_PATHOLOGICAL_N` / `MND_MD_PATHOLOGICAL_TICKS` で変えられ、線形の時間であることを確かめられる（テストは時間を検査しない）。アリーナは大きな塊で確保するので、メモリ不足のテストで失敗させられる位置は約 17 か所。
+- 7.2: range・lines に 6 テストを追加した（range_line_numbers_crlf、range_line_numbers_lone_cr、range_children_nested_and_ordered、range_spans_point_to_source_bytes、lines_link_ref_def_in_block_quote、lines_mixed_line_endings）。要件 3.1〜3.7・4.1〜4.7・5.1〜5.11 の各基準に、数値の範囲を確かめるテストがあることを確認した（5.11 は種類と子のないことを確かめる）。
+- 7.2 の確認の記録（src/markdown/ について）:
+  - `grep -rnE '\b(fopen|fclose|fread|fwrite|fputs|fputc|fprintf|printf|puts|putchar|perror|stdout|stderr|stdin|exit|_Exit|abort|quick_exit|atexit)\b' src/markdown` は 0 件。`<stdlib.h>` は md_arena.c（malloc/free）と md_inline.c（qsort）だけで使う。
+  - `grep -rniE 'translat|msgid|msgstr|\bpo\b|\.po\b|subcommand' src/markdown` は 1 件。md_unicode_tables.c:12 のコメントにある Unicode の一般カテゴリ「Po」で、PO ファイルのことではない。
+  - `grep -rnE 'html_render|html_normalize|spec_reader|spec\.txt' src/markdown` は 0 件。
+  - spec.txt がインストールの対象でないこと: `git ls-files | grep -E 'CMakeLists.txt$|\.cmake$' | xargs grep -niE '\binstall\s*\(|cpack'` は 0 件（install() と CPack の規則がない）。`cmake --install` はファイルを置かない。spec.txt はテスト用の定義 `MND_MD_SPEC_FILE` からだけ参照する。リリースのパッケージを作るときは、spec.txt とテスト用の部品を含めないこと。

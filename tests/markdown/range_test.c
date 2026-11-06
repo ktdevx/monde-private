@@ -326,6 +326,167 @@ NAOS_TEST(range_html_block)
     mnd_md_doc_free(doc);
 }
 
+/*
+ * 3.1: CRLF の文書の行番号。ブロックとインラインのノードがすべて行番号を持ち、CRLF を 1 つの改行として数える
+ */
+NAOS_TEST(range_line_numbers_crlf)
+{
+    mnd_md_doc_t *doc = parse_ok("# a\r\n\r\nb\r\n*c*\r\n");
+    const mnd_md_node_t *root = NULL;
+    const mnd_md_node_t *heading = NULL;
+    const mnd_md_node_t *para = NULL;
+    const mnd_md_node_t *node = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    root = mnd_md_doc_root(doc);
+    check_node(root, MND_MD_DOCUMENT, 0, 15, 1, 4);
+    heading = root->first_child;
+    check_node(heading, MND_MD_HEADING, 0, 3, 1, 1);
+    check_node(heading->first_child, MND_MD_TEXT, 2, 3, 1, 1);
+    para = heading->next;
+    check_node(para, MND_MD_PARAGRAPH, 7, 13, 3, 4);
+    node = para->first_child;
+    check_node(node, MND_MD_TEXT, 7, 8, 3, 3);
+    node = node->next;
+    check_node(node, MND_MD_SOFT_BREAK, 8, 10, 3, 3);
+    node = node->next;
+    check_node(node, MND_MD_EMPH, 10, 13, 4, 4);
+    check_node(node->first_child, MND_MD_TEXT, 11, 12, 4, 4);
+    NAOS_CHECK_NULL(node->next);
+    mnd_md_doc_free(doc);
+}
+
+/*
+ * 3.1: 単独の CR は CommonMark の行末だが、行番号では改行として数えない。そのため、単独の CR で区切られた
+ * 複数の CommonMark の行（ブロック）は同じ行番号になる
+ */
+NAOS_TEST(range_line_numbers_lone_cr)
+{
+    mnd_md_doc_t *doc = parse_ok("a\rb\r\r# c\rd\ne\r\n");
+    const mnd_md_node_t *root = NULL;
+    const mnd_md_node_t *node = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    root = mnd_md_doc_root(doc);
+    check_node(root, MND_MD_DOCUMENT, 0, 14, 1, 2);
+    /* "a\rb" は 2 つの CommonMark の行からなる段落だが、どちらも 1 行目 */
+    node = root->first_child;
+    check_node(node, MND_MD_PARAGRAPH, 0, 3, 1, 1);
+    check_node(node->first_child, MND_MD_TEXT, 0, 1, 1, 1);
+    check_node(node->first_child->next, MND_MD_SOFT_BREAK, 1, 2, 1, 1);
+    check_node(node->last_child, MND_MD_TEXT, 2, 3, 1, 1);
+    /* 単独の CR の空行の後ろの見出しも 1 行目 */
+    node = node->next;
+    check_node(node, MND_MD_HEADING, 5, 8, 1, 1);
+    check_heading_content(node, 7, 8);
+    /* "d\ne" の段落は LF の前の d が 1 行目、e が 2 行目 */
+    node = node->next;
+    check_node(node, MND_MD_PARAGRAPH, 9, 12, 1, 2);
+    check_node(node->last_child, MND_MD_TEXT, 11, 12, 2, 2);
+    NAOS_CHECK_NULL(node->next);
+    mnd_md_doc_free(doc);
+}
+
+/* 子の範囲が親の内側にあり、兄弟が重ならずに原文の順に並ぶことを、部分木のすべてのノードで確かめる */
+static void check_nesting(const mnd_md_node_t *root)
+{
+    const mnd_md_node_t *node = NULL;
+
+    for (node = root; node != NULL; node = mnd_md_node_next(node, root))
+    {
+        if (node->parent != NULL)
+        {
+            NAOS_CHECK_TRUE(node->parent->span.start <= node->span.start);
+            NAOS_CHECK_TRUE(node->span.end <= node->parent->span.end);
+        }
+        if (node->prev != NULL)
+        {
+            NAOS_CHECK_TRUE(node->prev->span.end <= node->span.start);
+        }
+    }
+}
+
+/* 3.2、3.3: 引用の中の見出しとリストとインラインの、親の内側に収まり、兄弟が順に並ぶ範囲 */
+NAOS_TEST(range_children_nested_and_ordered)
+{
+    mnd_md_doc_t *doc = parse_ok("> # h\n>\n> - a *b*\n> - c\n");
+    const mnd_md_node_t *quote = NULL;
+    const mnd_md_node_t *list = NULL;
+    const mnd_md_node_t *item = NULL;
+    const mnd_md_node_t *para = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    check_nesting(mnd_md_doc_root(doc));
+    quote = mnd_md_doc_root(doc)->first_child;
+    check_node(quote, MND_MD_BLOCK_QUOTE, 0, 23, 1, 4);
+    check_node(quote->first_child, MND_MD_HEADING, 2, 5, 1, 1);
+    check_heading_content(quote->first_child, 4, 5);
+    list = quote->first_child->next;
+    check_node(list, MND_MD_LIST, 10, 23, 3, 4);
+    NAOS_CHECK_TRUE(list->as.list.tight);
+    item = list->first_child;
+    check_node(item, MND_MD_ITEM, 10, 17, 3, 3);
+    para = item->first_child;
+    check_node(para, MND_MD_PARAGRAPH, 12, 17, 3, 3);
+    check_node(para->first_child, MND_MD_TEXT, 12, 14, 3, 3);
+    check_node(para->last_child, MND_MD_EMPH, 14, 17, 3, 3);
+    check_node(para->last_child->first_child, MND_MD_TEXT, 15, 16, 3, 3);
+    item = item->next;
+    check_node(item, MND_MD_ITEM, 20, 23, 4, 4);
+    check_node(item->first_child, MND_MD_PARAGRAPH, 22, 23, 4, 4);
+    check_node(item->first_child->first_child, MND_MD_TEXT, 22, 23, 4, 4);
+    NAOS_CHECK_NULL(item->next);
+    mnd_md_doc_free(doc);
+}
+
+/* span のバイト列が expected と一致することを確かめる */
+static void check_span_bytes(const mnd_md_doc_t *doc, mnd_span_t span, const char *expected)
+{
+    NAOS_REQUIRE_TRUE(span.start <= span.end);
+    NAOS_REQUIRE_TRUE(span.end <= mnd_md_doc_len(doc));
+    NAOS_CHECK_MEM_EQ(mnd_md_doc_data(doc) + span.start, span.end - span.start, expected, strlen(expected));
+}
+
+/*
+ * 3.7: 範囲は正規化した文字列ではなく原文の位置を指す（実体参照、エスケープ、コードスパン、リンク先の
+ * エスケープ、CRLF をまたぐ段落）
+ */
+NAOS_TEST(range_spans_point_to_source_bytes)
+{
+    static const char data[] = "&amp; \\* `` x ``\r\n[t](/a\\)b)\r\n";
+    mnd_md_doc_t *doc = parse_ok(data);
+    const mnd_md_node_t *para = NULL;
+    const mnd_md_node_t *node = NULL;
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    NAOS_CHECK_PTR_EQ(data, mnd_md_doc_data(doc));
+    para = mnd_md_doc_root(doc)->first_child;
+    check_node(para, MND_MD_PARAGRAPH, 0, 28, 1, 2);
+    check_span_bytes(doc, para->span, "&amp; \\* `` x ``\r\n[t](/a\\)b)");
+    node = para->first_child;
+    check_node(node, MND_MD_CHAR_REF, 0, 5, 1, 1);
+    check_span_bytes(doc, node->span, "&amp;");
+    NAOS_CHECK_MEM_EQ(node->as.char_ref.text, node->as.char_ref.len, "&", 1);
+    node = node->next;
+    check_node(node, MND_MD_TEXT, 5, 6, 1, 1);
+    node = node->next;
+    check_node(node, MND_MD_ESCAPE, 6, 8, 1, 1);
+    check_span_bytes(doc, node->span, "\\*");
+    node = node->next;
+    check_node(node, MND_MD_TEXT, 8, 9, 1, 1);
+    node = node->next;
+    check_node(node, MND_MD_CODE_SPAN, 9, 16, 1, 1);
+    check_span_bytes(doc, node->as.code_span.content, " x ");
+    node = node->next;
+    check_node(node, MND_MD_SOFT_BREAK, 16, 18, 1, 1);
+    check_span_bytes(doc, node->span, "\r\n");
+    node = node->next;
+    check_node(node, MND_MD_LINK, 18, 28, 2, 2);
+    check_span_bytes(doc, node->as.link.dest, "/a\\)b");
+    NAOS_CHECK_NULL(node->next);
+    mnd_md_doc_free(doc);
+}
+
 NAOS_SUITE(range,
     NAOS_ADD_TEST(range_block_quote_ending_with_marker_only_line),
     NAOS_ADD_TEST(range_block_quote_with_lazy_line),
@@ -339,5 +500,9 @@ NAOS_SUITE(range,
     NAOS_ADD_TEST(range_thematic_break),
     NAOS_ADD_TEST(range_fenced_code),
     NAOS_ADD_TEST(range_indented_code_trailing_blank_lines),
-    NAOS_ADD_TEST(range_html_block)
+    NAOS_ADD_TEST(range_html_block),
+    NAOS_ADD_TEST(range_line_numbers_crlf),
+    NAOS_ADD_TEST(range_line_numbers_lone_cr),
+    NAOS_ADD_TEST(range_children_nested_and_ordered),
+    NAOS_ADD_TEST(range_spans_point_to_source_bytes)
 )
