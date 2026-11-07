@@ -627,8 +627,12 @@ NAOS_TEST(front_matter_collect_invalid_key_path_fails)
         if (diag->severity == MND_SEVERITY_ERROR)
         {
             errors++;
-            /* 上流の診断をそのまま通し、out of memory を補わない */
+            /* 上流のメッセージをそのまま通し、out of memory を補わない */
             NAOS_CHECK_STR_EQ("invalid key path \"a..b\"", diag->message);
+            /* 上流は path を持たないので、走査の path を添える。位置は不明なので 0（7.6） */
+            NAOS_REQUIRE_TRUE(diag->path != NULL);
+            NAOS_CHECK_STR_EQ("test.md", diag->path);
+            NAOS_CHECK_UINT_EQ(0, diag->line);
         }
     }
     NAOS_CHECK_UINT_EQ(1, errors);

@@ -108,3 +108,4 @@
 - 4.3: 構造の検査の警告 `translation line %zu` は 1 起点（`mnd_tu_check_structure` の 0 起点の行番号 + 1）。`mnd_tu_extract` で作ったカタログには msgstr の要素がないので、msgstr = msgid のカタログを作るテストは要素を自分で足す。
 - 5.2: 互換性テストは po の `MONDE_MSGFMT` のキャッシュ変数を再利用し、`msgfmt --check -o <pot>.mo` で検査する（po と同じく `/dev/null` を使わない）。キーパスは CTest の `;` のエスケープを避けるためカンマ区切りでスクリプトに渡す。msgfmt がない経路の確認には `CMAKE_IGNORE_PATH` を使う（`-DMONDE_MSGFMT=...-NOTFOUND` では再検索される）。
 - 5.3: 診断の監査で 7.6 を満たさないのは、上流の `mnd_yaml_path_find` が出す `invalid key path "%s"`（と照合中の `out of memory`）の path が NULL になる件だけ（2.3 のメモを参照）。人の判断を待つ未解決事項として残す。
+- 最終検証: 2.3 / 5.3 の 7.6 の未解決事項は、`tu_front_matter.c` の `fm_path_find` で解決した。照合の診断を一時的な一覧で受け取り、公開 API の `mnd_diag_add` で path を添えて移す（foundation の内部には依存しない）。上流は変更しない。design.md の「走査の規則 / フロントマター」に追記した。

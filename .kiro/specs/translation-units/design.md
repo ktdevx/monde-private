@@ -177,7 +177,7 @@ graph TB
 
 ### フロントマター（1.8〜1.12、2.6、2.7）
 - `mnd_yaml_front_matter_detect` の結果が `present == false`、または `front_matter_key_count == 0` なら、YAML は解析せず、`body_start` だけを使う（1.9）。
-- キーパスは `options->front_matter_keys[i]` を**そのまま** `mnd_yaml_path_find` に渡す（分割や正規化はしない）。不正なキーパスのエラーは上流の診断（`invalid key path "%s"`）をそのまま返して失敗する（7.3）。
+- キーパスは `options->front_matter_keys[i]` を**そのまま** `mnd_yaml_path_find` に渡す（分割や正規化はしない）。不正なキーパスのエラーは上流の診断（`invalid key path "%s"`）をそのまま返して失敗する（7.3）。ただし `mnd_yaml_path_find` は path を持たないため、照合の診断は一時的な一覧で受け取り、重大度・行番号・メッセージは変えずに、path が NULL のものには走査の path を添えて移す（7.6）。
 - 照合の結果の各ノードについて: `kind != MND_YAML_SCALAR` なら警告 `front matter key "%s" is not a scalar` を出して飛ばす（1.11）。該当なし（`count == 0`）は診断なし（1.10）。
 - スカラーの論理値 `value[0..value_len)` から、先頭の `\n` の並びと末尾の `\n` の並びを取り除き、それぞれの数を `lead_newlines`、`trail_newlines` に記録する（2.7）。残りが空、または空白（空白・タブ・改行）だけなら、診断なしで飛ばす（1.12）。
 - 同じノードが複数のキーパスに一致したら 1 つにする（最初のキーパスのラベルを使う）。セグメントの `span` は `scalar->span`、`line` は `scalar->start_line`、`kind` は `front matter: <キーパス>`。
@@ -291,7 +291,7 @@ StructureCheck は Markdown のセグメントの訳文（短絡しなかった�
 
 ## メッセージ
 
-本部品が自分で追加する診断。上流の診断（`invalid UTF-8 sequence`、`invalid key path "%s"`、YAML の構文エラー、`out of memory` など）はそのまま通す（7.1〜7.3、7.6）。
+本部品が自分で追加する診断。上流の診断（`invalid UTF-8 sequence`、`invalid key path "%s"`、YAML の構文エラー、`out of memory` など）はそのまま通す（7.1〜7.3、7.6）。ただし path を持たない `mnd_yaml_path_find` の診断には、メッセージを変えずに走査の path を添える（「走査の規則 / フロントマター」）。
 
 | 重大度 | メッセージ | path / line | 要件 |
 |--------|-----------|-------------|------|

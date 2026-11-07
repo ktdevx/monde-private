@@ -114,6 +114,33 @@ static void fm_sort_segments(mnd_tu_doc_t *doc, size_t first)
     }
 }
 
+/*
+ * mnd_yaml_path_find を呼ぶ。上流の照合は path を持たないので、診断は一時的な一覧で受け取り、
+ * 重大度・行番号・メッセージはそのままに、path が NULL のものには走査の path を添えて diags に移す（7.6）
+ */
+static bool fm_path_find(const mnd_tu_doc_t *doc, const char *key, size_t key_len,
+                         mnd_yaml_matches_t *matches, mnd_diag_list_t *diags)
+{
+    mnd_diag_list_t local = MND_DIAG_LIST_INIT;
+    bool ok = mnd_yaml_path_find(doc->yaml, key, key_len, matches, &local);
+    size_t i;
+
+    for (i = 0; i < mnd_diag_list_count(&local); i++)
+    {
+        const mnd_diag_t *diag = mnd_diag_list_at(&local, i);
+        const char *path = (diag->path != NULL) ? diag->path : doc->path;
+
+        mnd_diag_add(diags, diag->severity, path, diag->line, "%s", diag->message);
+    }
+    /* 一時的な一覧でメモリ不足により記録できなかった診断があれば、そのことも引き継ぐ */
+    if (local.dropped)
+    {
+        diags->dropped = true;
+    }
+    mnd_diag_list_free(&local);
+    return ok;
+}
+
 bool mnd_tu_collect_front_matter(mnd_tu_doc_t *doc, const char *const *keys, size_t key_count,
                                  mnd_diag_list_t *diags)
 {
@@ -129,7 +156,7 @@ bool mnd_tu_collect_front_matter(mnd_tu_doc_t *doc, const char *const *keys, siz
         size_t i;
 
         /* キーパスはそのまま渡す。不正なキーパスとメモリ不足は上流がエラーを追加する（7.3） */
-        if (!mnd_yaml_path_find(doc->yaml, key, key_len, &matches, diags))
+        if (!fm_path_find(doc, key, key_len, &matches, diags))
         {
             return false;
         }
