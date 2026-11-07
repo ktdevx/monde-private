@@ -1,0 +1,65 @@
+# Requirements Document
+
+## Project Description (Input)
+## Problem
+Monde の中核は 2 つの処理である。1 つは、Markdown とフロントマターから翻訳単位（msgid）を抽出すること。もう 1 つは、翻訳ファイルの訳文を原文の正しい位置に差し戻して、翻訳済み Markdown を作ることである。この 2 つの処理は対になっている。抽出の規則と差し戻しの規則が食い違うと、ラウンドトリップが成立せず、書式も壊れる。
+
+### Current State
+この処理はまだない。markdown-parser、yaml-front-matter、po-format が部品として提供される予定である。
+
+### Desired Outcome
+- 原文から、ブロック単位の翻訳単位の列（msgid、参照 `#: file.md:行番号`、要素の種類を示す `#.`）を生成できる。重複する msgid は 1 つにまとめる。
+- 原文と翻訳の対応表から、翻訳対象の範囲だけを置き換えた Markdown を生成できる。
+- 翻訳がない場合は、原文とバイト単位で同じ出力になる。
+
+### Approach
+- 抽出と差し戻しは、共通の「翻訳セグメント」モデルの上に構築する。セグメントは、構文木やフロントマターから取り出した、原文範囲と論理テキストの組である。
+- 抽出では、セグメントの論理テキストを msgid にする。複数行のブロックでは、行頭のプレフィックスを除いて正規化する。
+- 差し戻しでは、訳文を原文の範囲に戻す。複数行の場合は、各行のプレフィックス（引用の `>`、リストのインデントなど）を復元する。
+
+### Scope
+- **In**:
+  - 翻訳対象の判定: 見出し、段落、リスト項目内の段落、引用内の段落、画像の alt、指定したフロントマターのキー
+  - 翻訳対象外の判定: コードブロック、HTML ブロック、URL
+  - msgid の正規化（インライン記法を含める、行頭のプレフィックスを除く、改行の扱い）
+  - 重複の統合、参照コメントと要素の種類を示すコメントの生成
+  - 訳文の差し戻しと、プレフィックス・改行コード（LF / CRLF）の復元
+  - 未翻訳・fuzzy のエントリは原文を使う（fuzzy を採用するかは呼び出し側が指定する）
+  - 翻訳率の集計に必要な情報の提供
+- **Out**:
+  - ファイルの入出力と CLI（monde-cli）
+  - PO の書式とマージ（po-format、po-merge）
+  - Markdown と YAML の構文解析そのもの
+
+### Boundary Candidates
+- 翻訳セグメントのモデル
+- 抽出器（構文木とフロントマター → セグメント → PO エントリ）
+- 再構成器（原文 + 訳文の対応表 → 出力バイト列）
+
+### Out of Boundary
+- 同一文を分けて翻訳するオプション（将来の拡張。msgctxt を使えるようにセグメントの識別を設計しておく）
+- GFM の表のセルなど、方言固有の翻訳単位（次の版）
+
+### Upstream / Downstream
+- **Upstream**: po-format、markdown-parser、yaml-front-matter
+- **Downstream**: monde-cli
+
+### Existing Spec Touchpoints
+- **Extends**: なし
+- **Adjacent**: markdown-parser（ソース範囲の表現）、yaml-front-matter（値の書き戻しの整形）
+
+### Constraints
+- 翻訳対象以外は原文をバイト単位で保持する（Q4-1）。
+- インライン記法は msgid に含める（Q2-1）。一方で、URL は翻訳対象外、画像の alt は翻訳対象とする（Q2-2）。この 2 つをどう両立するかは要件で確定する。候補は、URL を msgid にそのまま残す案と、プレースホルダにする案、alt を別の msgid にする案である。
+- 訳文に改行や Markdown として意味を持つ文字が含まれていても、ブロック構造が壊れないようにする方針を、設計時に決める。
+- yaml-front-matter の部品の前提（yaml-front-matter の design.md の「改訂」の節を参照）:
+  - 整形の出力は範囲にそのまま挿入する。空の範囲（`key:`、`{k}`）への出力は区切り（`" "` または `": "`）から始まるので、区切りを自分で付けない。
+  - ブロックスカラーの範囲は、内容の行があればヘッダの行のコメントを含む。
+  - `end_line` は `span.end` の位置の行（markdown-parser の `span.end - 1` の行と意味が違う）。
+  - フロントマターの検出結果は行番号を持たない。参照コメントの行番号は `mnd_source_line_of` で求める。
+  - キーパスの照合の結果は文書の確保関数から確保されるので、`mnd_yaml_matches_free` を `mnd_yaml_doc_free` より前に呼ぶ。
+
+## Requirements
+<!-- Will be generated in /kiro-spec-requirements phase -->
+
+
