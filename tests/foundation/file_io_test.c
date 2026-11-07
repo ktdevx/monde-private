@@ -558,6 +558,228 @@ NAOS_TEST(invalid_utf8_path_fails_with_one_diagnostic)
     mnd_diag_list_free(&diags);
 }
 
+/* テスト用にストリームを開く（テストコードのみ fopen を直接使う） */
+static FILE *open_stream(const char *path, const char *mode)
+{
+    return fopen(path, mode);
+}
+
+NAOS_TEST(read_stream_strips_bom_and_reports_it)
+{
+    static const char path[] = WORK_PATH("read_stream_bom.txt");
+    static const char bytes[] = "\xEF\xBB\xBF" "abc\r\n";
+    mnd_buf_t content = MND_BUF_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    bool had_bom = false;
+    FILE *fp;
+
+    NAOS_REQUIRE_TRUE(WRITE_LITERAL(path, bytes));
+    fp = open_stream(path, "rb");
+    NAOS_REQUIRE_NOT_NULL(fp);
+    NAOS_CHECK_TRUE(mnd_file_read_stream(fp, "input", &content, &had_bom, &diags));
+    NAOS_CHECK_TRUE(had_bom);
+    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
+    NAOS_REQUIRE_UINT_EQ(5, content.len);
+    NAOS_CHECK_MEM_EQ("abc\r\n", 5, content.data, content.len);
+    /* ストリーム版は閉じない。呼び出し側が閉じられる */
+    NAOS_CHECK_INT_EQ(0, fclose(fp));
+
+    mnd_buf_free(&content);
+    mnd_diag_list_free(&diags);
+}
+
+NAOS_TEST(read_stream_without_bom_keeps_content)
+{
+    static const char path[] = WORK_PATH("read_stream_no_bom.txt");
+    /* 先頭以外の EF BB BF は残り、CRLF・NUL もそのまま */
+    static const char bytes[] = "a\xEF\xBB\xBF" "b\r\nc\0d";
+    mnd_buf_t content = MND_BUF_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    bool had_bom = true;
+    FILE *fp;
+
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&content, "stale"));
+    NAOS_REQUIRE_TRUE(WRITE_LITERAL(path, bytes));
+    fp = open_stream(path, "rb");
+    NAOS_REQUIRE_NOT_NULL(fp);
+    NAOS_CHECK_TRUE(mnd_file_read_stream(fp, "input", &content, &had_bom, &diags));
+    NAOS_CHECK_FALSE(had_bom);
+    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
+    NAOS_REQUIRE_UINT_EQ(sizeof(bytes) - 1, content.len);
+    NAOS_CHECK_MEM_EQ(bytes, sizeof(bytes) - 1, content.data, content.len);
+    NAOS_CHECK_INT_EQ('\0', content.data[content.len]);
+    fclose(fp);
+
+    mnd_buf_free(&content);
+    mnd_diag_list_free(&diags);
+}
+
+NAOS_TEST(read_stream_empty_succeeds_with_length_zero)
+{
+    static const char path[] = WORK_PATH("read_stream_empty.txt");
+    mnd_buf_t content = MND_BUF_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    bool had_bom = true;
+    FILE *fp;
+
+    NAOS_REQUIRE_TRUE(write_bytes(path, NULL, 0));
+    fp = open_stream(path, "rb");
+    NAOS_REQUIRE_NOT_NULL(fp);
+    NAOS_CHECK_TRUE(mnd_file_read_stream(fp, NULL, &content, &had_bom, &diags));
+    NAOS_CHECK_FALSE(had_bom);
+    NAOS_CHECK_UINT_EQ(0, content.len);
+    NAOS_CHECK_STR_EQ("", mnd_buf_cstr(&content));
+    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
+    fclose(fp);
+
+    mnd_buf_free(&content);
+    mnd_diag_list_free(&diags);
+}
+
+NAOS_TEST(read_stream_invalid_utf8_reports_name_offset_and_line)
+{
+    static const char path[] = WORK_PATH("read_stream_invalid.txt");
+    /* BOM 除去後の内容で 3 行目の "e" の後（オフセット 7）に不正なバイト C0 を置く */
+    static const char bytes[] = "\xEF\xBB\xBF" "ab\ncd\ne\xC0" "f\n";
+    mnd_buf_t content = MND_BUF_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    const mnd_diag_t *d;
+    bool had_bom = true;
+    FILE *fp;
+
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&content, "stale"));
+    NAOS_REQUIRE_TRUE(WRITE_LITERAL(path, bytes));
+    fp = open_stream(path, "rb");
+    NAOS_REQUIRE_NOT_NULL(fp);
+    NAOS_CHECK_FALSE(mnd_file_read_stream(fp, "<stdin>", &content, &had_bom, &diags));
+    NAOS_CHECK_FALSE(had_bom);
+    NAOS_CHECK_UINT_EQ(0, content.len);
+    NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&diags));
+
+    d = mnd_diag_list_at(&diags, 0);
+    NAOS_CHECK_INT_EQ(MND_SEVERITY_ERROR, d->severity);
+    NAOS_REQUIRE_NOT_NULL(d->path);
+    NAOS_CHECK_STR_EQ("<stdin>", d->path);
+    NAOS_CHECK_UINT_EQ(3, d->line);
+    NAOS_CHECK_STR_EQ("invalid UTF-8 byte sequence at byte offset 7", d->message);
+    fclose(fp);
+
+    mnd_buf_free(&content);
+    mnd_diag_list_free(&diags);
+}
+
+NAOS_TEST(read_stream_error_reports_name_without_path)
+{
+    static const char path[] = WORK_PATH("read_stream_write_only.txt");
+    mnd_buf_t content = MND_BUF_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    const mnd_diag_t *d;
+    bool had_bom = true;
+    FILE *fp;
+
+    /* 書き込み専用で開いたストリームからの読み込みは失敗する */
+    NAOS_REQUIRE_TRUE(WRITE_LITERAL(path, "abc"));
+    fp = open_stream(path, "ab");
+    NAOS_REQUIRE_NOT_NULL(fp);
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&content, "stale"));
+    NAOS_CHECK_FALSE(mnd_file_read_stream(fp, NULL, &content, &had_bom, &diags));
+    NAOS_CHECK_FALSE(had_bom);
+    NAOS_CHECK_UINT_EQ(0, content.len);
+    NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&diags));
+
+    d = mnd_diag_list_at(&diags, 0);
+    NAOS_CHECK_INT_EQ(MND_SEVERITY_ERROR, d->severity);
+    NAOS_CHECK_NULL(d->path);
+    NAOS_CHECK_UINT_EQ(0, d->line);
+    NAOS_CHECK_NOT_NULL(strstr(d->message, "cannot read file: "));
+    fclose(fp);
+
+    mnd_buf_free(&content);
+    mnd_diag_list_free(&diags);
+}
+
+NAOS_TEST(write_stream_with_bom_is_flushed_before_close)
+{
+    static const char path[] = WORK_PATH("write_stream_bom.txt");
+    static const char expected[] = "\xEF\xBB\xBF" "a\r\nb";
+    mnd_buf_t raw = MND_BUF_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    FILE *fp;
+
+    fp = open_stream(path, "wb");
+    NAOS_REQUIRE_NOT_NULL(fp);
+    NAOS_CHECK_TRUE(mnd_file_write_stream(fp, "output", "a\r\nb", 4, true, &diags));
+    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
+
+    /* 閉じる前に別の読み込みで内容が見える（fflush 済み） */
+    NAOS_REQUIRE_TRUE(read_raw(path, &raw));
+    NAOS_REQUIRE_UINT_EQ(sizeof(expected) - 1, raw.len);
+    NAOS_CHECK_MEM_EQ(expected, sizeof(expected) - 1, raw.data, raw.len);
+    NAOS_CHECK_INT_EQ(0, fclose(fp));
+
+    mnd_buf_free(&raw);
+    mnd_diag_list_free(&diags);
+}
+
+NAOS_TEST(write_stream_without_bom_writes_content_only)
+{
+    static const char path[] = WORK_PATH("write_stream_no_bom.txt");
+    static const char bytes[] = "x\r\ny\0z\n";
+    mnd_buf_t raw = MND_BUF_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    FILE *fp;
+
+    fp = open_stream(path, "wb");
+    NAOS_REQUIRE_NOT_NULL(fp);
+    NAOS_CHECK_TRUE(mnd_file_write_stream(fp, NULL, bytes, sizeof(bytes) - 1, false, &diags));
+    /* 2 回目の呼び出しは続きに書く */
+    NAOS_CHECK_TRUE(mnd_file_write_stream(fp, NULL, NULL, 0, false, &diags));
+    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
+    NAOS_REQUIRE_TRUE(read_raw(path, &raw));
+    NAOS_REQUIRE_UINT_EQ(sizeof(bytes) - 1, raw.len);
+    NAOS_CHECK_MEM_EQ(bytes, sizeof(bytes) - 1, raw.data, raw.len);
+    NAOS_CHECK_INT_EQ(0, fclose(fp));
+
+    mnd_buf_free(&raw);
+    mnd_diag_list_free(&diags);
+}
+
+NAOS_TEST(write_stream_failure_reports_name)
+{
+    static const char path[] = WORK_PATH("write_stream_read_only.txt");
+    mnd_buf_t raw = MND_BUF_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    const mnd_diag_t *d;
+    FILE *fp;
+
+    /*
+     * 読み込み専用で開いたストリームへの書き込みは、どの環境でも定義された失敗になる
+     * （閉じたストリームへの書き込みは未定義動作なので使わない）
+     */
+    NAOS_REQUIRE_TRUE(WRITE_LITERAL(path, "keep"));
+    fp = open_stream(path, "rb");
+    NAOS_REQUIRE_NOT_NULL(fp);
+    NAOS_CHECK_FALSE(mnd_file_write_stream(fp, "<stdout>", "abc", 3, true, &diags));
+    NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&diags));
+
+    d = mnd_diag_list_at(&diags, 0);
+    NAOS_CHECK_INT_EQ(MND_SEVERITY_ERROR, d->severity);
+    NAOS_REQUIRE_NOT_NULL(d->path);
+    NAOS_CHECK_STR_EQ("<stdout>", d->path);
+    NAOS_CHECK_UINT_EQ(0, d->line);
+    NAOS_CHECK_NOT_NULL(strstr(d->message, "cannot write file: "));
+    NAOS_CHECK_UINT_GT(strlen(d->message), strlen("cannot write file: "));
+    NAOS_CHECK_TRUE(mnd_diag_list_has_error(&diags));
+    fclose(fp);
+
+    /* 元の内容は変わらない */
+    NAOS_REQUIRE_TRUE(read_raw(path, &raw));
+    NAOS_CHECK_MEM_EQ("keep", 4, raw.data, raw.len);
+
+    mnd_buf_free(&raw);
+    mnd_diag_list_free(&diags);
+}
+
 NAOS_SUITE(file_io,
     NAOS_ADD_TEST(read_keeps_crlf_mixed_lf_and_nul_bytes),
     NAOS_ADD_TEST(read_strips_bom_and_reports_it),
@@ -579,5 +801,13 @@ NAOS_SUITE(file_io,
     NAOS_ADD_TEST(write_empty_content_creates_empty_or_bom_only_file),
     NAOS_ADD_TEST(write_into_missing_directory_reports_target_path),
     NAOS_ADD_TEST(non_ascii_directory_and_file_name_round_trip),
-    NAOS_ADD_TEST(invalid_utf8_path_fails_with_one_diagnostic)
+    NAOS_ADD_TEST(invalid_utf8_path_fails_with_one_diagnostic),
+    NAOS_ADD_TEST(read_stream_strips_bom_and_reports_it),
+    NAOS_ADD_TEST(read_stream_without_bom_keeps_content),
+    NAOS_ADD_TEST(read_stream_empty_succeeds_with_length_zero),
+    NAOS_ADD_TEST(read_stream_invalid_utf8_reports_name_offset_and_line),
+    NAOS_ADD_TEST(read_stream_error_reports_name_without_path),
+    NAOS_ADD_TEST(write_stream_with_bom_is_flushed_before_close),
+    NAOS_ADD_TEST(write_stream_without_bom_writes_content_only),
+    NAOS_ADD_TEST(write_stream_failure_reports_name)
 )

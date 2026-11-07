@@ -596,6 +596,7 @@ bool mnd_file_write(const char *path, const char *data, size_t len, bool add_bom
 - Integration: 書き込みはアトミックではない。途中で失敗した場合、部分的に書かれたファイルが残りうる（要件外。必要になれば一時ファイル + 置換を追加する）。
 - Validation: `fclose` の失敗も書き込み失敗として扱う（バッファされた書き込みのエラーを見落とさないため）。
 - Risks: MinGW-w64 の `-std=c99` で `_wfopen` の宣言が隠れる可能性（research.md 参照）。
+- 追記（monde-cli）: 標準入出力を扱うため、ストリーム版 `mnd_file_read_stream(FILE *fp, const char *name, ...)` / `mnd_file_write_stream(FILE *fp, const char *name, ...)` を追加した。読み込みは BOM 除去と UTF-8 検証まで、書き込みは `fflush` までを行い、`fclose` はしない（所有権は呼び出し側）。診断の `path` には `name`（NULL 可）を入れる。`mnd_file_read` / `mnd_file_write` は開く → ストリーム版 → 閉じるの形で実装し、メッセージと挙動は上記のまま。詳細は monde-cli の設計書（foundation stream I/O）を参照。
 
 ## Error Handling
 
