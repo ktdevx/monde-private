@@ -8,7 +8,7 @@
   - 完了時: foundation のテストが既存のケースを含めてすべて合格し、ストリーム版の関数が `foundation/file_io.h` から使える
   - _Requirements: 2.4, 3.1, 3.8_
 
-- [ ] 1.2 cli モジュール、実行ファイル monde、テスト実行ファイルの雛形を作り、構成・ビルド・テストの手順を通す
+- [x] 1.2 cli モジュール、実行ファイル monde、テスト実行ファイルの雛形を作り、構成・ビルド・テストの手順を通す
   - 設計の File Structure Plan のとおり `src/cli/` の製品のソースとヘッダをすべて登録する（公開ヘッダに環境構造体・入口・終了コードの定数、内部ヘッダに文脈の型と各部品の宣言を書き、関数の本体は「診断を 1 つ追加して失敗を返す」仮の実装にする）。モジュールは cli_args、po_merge、tu に依存する
   - `src/monde/` に実行ファイルのターゲットを作り、バージョンをビルド構成（`project` の VERSION）からコンパイル定義で渡す。`main` は仮の環境で入口を呼ぶだけにする
   - `tests/cli/` にテスト実行ファイルを、設計の 10 スイート（run、io、report、time、language、extract、init、update、translate、roundtrip）を登録するエントリポイントとスイートごとのファイルで作り、各スイートに雛形のテストを 1 件置く。テスト用の補助（1.3 が本体を書く）と `../markdown/spec_reader.c`（5.1 が使う）もテストのソースとしてここで登録する。作業ディレクトリと spec.txt のパスをコンパイル定義で渡し、作業ディレクトリは構成時に作る
@@ -148,3 +148,5 @@
 
 ## Implementation Notes
 - 1.1: 書き込みの失敗のテストは、閉じたストリームへの `fwrite` が未定義動作のため、`"rb"` で開いたストリームへの書き込みで起こす（design.md の「閉じたストリーム」の記述は 5.5 で直す）
+- 1.2: `ctest -L cli` は正規表現のため cli_args のテストも含む。cli だけを実行するには `ctest -L '^cli$'` を使う
+- 1.2: ハンドラの型は `cli_commands.h` で `struct mnd_cli_ctx` を前方宣言して定義する（`cli_internal.h` を include しない）。`mnd_cli_program(version)` と `mnd_cli_report_usage_error(err, program, command, diags)` の形は 1.2 で決めた
