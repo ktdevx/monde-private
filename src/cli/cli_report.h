@@ -15,7 +15,11 @@
 #include <stddef.h>
 #include <stdio.h>
 
-/* 診断を順にすべて書く。dropped なら最後に "monde: error: some diagnostics were dropped (out of memory)" */
+/*
+ * 診断を順にすべて書く。"<path>:<line>: <severity>: <message>"、行がなければ "<path>: <severity>: <message>"、
+ * パスがなければ "monde: <severity>: <message>"（<severity> は error / warning）。
+ * dropped なら最後に "monde: error: some diagnostics were dropped (out of memory)"
+ */
 void mnd_cli_report_diags(FILE *err, const mnd_diag_list_t *diags);
 
 /*

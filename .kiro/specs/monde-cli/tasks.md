@@ -40,7 +40,7 @@
   - _Boundary: IO_
   - _Requirements: 2.3, 2.4, 2.5, 2.6, 2.9, 2.10, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7_
 
-- [ ] 2.3 (P) 診断と統計の表示を実装し、単体テストを書く
+- [x] 2.3 (P) 診断と統計の表示を実装し、単体テストを書く
   - 設計の「メッセージと書式」の表のとおり、診断の 3 形式（パスと行、パスのみ、どちらもなし）、`dropped` のときの固定のメッセージ、4 サブコマンドの統計、`init` の言語の出どころ、合計 0 のときの文面を実装する
   - 翻訳率は整数演算で 0.1% 単位に四捨五入し、fuzzy を翻訳済みに数えない
   - 統計と情報は `quiet` で抑止し、診断は抑止しない
@@ -152,3 +152,4 @@
 - 1.2: ハンドラの型は `cli_commands.h` で `struct mnd_cli_ctx` を前方宣言して定義する（`cli_internal.h` を include しない）。`mnd_cli_program(version)` と `mnd_cli_report_usage_error(err, program, command, diags)` の形は 1.2 で決めた
 - 1.3: テストの補助 `test_cli_run(name, ...)` は作業ディレクトリに `<name>.in/.out/.err` を作る。CTest は並列に動くため、`name` はテストごとに一意にする（例: テスト名を含める）。getenv の表と固定時刻はファイル内の静的な状態なので、使うテストは自分で設定する
 - 2.1: `--front-matter-keys` の値の名前は設計の `KEYS` ではなく `KEY`（ヘルプは `<KEY>[,<KEY>...]`、要件 4.5・7.4 の書き方に合わせた。設計の表は 5.5 で直す）。既定値（`PACKAGE VERSION`、環境変数の言語）はヘルプの文面にだけ書き、`default_value` は NULL のまま（ハンドラが省略を判別できるように）
+- 2.3: 行なし・パスなしの診断の形は警告にも広げた（`<path>: warning: ...`、`monde: warning: ...`。設計の表は error のみなので 5.5 で追記する）。使い方のエラーはパスと行を無視して `monde: <severity>: <message>` の形で出す。`mnd_cli_report_init*` の `language` / `variable` は NULL を渡さないこと
