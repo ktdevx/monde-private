@@ -8,6 +8,9 @@
  * 再生成: python3 tools/gen_md_ucd.py DerivedGeneralCategory.txt CaseFolding.txt \
  *     -o src/markdown/md_unicode_tables.c
  *
+ * THIRD_PARTY_NOTICES: unicode-ucd
+ *   表示の索引: リポジトリの THIRD_PARTY_NOTICES と licenses/unicode-ucd.txt
+ *
  * 表の内容:
  *   mnd_md_unicode_punct: 一般カテゴリが P（Pc、Pd、Ps、Pe、Pi、Pf、Po）または
  *     S（Sm、Sc、Sk、So）の範囲

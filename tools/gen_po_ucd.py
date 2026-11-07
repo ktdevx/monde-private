@@ -19,6 +19,9 @@ import sys
 UNICODE_VERSION = "15.0.0"
 MAX_CP = 0x10FFFF
 
+# THIRD_PARTY_NOTICES の素材の ID（licenses/<ID>.txt に対応する）
+NOTICES_ID = "unicode-ucd"
+
 # po_internal.h の mnd_po_lb_t にある名前（XX は表に載せない）
 LB_CLASSES = (
     "OP", "CL", "CP", "QU", "GL", "NS", "EX", "SY", "IS", "PR", "PO", "NU",
@@ -208,6 +211,9 @@ def generate(lb_path, eaw_path, gc_path):
     out.append(" * 再生成: python3 tools/gen_po_ucd.py LineBreak.txt EastAsianWidth.txt"
                " DerivedGeneralCategory.txt \\")
     out.append(" *     -o src/po/po_ucd_tables.c")
+    out.append(" *")
+    out.append(" * THIRD_PARTY_NOTICES: %s" % NOTICES_ID)
+    out.append(" *   表示の索引: リポジトリの THIRD_PARTY_NOTICES と licenses/%s.txt" % NOTICES_ID)
     out.append(" *")
     out.append(" * 表の内容:")
     out.append(" *   mnd_po_ucd_lb: 解決前の行分割クラス（XX 以外）。明示されないコードポイントには")

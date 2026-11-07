@@ -128,7 +128,7 @@
   - _Boundary: THIRD_PARTY_NOTICES, licenses/, .gitattributes_
   - _Requirements: 10.1, 10.2, 10.3, 10.6_
 
-- [ ] 6.2 生成スクリプトと生成したファイルに ID の行を加える
+- [x] 6.2 生成スクリプトと生成したファイルに ID の行を加える
   - 3 つの生成スクリプトが出力の先頭のコメントに `THIRD_PARTY_NOTICES: <ID>` の行を出すようにし、`gen_md_entities.py` はあわせて WHATWG の著作権表示と BSD 3-Clause の全文を出すようにする
   - 生成元のデータ（UCD 15.0.0 のデータファイルと `entities.json`）から 3 つのファイルを再生成し、差分がコメントだけであることを確かめる
   - 上流（markdown-parser、po-format）のファイルへの変更であり、表の内容と振る舞いは変えない
