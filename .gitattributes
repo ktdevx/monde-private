@@ -1,2 +1,7 @@
 tests/data/commonmark/spec.txt -text
 tests/cli/data/** -text
+README.md text eol=lf
+docs/**/*.md text eol=lf
+docs/examples/* text eol=lf
+THIRD_PARTY_NOTICES text eol=lf
+licenses/* text eol=lf

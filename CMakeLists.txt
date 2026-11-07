@@ -19,6 +19,8 @@ include(CTest)
 
 add_subdirectory(src)
 
+include(MondePackage)
+
 if(BUILD_TESTING)
   include(MondeNaos)
   add_subdirectory(tests)

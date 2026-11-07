@@ -19,6 +19,9 @@ import sys
 UNICODE_VERSION = "15.0.0"
 MAX_CP = 0x10FFFF
 
+# THIRD_PARTY_NOTICES の素材の ID（licenses/<ID>.txt に対応する）
+NOTICES_ID = "unicode-ucd"
+
 # md_unicode.h の MND_MD_UNICODE_FOLD_MAX
 FOLD_MAX = 6
 
@@ -191,6 +194,9 @@ def generate(gc_path, cf_path):
     out.append(" *   https://www.unicode.org/Public/%s/ucd/CaseFolding.txt" % UNICODE_VERSION)
     out.append(" * 再生成: python3 tools/gen_md_ucd.py DerivedGeneralCategory.txt CaseFolding.txt \\")
     out.append(" *     -o src/markdown/md_unicode_tables.c")
+    out.append(" *")
+    out.append(" * THIRD_PARTY_NOTICES: %s" % NOTICES_ID)
+    out.append(" *   表示の索引: リポジトリの THIRD_PARTY_NOTICES と licenses/%s.txt" % NOTICES_ID)
     out.append(" *")
     out.append(" * 表の内容:")
     out.append(" *   mnd_md_unicode_punct: 一般カテゴリが P（Pc、Pd、Ps、Pe、Pi、Pf、Po）または")

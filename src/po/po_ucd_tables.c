@@ -9,6 +9,9 @@
  * 再生成: python3 tools/gen_po_ucd.py LineBreak.txt EastAsianWidth.txt DerivedGeneralCategory.txt \
  *     -o src/po/po_ucd_tables.c
  *
+ * THIRD_PARTY_NOTICES: unicode-ucd
+ *   表示の索引: リポジトリの THIRD_PARTY_NOTICES と licenses/unicode-ucd.txt
+ *
  * 表の内容:
  *   mnd_po_ucd_lb: 解決前の行分割クラス（XX 以外）。明示されないコードポイントには
  *     LineBreak.txt の既定値（ID、PR）を入れてある

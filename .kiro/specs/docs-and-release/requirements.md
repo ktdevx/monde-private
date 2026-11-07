@@ -27,6 +27,12 @@ docs-and-release は、Monde の初版を利用者に届けるための 2 つの
 - アーカイブは Windows が zip、macOS と Linux が tar.gz。同梱物は実行ファイル、LICENSE、README。各アーカイブの SHA-256 をまとめたチェックサムのファイルも Release に添付する。
 - 利用マニュアルは `docs/` 配下に章ごとの複数ファイルで置く。
 
+### 改訂（2026-11-07）: 実行ファイルに取り込んだ素材の表示
+- 実装後の確認で、実行ファイルに Unicode Character Database 15.0.0 から生成した表（Unicode License V3）と、WHATWG の `entities.json` から生成した表（ソースコードに取り込んだ部分は BSD 3-Clause）が組み込まれているのに、配布物にその表示がないことが分かった。どちらのライセンスも、バイナリの配布物に著作権表示とライセンスの文面を添えることを求める。
+- 依存は今後増える予定のため、表示は 1 ファイルにまとめず、索引 `THIRD_PARTY_NOTICES` と、素材ごとの `licenses/<ID>.txt` に分ける（Apache の `LICENSE` からの参照と `licenses/`、PEP 639 の `licenses/` と同じ流儀）。ライセンスごとではなく素材ごとに分けるのは、MIT や BSD はライセンスの本文に著作権者が入り、素材ごとに文面が異なるため。
+- これに伴い 1.7、8.3、8.4 を改め、要件 10 を加えた。配布物の同梱物は 3 つから、`THIRD_PARTY_NOTICES` と `licenses/` 配下を加えたものになる。
+- 「実行時の外部依存はゼロ」（steering）は変えない。実行時の依存（共有ライブラリなど）と、バイナリに取り込む素材を区別し、後者の扱いを steering に明記する。
+
 ## Boundary Context
 - **In scope**:
   - README.md の全面的な更新（概要、インストール、クイックスタート、ソースからのビルド手順、ドキュメントへの案内、ライセンスとサードパーティの表記）
@@ -59,7 +65,7 @@ docs-and-release は、Monde の初版を利用者に届けるための 2 つの
 4. The README shall クイックスタートとして、新規翻訳のフロー（`extract` → `init` → 翻訳 → `translate`）を、実際に実行できるコマンド列と各段階の入出力ファイルとともに示す。
 5. The README shall 利用マニュアルの各章へのリンクを示し、詳しい説明をマニュアルに委ねる。
 6. The README shall ライセンスが MIT License、著作権者が The Monde Authors であることを示す。
-7. The README shall Monde の製品に含まれないサードパーティの資料（CommonMark spec の `spec.txt` は CC-BY-SA 4.0 でテスト専用、テストフレームワークの Naos はテスト専用）について、名称、用途、ライセンス、製品の実行ファイルと配布物に含まれないことを示す。
+7. The README shall サードパーティの資料を、実行ファイルに取り込んでいるもの（Unicode Character Database の表、WHATWG HTML の名前付き文字参照の表など。詳細は `THIRD_PARTY_NOTICES` に委ねる）と、製品に含まれないテスト専用のもの（CommonMark spec の `spec.txt` は CC-BY-SA 4.0、テストフレームワークの Naos）に分けて、名称、用途、ライセンス、配布物に含まれるかどうかを示す。
 8. The README shall 初版の対応範囲（CommonMark 0.31.2 と YAML フロントマター）と、GFM など次の版で対応する予定のものを区別して示す。
 
 ### Requirement 2: 利用マニュアルの構成
@@ -146,8 +152,8 @@ docs-and-release は、Monde の初版を利用者に届けるための 2 つの
 #### Acceptance Criteria
 1. The リリース成果物 shall 各対象について 1 つのアーカイブとし、ファイル名を `monde-X.Y.Z-<os>-<arch>.<ext>` の形式（例: `monde-0.1.0-windows-x64.zip`、`monde-0.1.0-macos-arm64.tar.gz`、`monde-0.1.0-linux-x64.tar.gz`）にする。
 2. The リリース成果物 shall Windows 向けを zip、macOS と Linux 向けを tar.gz とする。
-3. The リリース成果物 shall 各アーカイブに、実行ファイル（Windows は `monde.exe`、それ以外は `monde`）、`LICENSE`、`README.md` の 3 つを含める。
-4. The リリース成果物 shall 各アーカイブを展開したときに、アーカイブ名から拡張子を除いた名前のディレクトリの下に 3 つのファイルが置かれる構成にする。
+3. The リリース成果物 shall 各アーカイブに、実行ファイル（Windows は `monde.exe`、それ以外は `monde`）、`LICENSE`、`README.md`、`THIRD_PARTY_NOTICES` と、`THIRD_PARTY_NOTICES` に列挙した `licenses/` 配下のファイルを含め、それ以外を含めない。
+4. The リリース成果物 shall 各アーカイブを展開したときに、アーカイブ名から拡張子を除いた名前のディレクトリの下に 8.3 のファイルが置かれる構成にする（`licenses/` 配下のファイルはその下の `licenses/` に置く）。
 5. The リリース成果物 shall macOS と Linux 向けの tar.gz で、実行ファイルの実行権限を保持する。
 6. The リリース成果物 shall 実行ファイルが外部の実行時ライブラリに依存せず、展開した先で単体で実行できる。
 7. The リリース成果物 shall `tests/data/commonmark/spec.txt` とその内容、テストの実行ファイル、テストフレームワーク、ビルドの中間生成物を含めない。
@@ -162,3 +168,15 @@ docs-and-release は、Monde の初版を利用者に届けるための 2 つの
 2. The プロジェクト shall README のクイックスタートと翻訳フローの章に書いたコマンド列が、記載どおりに実行して成功することを、リリース前に確認する手順または自動の検査として持つ。
 3. When monde-cli の仕様（サブコマンド、オプション、統計の書式、終了コード）が変わる, the プロジェクト shall 対応する README とマニュアルの記述を同じ変更で更新する方針を、保守者向けの手順に示す。
 4. The プロジェクト shall README と `docs/` 配下のマニュアルのリポジトリ内リンクが切れていないことを、リリース前に確認する手順または自動の検査として持つ。
+
+### Requirement 10: 実行ファイルに取り込んだサードパーティの素材の表示
+**Objective:** As a `monde` を入手して使う利用者と、Monde の保守者, I want 実行ファイルに取り込まれた第三者の素材とそのライセンスが配布物の中で分かり、素材を追加したときに表示の漏れが機械的に止まってほしい, so that 素材のライセンスの条件（表示の義務）を満たしたまま配布でき、依存が増えても漏れない
+
+#### Acceptance Criteria
+1. The プロジェクト shall リポジトリの直下に、実行ファイルに取り込んだ第三者の素材（生成したデータの表、取り込んだソース、静的にリンクするライブラリ）の索引 `THIRD_PARTY_NOTICES` を置き、素材ごとに ID、名称、版、出典、SPDX のライセンス識別子、ライセンスのファイル、取り込んだ先のファイルを、機械で読める決まった書式で示す。
+2. The プロジェクト shall 素材ごとに 1 つ、`licenses/<ID>.txt` に、出典、版、著作権表示と、ライセンスの全文（原文のまま）を置く。
+3. The プロジェクト shall テスト専用で配布物に含まれない素材（`spec.txt`、Naos）を `THIRD_PARTY_NOTICES` に載せない。
+4. The プロジェクト shall 素材から生成したファイルまたは取り込んだファイルの先頭に、`THIRD_PARTY_NOTICES` の ID を示す。
+5. The プロジェクト shall `THIRD_PARTY_NOTICES` と `licenses/` とソースのファイルの対応（索引の各素材のライセンスのファイルと取り込んだ先のファイルが存在すること、`licenses/` に索引にないファイルがないこと、ソースのファイルが示す ID が索引にあること）を、自動の検査として持つ。
+6. The 初版で取り込む素材 shall Unicode Character Database 15.0.0（Unicode License V3、SPDX: `Unicode-3.0`）と、WHATWG HTML の名前付き文字参照の一覧 `entities.json`（ソースコードに取り込んだ部分は BSD 3-Clause、SPDX: `BSD-3-Clause`、著作権表示は `Copyright © WHATWG (Apple, Google, Mozilla, Microsoft)`）とする。
+7. When 実行ファイルに取り込む素材を追加・更新・削除する, the プロジェクト shall 同じ変更で `THIRD_PARTY_NOTICES` と `licenses/` を更新する手順を、保守者向けの手順に示す。

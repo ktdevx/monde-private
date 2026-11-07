@@ -5,10 +5,29 @@
  *   https://html.spec.whatwg.org/entities.json
  * 再生成: python3 tools/gen_md_entities.py entities.json -o src/markdown/md_entity_table.c
  *
+ * THIRD_PARTY_NOTICES: whatwg-entities
+ *   表示の索引: リポジトリの THIRD_PARTY_NOTICES と licenses/whatwg-entities.txt
+ *
  * 表の内容:
  *   entities.json のキーのうち `;` で終わるものだけを、`&` と `;` を除いた名前の
  *   バイト列の昇順（strcmp の順）に並べる。各項目は { 名前, 名前のバイト数,
  *   表す列のバイト数, 表す列の UTF-8 } の形。`;` のない古い形のキーは含めない
+ *
+ * 表は entities.json から導いたものである。WHATWG は HTML Living Standard を
+ * CC BY 4.0 で提供し、ソースコードに取り込んだ部分は BSD 3-Clause License で提供する。
+ * 表はソースコードに取り込んだ部分に当たり、次の BSD 3-Clause License に従う。
+ *
+ * Copyright © WHATWG (Apple, Google, Mozilla, Microsoft)
+ *
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include "markdown/md_entity.h"

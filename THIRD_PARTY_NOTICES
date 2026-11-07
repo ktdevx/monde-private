@@ -1,0 +1,29 @@
+# THIRD_PARTY_NOTICES
+#
+# monde の実行ファイルに取り込んだ第三者の素材（生成したデータの表、取り込んだ
+# ソース、静的にリンクするライブラリ）の索引。ライセンスの全文は License-File の
+# ファイル（licenses/<ID>.txt）にある。テスト専用で配布物に含まれない素材
+# （CommonMark の spec.txt、Naos）は載せない。
+#
+# Third-party materials compiled into the monde executable. Full license texts
+# are in licenses/<ID>.txt. Test-only materials that are not distributed
+# (CommonMark spec.txt, Naos) are not listed.
+#
+# 書式: 空行で区切った塊が 1 つの素材。各塊は ID, Name, Version, Source,
+# License (SPDX), License-File, Used-In の順に Key: Value の行を持つ。
+
+ID: unicode-ucd
+Name: Unicode Character Database
+Version: 15.0.0
+Source: https://www.unicode.org/Public/15.0.0/ucd/
+License: Unicode-3.0
+License-File: licenses/unicode-ucd.txt
+Used-In: src/markdown/md_unicode_tables.c, src/po/po_ucd_tables.c
+
+ID: whatwg-entities
+Name: WHATWG HTML Living Standard named character references (entities.json)
+Version: Living Standard
+Source: https://html.spec.whatwg.org/entities.json
+License: BSD-3-Clause
+License-File: licenses/whatwg-entities.txt
+Used-In: src/markdown/md_entity_table.c

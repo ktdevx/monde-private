@@ -23,12 +23,14 @@
 - 配布物の定義: `install()` の規則、CPack の設定（`cmake/MondePackage.cmake`）、アーカイブの名前・形式・構成。
 - リリースワークフロー（`.github/workflows/release.yml`）と、その検証スクリプト（`tools/release/`）。
 - バージョン番号の規則（SemVer、`vX.Y.Z` のタグ、`project(VERSION)` との一致）。
+- 実行ファイルに取り込んだサードパーティの素材の表示: 索引 `THIRD_PARTY_NOTICES`、素材ごとの `licenses/<ID>.txt`、その書式と検査（改訂、要件 10）。
 
 ### Out of Boundary
 - CLI の仕様とその実装（monde-cli）。ドキュメントは `--help` の出力を出典として写し、仕様の解釈を加えない。
 - ビルド構成の共通部分（`MondeTargets.cmake`、`MondeCompilerOptions.cmake`、CI のマトリクス）。リリース固有の指定はワークフローからキャッシュ変数で渡し、これらのファイルは変更しない。
 - `docs/dev/naos-feedback.md` と `docs/inputs/` の内容。
 - 翻訳単位の規則の詳細な説明（translation-units の設計）。マニュアルは利用者が知るべき判定の結果（4.9）だけを書く。
+- 表の生成スクリプト（`tools/gen_md_ucd.py`、`tools/gen_md_entities.py`、`tools/gen_po_ucd.py`）と生成したファイル（markdown-parser、po-format の持ち物）。改訂では、生成したファイルの先頭に `THIRD_PARTY_NOTICES` の ID を示す行（と WHATWG の BSD 3-Clause の表示）を加えるためだけにこれらを変え、表の内容は変えない（「改訂（2026-11-07）」を参照）。
 
 ### Allowed Dependencies
 - `monde` ターゲット（`src/monde/CMakeLists.txt`）: `install(TARGETS monde)` の対象。`MONDE_VERSION` の出典である `project(monde VERSION ...)`。
@@ -41,6 +43,7 @@
 - `project(monde VERSION)` の変更規則やタグの形式の変更 → `release.yml` の `check` ジョブと `docs/dev/release.md`。
 - 配布対象の追加（Linux arm64 など）や macOS のランナーの変化（Rosetta 2 の有無） → マトリクスと `verify_package.cmake`。
 - `LICENSE`、`README.md` のファイル名の変更 → `install(FILES ...)`。
+- 実行ファイルに取り込む素材の追加・更新・削除（Unicode の版の更新、GFM の追加に伴う素材など） → `THIRD_PARTY_NOTICES`、`licenses/`、生成したファイルの ID の行、`docs_check.notices`（要件 10）。
 - yaml-front-matter や markdown-parser の「受け入れた制限」の変更 → `docs/limitations.md`。
 
 ## Architecture
@@ -109,6 +112,10 @@ graph TB
 
 ### Directory Structure
 ```
+THIRD_PARTY_NOTICES                # 改訂: 実行ファイルに取り込んだ素材の索引（ID、名称、版、出典、SPDX、ライセンスのファイル、取り込んだ先）
+licenses/                          # 改訂: 素材ごとに 1 つ
+├── unicode-ucd.txt                # Unicode Character Database 15.0.0、Unicode License V3 の全文
+└── whatwg-entities.txt            # WHATWG HTML の entities.json、BSD 3-Clause の全文
 README.md                          # 全面更新: 概要、サブコマンド一覧、インストール、クイックスタート、ビルド、バージョン規則、ライセンスとサードパーティ、マニュアルへのリンク
 docs/
 ├── README.md                      # 利用マニュアルの目次（4 章への相対リンク）
@@ -125,7 +132,7 @@ cmake/
 └── MondePackage.cmake             # CPack の設定（生成器の既定、パッケージ名、最上位ディレクトリ、対象名のキャッシュ変数）
 tests/
 └── docs/
-    ├── CMakeLists.txt             # docs ラベルのテストを登録（help の引用、quickstart、links）
+    ├── CMakeLists.txt             # docs ラベルのテストを登録（help の引用、quickstart、links、改訂で notices）
     └── docs_check.cmake           # マーカー付きコードブロックの抜き出しと検査（cmake -P）
 tools/
 └── release/
@@ -138,7 +145,8 @@ tools/
 ### Modified Files
 - `CMakeLists.txt` — `add_subdirectory(src)` の後に `include(MondePackage)` を加える。`install()` の規則は `MondePackage.cmake` 側に置き、ルートの変更を 1 行に留める。
 - `tests/CMakeLists.txt` — `add_subdirectory(docs)` を 1 行加える。
-- `.gitattributes` — `README.md` と `docs/**/*.md`、`docs/examples/*` を `text eol=lf` にし、検査がどの OS でも同じバイト列を読めるようにする（既存の `-text` の行は変えない）。examples と同じタスクで扱う。
+- `.gitattributes` — `README.md` と `docs/**/*.md`、`docs/examples/*` を `text eol=lf` にし、検査がどの OS でも同じバイト列を読めるようにする（既存の `-text` の行は変えない）。examples と同じタスクで扱う。改訂で `THIRD_PARTY_NOTICES` と `licenses/*` も加える。
+- 改訂: `tools/gen_md_ucd.py`、`tools/gen_md_entities.py`、`tools/gen_po_ucd.py` と、その生成物 `src/markdown/md_unicode_tables.c`、`src/markdown/md_entity_table.c`、`src/po/po_ucd_tables.c` の先頭のコメント（表の内容は変えない）。`.kiro/steering/tech.md` と `structure.md`。
 
 ## System Flows
 
@@ -193,7 +201,7 @@ flowchart TB
 | 1.4 | 実行できるクイックスタート | README、examples | マーカー `quickstart` | ドキュメントの検査 |
 | 1.5 | マニュアルへのリンク | README、docs/README.md | マーカー `links` | ドキュメントの検査 |
 | 1.6 | MIT と The Monde Authors | README | 構成表 | — |
-| 1.7 | サードパーティ表記 | README | 構成表 | — |
+| 1.7 | サードパーティ表記（取り込んだものとテスト専用のもの） | README、THIRD_PARTY_NOTICES | 構成表 | — |
 | 1.8 | 初版の範囲と次の版 | README | 構成表 | — |
 | 2.1 | 4 章を別ファイルで | docs の 4 章 | File Structure Plan | — |
 | 2.2 | 目次と README からの到達 | docs/README.md、README | マーカー `links` | ドキュメントの検査 |
@@ -245,7 +253,7 @@ flowchart TB
 | 7.12 | CI と別のワークフロー | release.yml | — | — |
 | 8.1 | アーカイブの名前 | MondePackage | `MONDE_RELEASE_TARGET` | — |
 | 8.2 | zip と tar.gz | MondePackage、release.yml | 生成器の既定 | — |
-| 8.3 | 3 つの同梱物 | MondePackage（install） | install 規則 | — |
+| 8.3 | 同梱物（実行ファイル、LICENSE、README、THIRD_PARTY_NOTICES、licenses/） | MondePackage（install）、verify_package | install 規則、索引 | — |
 | 8.4 | 最上位ディレクトリ | MondePackage | CPack の設定 | — |
 | 8.5 | 実行権限の保持 | MondePackage（TGZ）、verify_package | 検証 | — |
 | 8.6 | 単体で実行できる | release.yml（静的リンク）、verify_package | 検証 | — |
@@ -256,6 +264,13 @@ flowchart TB
 | 9.2 | コマンド列の実行の検査 | docs_check（quickstart） | マーカー `quickstart` | ドキュメントの検査 |
 | 9.3 | 仕様変更時の更新方針 | dev/release.md | 構成表 | — |
 | 9.4 | リンク切れの検査 | docs_check（links） | マーカー `links` | ドキュメントの検査 |
+| 10.1 | 索引 THIRD_PARTY_NOTICES | ThirdPartyNotices | 索引の書式 | — |
+| 10.2 | 素材ごとのライセンスのファイル | ThirdPartyNotices | `licenses/<ID>.txt` の書式 | — |
+| 10.3 | テスト専用のものは載せない | ThirdPartyNotices、README | 索引の書式 | — |
+| 10.4 | 生成したファイルの ID の行 | 生成スクリプト（上流） | ID の行 | — |
+| 10.5 | 索引とファイルの対応の検査 | docs_check（notices） | 索引の書式、ID の行 | ドキュメントの検査 |
+| 10.6 | 初版の 2 つの素材 | ThirdPartyNotices | — | — |
+| 10.7 | 素材の追加・更新の手順 | dev/release.md | 構成表 | — |
 
 ## Components and Interfaces
 
@@ -302,7 +317,7 @@ flowchart TB
 7. バージョン（6.1、6.5）: SemVer、0.x では Y で互換性を壊し得る。
 8. ドキュメント（1.5、2.2）: `docs/README.md` と 4 章へのリンク。
 9. ライセンス（1.6）: MIT License、Copyright (c) 2026 The Monde Authors。
-10. サードパーティ（1.7）: 表（名称、用途、ライセンス、配布物に含まれない）。CommonMark Spec 0.31.2 `spec.txt`（CC-BY-SA 4.0、テスト専用、`tests/data/commonmark/README.md` へリンク）、Naos v0.4.0（MIT License、テスト専用、`BUILD_TESTING=OFF` では取得されない）。
+10. サードパーティ（1.7）: 改訂で 2 つの表に分ける。(a) 実行ファイルに取り込んでいるもの（Unicode Character Database 15.0.0、Unicode License V3。WHATWG の `entities.json`、BSD 3-Clause。詳細と全文は `THIRD_PARTY_NOTICES` と `licenses/` へリンク）。(b) テスト専用で配布物に含まれないもの: 表（名称、用途、ライセンス、配布物に含まれない）。CommonMark Spec 0.31.2 `spec.txt`（CC-BY-SA 4.0、テスト専用、`tests/data/commonmark/README.md` へリンク）、Naos v0.4.0（MIT License、テスト専用、`BUILD_TESTING=OFF` では取得されない）。
 
 **Implementation Notes**
 - README はアーカイブに同梱される（8.3）ため、リポジトリ内の相対リンクは展開先では切れる。相対リンクには GitHub 上の絶対 URL を併記せず、冒頭に「最新のドキュメントはリポジトリの `docs/` にある」と 1 行で示す。
@@ -390,7 +405,7 @@ flowchart TB
 **Contracts**: Batch [x]
 
 ##### Batch / Job Contract
-- Trigger: `ctest -L docs`。登録するテストは `docs_check.help`（`docs/commands.md` のマーカー `help` をすべて照合。マーカーが 0 件の判定は渡したファイル全体で行う）、`docs_check.quickstart`（README のマーカー `quickstart`）、`docs_check.links`（`README.md` と `docs/*.md`）。
+- Trigger: `ctest -L docs`。登録するテストは `docs_check.help`（`docs/commands.md` のマーカー `help` をすべて照合。マーカーが 0 件の判定は渡したファイル全体で行う）、`docs_check.quickstart`（README のマーカー `quickstart`）、`docs_check.links`（`README.md` と `docs/*.md`）、改訂で `docs_check.notices`（`THIRD_PARTY_NOTICES`、`licenses/`、`src/`。契約は「改訂（2026-11-07）」）。
 - Input / validation: `-DMODE=help|quickstart|links -DMONDE=<path> -DSOURCE_DIR=<repo root> -DFILES=<;区切りの md> -DWORK=<作業先> [-DEXAMPLES=<docs/examples>]`。マーカーの直後（空行を挟まない）に ``` で始まるコードブロックがなければ失敗。
   - `help`: コードブロックの内容と `monde [<subcommand>] --help` の標準出力を、CRLF を LF に正規化してから比べる。終了コードが 0 でなければ失敗。マーカーが 1 つもなければ失敗（マーカーの付け忘れを検出）。
   - `quickstart`: `EXAMPLES` の `hello.md` だけを `WORK` にコピーし、コードブロックの各行（`#` と空行を除く）を `separate_arguments(UNIX_COMMAND)` で分け、先頭の `monde` を `MONDE` に置き換えて `WORK` で実行する。各行の終了コードが 0 でなければ失敗。先頭の引数が `init` の行の直後に、その出力 `hello.ja.po` の msgstr がすべて空であることを確かめてから `EXAMPLES` の `hello.ja.po` で置き換える（翻訳者の編集の代わり）。すべての行の後に `hello.pot`、`hello.ja.po`、`hello.ja.md` が存在し、`hello.ja.md` が `hello.md` と異なることを確かめる。行にパイプやリダイレクトがあれば失敗（検査できない行は書かない約束）。
@@ -409,10 +424,10 @@ flowchart TB
 | Field | Detail |
 |-------|--------|
 | Intent | `install()` の規則と CPack の設定を 1 か所に置く |
-| Requirements | 7.11, 8.1〜8.5, 8.7 |
+| Requirements | 7.11, 8.1〜8.5, 8.7, 10.1, 10.2 |
 
 **Responsibilities & Constraints**
-- `install(TARGETS monde RUNTIME DESTINATION .)` と `install(FILES LICENSE README.md DESTINATION .)` だけを定義する。テスト、`spec.txt`、ヘッダ、静的ライブラリは install の対象にしない（8.7）。
+- `install(TARGETS monde RUNTIME DESTINATION .)`、`install(FILES LICENSE README.md THIRD_PARTY_NOTICES DESTINATION .)`、`install(DIRECTORY licenses/ DESTINATION licenses)` だけを定義する（改訂。素材の追加でこのファイルを直さずに済むよう、`licenses/` はディレクトリごと入れる）。テスト、`spec.txt`、ヘッダ、静的ライブラリは install の対象にしない（8.7）。
 - キャッシュ変数 `MONDE_RELEASE_TARGET`（例: `windows-x64`、`macos-arm64`、`macos-x64`、`linux-x64`）。未指定なら `CMAKE_SYSTEM_NAME` と `CMAKE_SYSTEM_PROCESSOR` から `<os>-<arch>` を作る（`Darwin` → `macos`、`Windows` → `windows`、`Linux` → `linux`、`AMD64` / `x86_64` → `x64`、`arm64` / `aarch64` → `arm64`）。`CMAKE_OSX_ARCHITECTURES` が 1 つ指定されていればそれを優先する。
 - `CPACK_PACKAGE_FILE_NAME` = `monde-${PROJECT_VERSION}-${MONDE_RELEASE_TARGET}`（8.1）。`CPACK_GENERATOR` の既定は Windows で `ZIP`、それ以外で `TGZ`（8.2）。`CPACK_INCLUDE_TOPLEVEL_DIRECTORY` は ON（8.4）。`CPACK_SOURCE_GENERATOR` は空（ソースパッケージは作らない）。
 - `include(CPack)` は本ファイルの末尾で行う。ルートの `CMakeLists.txt` は `include(MondePackage)` の 1 行だけ加える。
@@ -420,7 +435,7 @@ flowchart TB
 **Contracts**: 構成の契約（上記のキャッシュ変数と CPack 変数）。
 
 **Implementation Notes**
-- Validation: 手元で `cmake --build build && (cd build && cpack -C Release)` を実行し、`tar tzvf` / `unzip -l` で 3 エントリと実行権限を確かめる（research.md の試作と同じ）。
+- Validation: 手元で `cmake --build build && (cd build && cpack -C Release)` を実行し、`tar tzvf` / `unzip -l` で 8.3 のエントリと実行権限を確かめる（research.md の試作と同じ）。
 - Risks: 複数構成ジェネレータ（Visual Studio）では `cpack -C Release` が必要。手順書とワークフローに明記する。
 
 ### リリース
@@ -440,15 +455,16 @@ flowchart TB
 | Field | Detail |
 |-------|--------|
 | Intent | ビルドした実行ファイルとアーカイブが配布物の要件を満たすことを確かめる |
-| Requirements | 6.3, 7.3, 8.5〜8.7 |
+| Requirements | 6.3, 7.3, 8.3〜8.7, 10.1 |
 
 ##### Batch / Job Contract
-- Trigger: `cmake -DMONDE=<exe> -DVERSION=X.Y.Z [-DARCHIVE=<path>] -DTARGET=<os>-<arch> [-DRUNNER=<prefix>] -P tools/release/verify_package.cmake`。`RUNNER` は実行ファイルを起動するときの前置きコマンド（macOS x64 では `arch;-x86_64`）。`ARCHIVE` を省略すると 1 と 2 だけを確かめる（ワークフローは `cpack` の前にこの形で実行し、7.3 の「確認してからアーカイブを作る」を満たす）。
+- Trigger: `cmake -DMONDE=<exe> -DVERSION=X.Y.Z [-DARCHIVE=<path> -DNOTICES=<THIRD_PARTY_NOTICES のパス>] -DTARGET=<os>-<arch> [-DRUNNER=<prefix>] -P tools/release/verify_package.cmake`。`ARCHIVE` を指定するときは `NOTICES` も必須（改訂）。`RUNNER` は実行ファイルを起動するときの前置きコマンド（macOS x64 では `arch;-x86_64`）。`ARCHIVE` を省略すると 1 と 2 だけを確かめる（ワークフローは `cpack` の前にこの形で実行し、7.3 の「確認してからアーカイブを作る」を満たす）。
 - Input / validation:
   1. `--version` の標準出力が `monde X.Y.Z\n` と一致（7.3、6.3）。
   2. 動的依存: `linux-*` は `ldd` の出力に `not a dynamic executable` を含む（8.6）。`macos-*` は `otool -L` の出力の依存が `/usr/lib/libSystem.B.dylib` だけ。`windows-*` は確認しない（静的 CRT は構成で保証）。
-  3. アーカイブの一覧（`cmake -E tar tf`）が、`monde-X.Y.Z-<target>/` の下の `monde` または `monde.exe`、`LICENSE`、`README.md` の 3 つ（とディレクトリ自身）だけで、`spec.txt` やその他のファイルを含まない（8.3、8.4、8.7）。
+  3. アーカイブの一覧（`cmake -E tar tf`）が、`monde-X.Y.Z-<target>/` の下の `monde` または `monde.exe`、`LICENSE`、`README.md`、`THIRD_PARTY_NOTICES` と、`NOTICES` の各素材の `License-File`（`licenses/<ID>.txt`）（とディレクトリ自身）だけで、`spec.txt` やその他のファイルを含まない（8.3、8.4、8.7、10.1。改訂で、期待する一覧を `NOTICES` から組み立てる）。
   4. TGZ では `cmake -E tar tvf` の権限欄で実行ファイルが実行可能（8.5）。
+  5. アーカイブの中の `THIRD_PARTY_NOTICES` が `NOTICES` とバイト単位で一致する（10.1。改訂で追加）。
 - Output / destination: 失敗の一覧を出して終了コード 1。すべて通れば `package <archive> verified`（`ARCHIVE` 省略時は `executable verified`）を出す。
 
 #### release.yml（`.github/workflows/release.yml`）
@@ -484,6 +500,60 @@ flowchart TB
 - Integration: `ci.yml` は変更しない（7.12）。`release.yml` の `permissions` はワークフロー全体で `contents: read` とし、`publish` だけ `write` に上げる。
 - Validation: 実装後、テスト用のタグ（例: `v0.1.0` の前に `v0.0.1` を試験的に使わない。代わりに `workflow_dispatch` をフォークまたはブランチ上で `act` なしに確かめることはできないため、最初の本番のタグ `v0.1.0` で確かめ、失敗したら修正して再実行する）。手元では `cpack` と `verify_package.cmake` を各開発環境で確かめる。
 - Risks: Rosetta 2 が使えない場合は `verify_package` が失敗する（意図どおり）。そのときは research.md の Revalidation Trigger に従い設計を見直す。
+
+## 改訂（2026-11-07）: 実行ファイルに取り込んだ素材の表示
+
+要件 1.7、8.3、8.4 の改訂と要件 10 の追加に対応する。経緯は requirements.md の「改訂（2026-11-07）」を参照。
+
+### 方針
+- 表示の出典はリポジトリの直下の `THIRD_PARTY_NOTICES`（索引）と `licenses/<ID>.txt`（素材ごと）で、ソースと配布物で同じファイルを使う。
+- 素材ごとに分ける（ライセンスごとではない）。MIT や BSD は本文に著作権者が入るため。
+- 「実行時の外部依存はゼロ」は変えない。バイナリに取り込む素材（生成した表、取り込んだソース、静的にリンクするライブラリ）は、許容型のライセンス（MIT、BSD、Unicode-3.0 など）に限り、同じ変更で索引と `licenses/` に登録する。コピーレフト（GPL、CC-BY-SA など）は取り込まない。これを steering の tech.md に書く。
+
+### ThirdPartyNotices（`THIRD_PARTY_NOTICES`、`licenses/`）
+| Field | Detail |
+|-------|--------|
+| Intent | 実行ファイルに取り込んだ素材とライセンスを、配布物の中で示す |
+| Requirements | 1.7, 8.3, 10.1〜10.3, 10.6 |
+
+**索引の書式**（UTF-8、LF、BOM なし）
+- `#` で始まる行は説明のコメント。空行で区切った塊が 1 つの素材。
+- 各塊は `Key: Value` の行からなり、次のキーをこの順にすべて持つ。
+  - `ID`: `^[a-z0-9][a-z0-9-]*$`。索引の中で一意。
+  - `Name`、`Version`、`Source`（URL）。
+  - `License`: SPDX のライセンス識別子（例: `Unicode-3.0`、`BSD-3-Clause`）。
+  - `License-File`: `licenses/<ID>.txt`。
+  - `Used-In`: 取り込んだ先のファイル（リポジトリのルートからの相対パス）を `, ` で区切って並べる。
+- 初版の素材（10.6）:
+  - `unicode-ucd`: Unicode Character Database 15.0.0、`https://www.unicode.org/Public/15.0.0/ucd/`、`Unicode-3.0`、`src/markdown/md_unicode_tables.c, src/po/po_ucd_tables.c`。
+  - `whatwg-entities`: WHATWG HTML Living Standard の named character references（`entities.json`）、版は Living Standard（取得した時点）、`https://html.spec.whatwg.org/entities.json`、`BSD-3-Clause`、`src/markdown/md_entity_table.c`。WHATWG の表示では、標準は CC BY 4.0 で、ソースコードに取り込んだ部分は BSD 3-Clause になる。
+
+**`licenses/<ID>.txt` の書式**
+- 先頭に素材の名称、版、出典、SPDX 識別子、著作権表示を `Key: Value` の行で書き、空行の後にライセンスの全文を原文のまま置く。ライセンスの適用の仕方に説明が要るとき（WHATWG のように、取り込んだ部分にだけ別のライセンスが適用されるとき）は、全文の前に説明の段落を置いてよい。
+- `unicode-ucd.txt`: 生成したファイルにすでに載せている Unicode License V3（`Copyright © 1991-2022 Unicode, Inc.`）と同じ文面。
+- `whatwg-entities.txt`: `Copyright © WHATWG (Apple, Google, Mozilla, Microsoft)` と BSD 3-Clause の全文。
+
+### 生成したファイルの ID の行（上流のファイルへの変更）
+- 3 つの生成スクリプトは、出力の先頭のコメントに `THIRD_PARTY_NOTICES: <ID>` の 1 行を出す（10.4）。`gen_md_entities.py` は、あわせて WHATWG の著作権表示と BSD 3-Clause の全文を出す（ソースの配布でも BSD 3-Clause の条件を満たすため）。
+- 表の内容は変えない。生成元のデータから再生成して、コメント以外が変わらないことを確かめる。
+
+### docs_check（notices モード）
+- Trigger: `docs_check.notices`（ラベル `docs`）。`-DMODE=notices -DSOURCE_DIR=<repo root>`。`monde` は起動しない。
+- 確かめること（10.5）。すべての失敗を集めて最後にまとめて報告する。
+  1. 索引の各塊が 7 つのキーをすべて順に持ち、`ID` が書式に合い一意で、`License-File` が `licenses/<ID>.txt` である。
+  2. `License-File` のファイルが存在し、空でない。
+  3. `Used-In` の各ファイルが存在し、`THIRD_PARTY_NOTICES: <ID>` の行を含む。
+  4. `licenses/` の下に、索引の `License-File` にないファイルがない。
+  5. `src/` の下の `.c` と `.h` のうち `THIRD_PARTY_NOTICES: <ID>` の行を含むものについて、その ID が索引にあり、そのファイルがその素材の `Used-In` にある。
+  6. 索引に塊が 1 つ以上ある。
+
+### verify_package と release.yml
+- `verify_package.cmake` は `ARCHIVE` を指定したときに `NOTICES` を必須とし、期待するアーカイブの一覧を「実行ファイル、`LICENSE`、`README.md`、`THIRD_PARTY_NOTICES`、各素材の `License-File`」として組み立てる（8.3、8.4）。
+- `release.yml` の build ジョブはアーカイブの検証に `-DNOTICES=THIRD_PARTY_NOTICES` を渡す（チェックアウトしたタグのファイル）。
+
+### ドキュメントと steering
+- README の「サードパーティ」を 2 つの表に分ける（1.7）。`docs/install.md` の展開した後の構成と、`docs/dev/release.md` の同梱物の説明を改める。`docs/dev/release.md` に「取り込む素材を追加・更新・削除するとき」の手順を加える（10.7）。
+- steering: tech.md に取り込む素材の規則を、structure.md に `THIRD_PARTY_NOTICES` と `licenses/` の役割を書く。
 
 ## Error Handling
 
