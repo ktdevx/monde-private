@@ -32,16 +32,17 @@ Monde の開発で Naos（テストフレームワーク）を使っていて気
 ## 要望一覧
 
 ### NAOS_REQUIRE_NOT_NULL / NAOS_CHECK_NOT_NULL が GCC の -Wmaybe-uninitialized を誘発する
-- 状態: 未登録
+- 状態: 登録済み（https://github.com/vabelorg/naos/issues/39）
 - 重要度: 中（回避策はあるが、失敗時の表示がポインタ専用の形式でなくなる。GCC の -Werror 環境では知らないとビルドが止まる）
 - 対象: Naos v0.4.0
 - 確度: 再現済み（GitHub Actions の gcc ジョブ、ubuntu-latest）
 - 背景: `malloc` した直後の（中身をまだ書いていない）ポインタを `NAOS_REQUIRE_NOT_NULL(p)` で確認すると、GCC が `'p' may be used uninitialized [-Werror=maybe-uninitialized]` を出す。マクロがポインタを `naos_check_not_null(const void *ptr, ...)` に渡すため、GCC が「未初期化の領域を const ポインタで読み取り関数に渡している」とみなす。`-Werror` 環境ではビルドが止まる。Clang、MSVC では出ない。該当箇所: `tests/foundation/diag_test.c` の `add_long_message_is_not_truncated`。
 - 要望: NULL 判定をマクロ側で `(ptr) != NULL` として評価し、関数には判定結果と表示用の値だけを渡すなど、未初期化領域へのポインタを渡しても警告が出ない形にしてほしい。
 - 現在の回避策: `NAOS_REQUIRE_TRUE(p != NULL)` に置き換えた（失敗時の表示はポインタ専用の形式ではなくなる）。
+- 対応: Naos 側で修正済み（https://github.com/vabelorg/naos/pull/44 、2026-11-06 マージ）。Monde が固定している v0.4.0 には入っていないため、修正を含む版に上げるまで回避策を残す。
 
 ### 失敗位置の出力形式をコンパイラに関係なく揃えられるようにしてほしい
-- 状態: 未登録
+- 状態: 登録済み（https://github.com/vabelorg/naos/issues/41）
 - 重要度: 低（ログの検索で両方の形式を許容すれば済む）
 - 対象: Naos v0.4.0
 - 確度: 再現済み（ローカルの MSVC と GitHub Actions の 5 環境）
@@ -50,7 +51,7 @@ Monde の開発で Naos（テストフレームワーク）を使っていて気
 - 現在の回避策: Monde の設計書と確認手順で、両方の形式を許容すると明記した。
 
 ### naos_add_executable の PROPERTIES にセミコロンを含む値を渡せない
-- 状態: 未登録
+- 状態: 登録済み（https://github.com/vabelorg/naos/issues/42）
 - 重要度: 低（Monde ではまだ必要になっていない）
 - 対象: Naos v0.4.0
 - 確度: コードを読んで確認（Monde ではまだ必要になっていない）
@@ -59,7 +60,7 @@ Monde の開発で Naos（テストフレームワーク）を使っていて気
 - 現在の回避策: なし。Naos のテストはビルド後に検出・登録されるため、構成時に `set_tests_properties` を呼んで代わりにできるかは未確認。
 
 ### 補助関数の失敗を呼び出し元の位置で表示する手段がほしい
-- 状態: 未登録
+- 状態: 登録済み（https://github.com/vabelorg/naos/issues/43）
 - 重要度: 低（trace で呼び出し元の位置を補えるため、今は困っていない）
 - 対象: Naos v0.4.0
 - 確度: 再現済み（`tests/po_merge/test_util.c` の補助関数で確認）
@@ -68,10 +69,11 @@ Monde の開発で Naos（テストフレームワーク）を使っていて気
 - 現在の回避策: `test_util.h` に、補助関数の呼び出しを `NAOS_TRACE_PUSH` / `NAOS_TRACE_POP` で囲むマクロ（`TEST_READ_PO` など）を用意した。失敗の表示は補助関数の中の位置になるが、続く trace の行に呼び出し元のファイルと行が出る。
 
 ### NAOS_REQUIRE_NOT_NULL に関数ポインタを渡せない
-- 状態: 未登録
+- 状態: 登録済み（https://github.com/vabelorg/naos/issues/40）
 - 重要度: 低（`NAOS_REQUIRE_TRUE(p != NULL)` で代わりにできる）
 - 対象: Naos v0.4.0
 - 確度: 再現済み（`tests/markdown/model_test.c`、GCC の `-Wpedantic`）
 - 背景: `NAOS_REQUIRE_NOT_NULL` はポインタを `const void *` に変換して記録用の関数に渡すため、関数ポインタ（確保関数の `alloc` など）を渡すと、ISO C が禁じる関数ポインタからオブジェクトポインタへの変換として `-Wpedantic` の警告になり、`-Werror` 環境ではビルドが止まる。
 - 要望: NULL 判定をマクロ側で `(ptr) != NULL` として評価し、関数ポインタでも使えるようにしてほしい。
 - 現在の回避策: `NAOS_REQUIRE_TRUE(p != NULL)` に置き換えた。
+- 対応: Naos 側で修正済み（https://github.com/vabelorg/naos/pull/44 、2026-11-06 マージ）。Monde が固定している v0.4.0 には入っていないため、修正を含む版に上げるまで回避策を残す。
