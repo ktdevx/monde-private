@@ -113,7 +113,7 @@
   - _Depends: 4.1, 4.4_
   - _Requirements: 10.1, 10.2, 10.3, 10.4_
 
-- [ ] 5.2 spec.txt を例ごとのファイルに展開する補助実行ファイルと、ビルドした `monde` で全例を起動して比較するスクリプトを作り、CTest に登録する
+- [x] 5.2 spec.txt を例ごとのファイルに展開する補助実行ファイルと、ビルドした `monde` で全例を起動して比較するスクリプトを作り、CTest に登録する
   - 補助実行ファイル（Naos 不要、spec_reader にリンク）は、例ごとに原文と CRLF 版を番号付きのファイルに書く
   - スクリプトは例ごとに `monde extract` → `monde translate` を起動して原文と比較し、失敗した例の番号を集めて最後に一覧で失敗にする
   - 展開を 1 回だけ行うフィクスチャと、original / CRLF の 2 テストをラベル `cli` で登録する。spec.txt は `tests/data/commonmark/` から読み、コピーも改変もしない
@@ -158,3 +158,4 @@
 - 3.1: cli-args の使い方のエラーの文面は `<program>[ <command>]: ` で始まるため、`mnd_cli_report_usage_error` はこの接頭辞を除いて `monde: error: <message>` と出す（設計の Reporter の表への追記は 5.5）。ハンドラが `usage_error` を立てた場合は通常の診断の形で出し、案内の行は出さない。テスト用の継ぎ目 `mnd_cli_run_with(env, argc, argv, find_handler)` を `cli_internal.h` に置いた。ハンドラが true を返してもエラーの診断があれば 1
 - 4.2: init は言語の決定の失敗のうち、呼び出し中に診断が捨てられたか最後の診断が `out of memory`（cli_language.c と同じ文面）の場合だけメモリ不足（1）とし、それ以外を使い方のエラー（2）とする。件数は `catalog.count - 1` で、テンプレートに廃止エントリがあれば数に含む（要件 8.2 との差は 5.5 で整理する）
 - 4.4: 診断（警告を含む）はハンドラの後に Run が出すため、統計の行が警告の行より先に出る（要件 7.7 の文面の順序との差は 5.5 で整理する）。`collect_keys` は cmd_extract.c と cmd_translate.c に同じものがある。不正な UTF-8 の訳文は `mnd_po_read` の段階で弾かれる
+- 5.2: 実行ファイルによるラウンドトリップの所要時間（Linux、Release）: `cli_spec_split` 0.04 秒、`cli_roundtrip.original` / `.crlf` 各約 7 秒（直列で約 13 秒、`-j8` で約 7 秒）。Windows は未計測
