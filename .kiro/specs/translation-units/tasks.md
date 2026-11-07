@@ -18,7 +18,7 @@
   - _Requirements: 5.1_
 
 - [ ] 2. 走査と翻訳セグメント
-- [ ] 2.1 Scanner を実装し、文書のライフサイクルと走査の順序を確定する
+- [x] 2.1 Scanner を実装し、文書のライフサイクルと走査の順序を確定する
   - 設計の「走査の規則」の図のとおり、フロントマターの検出 → （キーパスが 1 つ以上あり、フロントマターがあるときだけ）YAML の解析 → フロントマターのセグメントの収集 → `body_start` を渡した Markdown の解析 → Markdown のセグメントの収集の順に呼ぶ。キーパスの指定がなければ YAML は解析せず、不正な YAML でも成功する
   - 文書の構造体は原文・パス・markdown の文書・yaml の文書（解析した場合）・セグメントの配列を所有し、解放は設計の順序で行う。走査の失敗ではそれまでに確保したものをすべて解放して `*out` を NULL にする
   - 上流の診断（不正な UTF-8、YAML の構文エラー、Markdown の解析エラー）はそのまま通し、メモリ不足には `out of memory` を添える
@@ -99,3 +99,4 @@
 ## Implementation Notes
 - 1.1: `tests/tu` から spec_reader を使うときは `#include "../markdown/spec_reader.h"`（相対パス）。`monde_add_module_tests` に include ディレクトリの指定がないため。
 - 1.1: `struct mnd_tu_doc` は配列の伸長のために `seg_cap` を持つ。抽出の仮の実装は `out` を変えずに false を返す（失敗時に呼び出し前の件数へ戻す規約を優先）。
+- 2.1: Scanner は `mnd_tu_collect_front_matter` が診断なしで false を返したときだけ `out of memory` を補う。2.3 では不正なキーパスは上流の診断で、メモリ不足は診断を加えずに false を返すこと（`mnd_tu_collect_markdown` の false は常にメモリ不足として扱われる）。valgrind が使える（`valgrind --leak-check=full --error-exitcode=1 build/tests/tu/tu_tests`）。

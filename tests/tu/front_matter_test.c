@@ -3,9 +3,11 @@
 #include <naos/naos.h>
 
 #include "tu/tu.h"
+#include "tu/tu_internal.h"
 #include "test_util.h"
 
 #include "foundation/buf.h"
+#include "foundation/diag.h"
 #include "po/po.h"
 
 #include <stddef.h>
@@ -107,9 +109,264 @@ NAOS_TEST(front_matter_util_difference_reports_first_offset)
     mnd_buf_free(&text);
 }
 
+/*
+ * diags の中にエラーの診断がちょうど 1 つあり、その最初のものの path が "test.md" で、
+ * メッセージが needle を含むことを検査する
+ */
+static void check_single_error(const mnd_diag_list_t *diags, const char *needle)
+{
+    size_t i;
+    size_t errors = 0;
+    const mnd_diag_t *first = NULL;
+
+    for (i = 0; i < mnd_diag_list_count(diags); i++)
+    {
+        const mnd_diag_t *diag = mnd_diag_list_at(diags, i);
+
+        if (diag->severity == MND_SEVERITY_ERROR)
+        {
+            if (first == NULL)
+            {
+                first = diag;
+            }
+            errors++;
+        }
+    }
+    NAOS_CHECK_UINT_EQ(1, errors);
+    NAOS_REQUIRE_NOT_NULL(first);
+    NAOS_REQUIRE_NOT_NULL(first->path);
+    NAOS_CHECK_STR_EQ("test.md", first->path);
+    NAOS_CHECK_TRUE(strstr(first->message, needle) != NULL);
+}
+
+/* フロントマターのない文書: YAML は解析せず、Markdown は先頭から解析する（1.9） */
+NAOS_TEST(front_matter_scan_without_front_matter)
+{
+    static const char text[] = "# Title\n\nBody text.\n";
+    mnd_tu_doc_t *doc = NULL;
+
+    TEST_SCAN(text, NULL, 0, doc);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    NAOS_CHECK_TRUE(doc->md != NULL);
+    NAOS_CHECK_TRUE(doc->yaml == NULL);
+    NAOS_CHECK_TRUE(doc->data == text);
+    NAOS_CHECK_UINT_EQ(strlen(text), doc->len);
+    NAOS_REQUIRE_NOT_NULL(doc->path);
+    NAOS_CHECK_STR_EQ("test.md", doc->path);
+    NAOS_CHECK_UINT_EQ(0, mnd_tu_doc_segment_count(doc));
+    mnd_tu_doc_free(doc);
+}
+
+/* キーパスの指定がなければ、フロントマターがあっても YAML は解析しない（1.9） */
+NAOS_TEST(front_matter_scan_without_keys_skips_yaml)
+{
+    static const char text[] = "---\ntitle: Hello\n---\n# Heading\n";
+    mnd_tu_doc_t *doc = NULL;
+
+    TEST_SCAN(text, NULL, 0, doc);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    NAOS_CHECK_TRUE(doc->md != NULL);
+    NAOS_CHECK_TRUE(doc->yaml == NULL);
+    NAOS_CHECK_UINT_EQ(0, mnd_tu_doc_segment_count(doc));
+    mnd_tu_doc_free(doc);
+}
+
+/* キーパスを指定し、フロントマターが正しい YAML なら、YAML を解析して文書が保持する */
+NAOS_TEST(front_matter_scan_with_keys_parses_yaml)
+{
+    static const char text[] = "---\ntitle: Hello\n---\n# Heading\n";
+    static const char *const keys[] = { "title" };
+    mnd_tu_doc_t *doc = NULL;
+
+    TEST_SCAN(text, keys, 1, doc);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    NAOS_CHECK_TRUE(doc->md != NULL);
+    NAOS_CHECK_TRUE(doc->yaml != NULL);
+    NAOS_CHECK_UINT_EQ(0, mnd_tu_doc_segment_count(doc));
+    mnd_tu_doc_free(doc);
+}
+
+/* キーパスを指定してもフロントマターがなければ、YAML は解析しない */
+NAOS_TEST(front_matter_scan_with_keys_without_front_matter)
+{
+    static const char text[] = "Body only.\n";
+    static const char *const keys[] = { "title" };
+    mnd_tu_doc_t *doc = NULL;
+
+    TEST_SCAN(text, keys, 1, doc);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    NAOS_CHECK_TRUE(doc->md != NULL);
+    NAOS_CHECK_TRUE(doc->yaml == NULL);
+    NAOS_CHECK_UINT_EQ(0, mnd_tu_doc_segment_count(doc));
+    mnd_tu_doc_free(doc);
+}
+
+/* キーパスを指定し、フロントマターが不正な YAML なら、上流のエラーで失敗して *out は NULL（7.2） */
+NAOS_TEST(front_matter_scan_with_keys_invalid_yaml_fails)
+{
+    static const char text[] = "---\ntitle: [unclosed\n---\nBody.\n";
+    static const char *const keys[] = { "title" };
+    mnd_tu_options_t options = MND_TU_OPTIONS_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    mnd_tu_doc_t *doc = (mnd_tu_doc_t *)&diags;  /* NULL に戻ることを確かめるための仮の値 */
+
+    options.path = "test.md";
+    options.front_matter_keys = keys;
+    options.front_matter_key_count = 1;
+    NAOS_CHECK_FALSE(mnd_tu_scan(text, strlen(text), &options, &doc, &diags));
+    NAOS_CHECK_TRUE(doc == NULL);
+    NAOS_CHECK_TRUE(mnd_diag_list_has_error(&diags));
+    if (mnd_diag_list_count(&diags) > 0)
+    {
+        const mnd_diag_t *diag = mnd_diag_list_at(&diags, 0);
+
+        NAOS_CHECK_TRUE(diag->severity == MND_SEVERITY_ERROR);
+        NAOS_REQUIRE_NOT_NULL(diag->path);
+        NAOS_CHECK_STR_EQ("test.md", diag->path);
+        NAOS_CHECK_TRUE(diag->line > 0);
+    }
+    mnd_tu_doc_free(doc);
+    mnd_diag_list_free(&diags);
+}
+
+/* キーパスの指定がなければ、フロントマターが不正な YAML でも成功する（1.9） */
+NAOS_TEST(front_matter_scan_without_keys_invalid_yaml_succeeds)
+{
+    static const char text[] = "---\ntitle: [unclosed\n---\nBody.\n";
+    mnd_tu_doc_t *doc = NULL;
+
+    TEST_SCAN(text, NULL, 0, doc);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    NAOS_CHECK_TRUE(doc->md != NULL);
+    NAOS_CHECK_TRUE(doc->yaml == NULL);
+    NAOS_CHECK_UINT_EQ(0, mnd_tu_doc_segment_count(doc));
+    mnd_tu_doc_free(doc);
+}
+
+/* 不正な UTF-8 は上流のエラー（invalid UTF-8 sequence）で失敗し、*out は NULL（7.1） */
+NAOS_TEST(front_matter_scan_invalid_utf8_fails)
+{
+    static const char text[] = "Hello \xff world\n";
+    mnd_tu_options_t options = MND_TU_OPTIONS_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    mnd_tu_doc_t *doc = (mnd_tu_doc_t *)&diags;  /* NULL に戻ることを確かめるための仮の値 */
+
+    options.path = "test.md";
+    NAOS_CHECK_FALSE(mnd_tu_scan(text, strlen(text), &options, &doc, &diags));
+    NAOS_CHECK_TRUE(doc == NULL);
+    check_single_error(&diags, "invalid UTF-8 sequence");
+    mnd_tu_doc_free(doc);
+    mnd_diag_list_free(&diags);
+}
+
+/* キーパスを指定していても、不正な UTF-8 は YAML の解析の前に失敗する（7.1） */
+NAOS_TEST(front_matter_scan_invalid_utf8_with_keys_fails)
+{
+    static const char text[] = "---\ntitle: \xc3\x28\n---\nBody.\n";
+    static const char *const keys[] = { "title" };
+    mnd_tu_options_t options = MND_TU_OPTIONS_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    mnd_tu_doc_t *doc = (mnd_tu_doc_t *)&diags;  /* NULL に戻ることを確かめるための仮の値 */
+
+    options.path = "test.md";
+    options.front_matter_keys = keys;
+    options.front_matter_key_count = 1;
+    NAOS_CHECK_FALSE(mnd_tu_scan(text, strlen(text), &options, &doc, &diags));
+    NAOS_CHECK_TRUE(doc == NULL);
+    check_single_error(&diags, "invalid UTF-8 sequence");
+    mnd_tu_doc_free(doc);
+    mnd_diag_list_free(&diags);
+}
+
+/* 空の文書（data == NULL、len == 0、options == NULL）: 成功し、セグメントは 0 件で診断もない */
+NAOS_TEST(front_matter_scan_empty_document)
+{
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    mnd_tu_doc_t *doc = NULL;
+
+    NAOS_CHECK_TRUE(mnd_tu_scan(NULL, 0, NULL, &doc, &diags));
+    NAOS_REQUIRE_NOT_NULL(doc);
+    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
+    NAOS_CHECK_TRUE(doc->md != NULL);
+    NAOS_CHECK_TRUE(doc->yaml == NULL);
+    NAOS_CHECK_TRUE(doc->path == NULL);
+    NAOS_CHECK_UINT_EQ(0, mnd_tu_doc_segment_count(doc));
+    mnd_tu_doc_free(doc);
+    mnd_diag_list_free(&diags);
+}
+
+/* 区切りだけのフロントマターと空の本文も、キーパスの指定の有無にかかわらず成功する */
+NAOS_TEST(front_matter_scan_empty_front_matter)
+{
+    static const char text[] = "---\n---\n";
+    static const char *const keys[] = { "title" };
+    mnd_tu_doc_t *doc = NULL;
+
+    TEST_SCAN(text, NULL, 0, doc);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    NAOS_CHECK_TRUE(doc->md != NULL);
+    NAOS_CHECK_UINT_EQ(0, mnd_tu_doc_segment_count(doc));
+    mnd_tu_doc_free(doc);
+
+    doc = NULL;
+    TEST_SCAN(text, keys, 1, doc);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    NAOS_CHECK_TRUE(doc->md != NULL);
+    NAOS_CHECK_UINT_EQ(0, mnd_tu_doc_segment_count(doc));
+    mnd_tu_doc_free(doc);
+}
+
+/* セグメントの追加: 配列を伸ばし、追加した内部セグメントを初期化して返す */
+NAOS_TEST(front_matter_push_segment_grows_and_initializes)
+{
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    mnd_tu_doc_t *doc = NULL;
+    size_t i;
+
+    NAOS_REQUIRE_TRUE(mnd_tu_scan(NULL, 0, NULL, &doc, &diags));
+    NAOS_REQUIRE_NOT_NULL(doc);
+    for (i = 0; i < 40; i++)
+    {
+        mnd_tu_seg_t *seg = mnd_tu_doc_push_segment(doc);
+
+        NAOS_REQUIRE_NOT_NULL(seg);
+        NAOS_CHECK_UINT_EQ(i + 1, mnd_tu_doc_segment_count(doc));
+        NAOS_CHECK_TRUE(seg == &doc->segs[i]);
+        NAOS_CHECK_TRUE(doc->seg_count <= doc->seg_cap);
+        NAOS_CHECK_TRUE(seg->node == NULL);
+        NAOS_CHECK_TRUE(seg->scalar == NULL);
+        NAOS_CHECK_TRUE(seg->pub.msgid.data == NULL);
+        NAOS_CHECK_UINT_EQ(0, seg->pub.msgid.len);
+        NAOS_CHECK_TRUE(seg->pub.kind.data == NULL);
+        NAOS_CHECK_UINT_EQ(0, seg->pub.kind.len);
+        NAOS_CHECK_UINT_EQ(0, seg->pub.span.start);
+        NAOS_CHECK_UINT_EQ(0, seg->pub.span.end);
+        NAOS_CHECK_UINT_EQ(0, seg->pub.line);
+        NAOS_CHECK_UINT_EQ(0, seg->pub.lead_newlines);
+        NAOS_CHECK_UINT_EQ(0, seg->pub.trail_newlines);
+        /* 文書の解放で msgid と kind も解放されることを確かめるため、内容を持たせる */
+        NAOS_REQUIRE_TRUE(mnd_buf_append(&seg->pub.msgid, "text", 4));
+        NAOS_REQUIRE_TRUE(mnd_buf_append(&seg->pub.kind, "paragraph", 9));
+    }
+    NAOS_CHECK_STR_EQ("text", mnd_buf_cstr(&mnd_tu_doc_segment(doc, 39)->msgid));
+    mnd_tu_doc_free(doc);
+    mnd_diag_list_free(&diags);
+}
+
 NAOS_SUITE(front_matter,
     NAOS_ADD_TEST(front_matter_options_init_has_no_keys),
     NAOS_ADD_TEST(front_matter_util_scan_empty_has_no_segments),
     NAOS_ADD_TEST(front_matter_util_read_po_builds_catalog),
-    NAOS_ADD_TEST(front_matter_util_difference_reports_first_offset)
+    NAOS_ADD_TEST(front_matter_util_difference_reports_first_offset),
+    NAOS_ADD_TEST(front_matter_scan_without_front_matter),
+    NAOS_ADD_TEST(front_matter_scan_without_keys_skips_yaml),
+    NAOS_ADD_TEST(front_matter_scan_with_keys_parses_yaml),
+    NAOS_ADD_TEST(front_matter_scan_with_keys_without_front_matter),
+    NAOS_ADD_TEST(front_matter_scan_with_keys_invalid_yaml_fails),
+    NAOS_ADD_TEST(front_matter_scan_without_keys_invalid_yaml_succeeds),
+    NAOS_ADD_TEST(front_matter_scan_invalid_utf8_fails),
+    NAOS_ADD_TEST(front_matter_scan_invalid_utf8_with_keys_fails),
+    NAOS_ADD_TEST(front_matter_scan_empty_document),
+    NAOS_ADD_TEST(front_matter_scan_empty_front_matter),
+    NAOS_ADD_TEST(front_matter_push_segment_grows_and_initializes)
 )
