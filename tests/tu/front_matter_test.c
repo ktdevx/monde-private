@@ -153,7 +153,7 @@ NAOS_TEST(front_matter_scan_without_front_matter)
     NAOS_CHECK_UINT_EQ(strlen(text), doc->len);
     NAOS_REQUIRE_NOT_NULL(doc->path);
     NAOS_CHECK_STR_EQ("test.md", doc->path);
-    NAOS_CHECK_UINT_EQ(0, mnd_tu_doc_segment_count(doc));
+    NAOS_CHECK_UINT_EQ(2, mnd_tu_doc_segment_count(doc));
     mnd_tu_doc_free(doc);
 }
 
@@ -167,7 +167,7 @@ NAOS_TEST(front_matter_scan_without_keys_skips_yaml)
     NAOS_REQUIRE_NOT_NULL(doc);
     NAOS_CHECK_TRUE(doc->md != NULL);
     NAOS_CHECK_TRUE(doc->yaml == NULL);
-    NAOS_CHECK_UINT_EQ(0, mnd_tu_doc_segment_count(doc));
+    NAOS_CHECK_UINT_EQ(1, mnd_tu_doc_segment_count(doc));
     mnd_tu_doc_free(doc);
 }
 
@@ -182,7 +182,10 @@ NAOS_TEST(front_matter_scan_with_keys_parses_yaml)
     NAOS_REQUIRE_NOT_NULL(doc);
     NAOS_CHECK_TRUE(doc->md != NULL);
     NAOS_CHECK_TRUE(doc->yaml != NULL);
-    NAOS_CHECK_UINT_EQ(0, mnd_tu_doc_segment_count(doc));
+    /* 本文の見出しは最後のセグメント（フロントマターのセグメントは本文より前に並ぶ） */
+    NAOS_REQUIRE_TRUE(mnd_tu_doc_segment_count(doc) >= 1);
+    NAOS_CHECK_STR_EQ("Heading",
+                      mnd_tu_doc_segment(doc, mnd_tu_doc_segment_count(doc) - 1)->msgid.data);
     mnd_tu_doc_free(doc);
 }
 
@@ -197,7 +200,7 @@ NAOS_TEST(front_matter_scan_with_keys_without_front_matter)
     NAOS_REQUIRE_NOT_NULL(doc);
     NAOS_CHECK_TRUE(doc->md != NULL);
     NAOS_CHECK_TRUE(doc->yaml == NULL);
-    NAOS_CHECK_UINT_EQ(0, mnd_tu_doc_segment_count(doc));
+    NAOS_CHECK_UINT_EQ(1, mnd_tu_doc_segment_count(doc));
     mnd_tu_doc_free(doc);
 }
 
@@ -239,7 +242,7 @@ NAOS_TEST(front_matter_scan_without_keys_invalid_yaml_succeeds)
     NAOS_REQUIRE_NOT_NULL(doc);
     NAOS_CHECK_TRUE(doc->md != NULL);
     NAOS_CHECK_TRUE(doc->yaml == NULL);
-    NAOS_CHECK_UINT_EQ(0, mnd_tu_doc_segment_count(doc));
+    NAOS_CHECK_UINT_EQ(1, mnd_tu_doc_segment_count(doc));
     mnd_tu_doc_free(doc);
 }
 

@@ -26,7 +26,7 @@
   - 完了時: front_matter スイートで、フロントマターなし・キー未指定・キー指定で不正な YAML（エラー）・キー未指定で不正な YAML（成功）・不正な UTF-8（エラー、`*out == NULL`）・空の文書のテストが合格する。収集関数は仮の実装のままなのでセグメントは 0 件である
   - _Requirements: 1.9, 3.8, 4.12, 7.1, 7.2, 7.5, 7.7_
 
-- [ ] 2.2 (P) Markdown のセグメントの収集を実装し、単体テストを書く
+- [x] 2.2 (P) Markdown のセグメントの収集を実装し、単体テストを書く
   - 構文木を前順に走査し、設計の「走査の規則」の判定（段落と見出しはセグメント、コード・HTML・リンク参照定義・区切り線は飛ばす、コンテナと方言の種類のノードは子だけ走査する）を実装する
   - 範囲は最初の行の内容の開始から、最後の行の内容の終わりから末尾の空白とタブを除いた位置まで。msgid は markdown の論理テキストの関数で作り、空か空白だけなら飛ばす
   - 設計の「ラベルの規則」で `#.` のラベル（`list item > block quote > paragraph`、`heading (level 2)` など）を作る
@@ -100,3 +100,4 @@
 - 1.1: `tests/tu` から spec_reader を使うときは `#include "../markdown/spec_reader.h"`（相対パス）。`monde_add_module_tests` に include ディレクトリの指定がないため。
 - 1.1: `struct mnd_tu_doc` は配列の伸長のために `seg_cap` を持つ。抽出の仮の実装は `out` を変えずに false を返す（失敗時に呼び出し前の件数へ戻す規約を優先）。
 - 2.1: Scanner は `mnd_tu_collect_front_matter` が診断なしで false を返したときだけ `out of memory` を補う。2.3 では不正なキーパスは上流の診断で、メモリ不足は診断を加えずに false を返すこと（`mnd_tu_collect_markdown` の false は常にメモリ不足として扱われる）。valgrind が使える（`valgrind --leak-check=full --error-exitcode=1 build/tests/tu/tu_tests`）。
+- 2.2: 2.1 の Scanner のテスト（front_matter_test.c）は Markdown のセグメントの実数を期待する形に更新済み。キーを指定するテストは最後のセグメントの msgid で確かめているので、2.3 でフロントマターのセグメントが先頭に加わっても壊れない。spec.txt の全例（LF / CRLF / CR）で範囲が原文内・昇順・重なりなし・末尾が空白でないことを一時的なテストで確認済み。
