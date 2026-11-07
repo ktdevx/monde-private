@@ -18,7 +18,7 @@
   - _Depends: 1.1_
   - _Requirements: 2.6, 3.1, 6.7, 6.10_
 
-- [ ] 1.3 (P) 解析する範囲の物理的な行の表を実装する
+- [x] 1.3 (P) 解析する範囲の物理的な行の表を実装する
   - 範囲を LF と CRLF で行に分け、各行の行番号（文書全体の先頭を 1 行目とする）、行の先頭、インデントの空白の数、行末記号を含まない内容の範囲、行末記号の長さ、空白だけの行、コメント行、インデントにタブがあるかを記録する。単独の CR は行末にしない
   - 作業用の配列は確保関数から直接確保し、解放する関数を用意する
   - 完了時: lines スイートで、文書の途中から始まる範囲の最初の行番号、インデントの数、空行とコメント行の判定、`\t` を含むインデントの印、CRLF の行の行末記号の長さが 2 で内容に CR が入らないこと、単独の CR が行を分けないこと、確保の失敗で false が返ることのテストが合格する
@@ -113,3 +113,4 @@
 - 1.1: 解析の診断は `mnd_yaml_parser_error(p, line, message)`（引数なしのメッセージ）、書式付きのメッセージは `mnd_yaml_parser_claim_error(p)` が true のときだけ呼び出し側が `mnd_diag_add` を直接呼ぶ（最初のエラーだけを報告する）。メモリ不足は `mnd_yaml_parser_oom(p)`。これらは `yaml_scalar.c` にある。`mnd_yaml_allocator_or_default` と `mnd_yaml_size_mul` は `yaml_node.c` にある。
 - 1.1: `mnd_yaml_lines_build` は解決済み（NULL でない）の確保関数を受け取る。ブロックスカラーの走査はカーソルを最後に消費した行の次の行の先頭へ進める。parser_fixture は自分の `diags` を持ち、`parser.diags` がそれを指すため移動しない。文書を引き取るときは `parser.doc` を NULL にする。
 - 1.2: `end_line` は `span.end` の位置の行番号（markdown の `span.end - 1` ではない）。解析のタスクは `mnd_yaml_parser_set_span` などで `mnd_source_line_of(data, len, span.end)` と同じ値を設定する。検査は `mnd_yaml_tree_check(doc, ...)` と `mnd_yaml_tree_check_note(doc)`（tests/yaml/tree_check.h）。
+- 1.3: 行の `indent` は先頭の空白（U+0020）だけを数え、`tab_in_indent` は先頭の空白とタブの並び全体で判定する（タブを含む空白だけの行は blank かつ tab_in_indent）。コメント行は blank ではない。単独の CR は行の内容に残る（解析側がエラーにする）。2.5 はこれらの印を文脈に応じて使う（空行のタブ、ブロックスカラーの内容のタブなど）。
