@@ -237,6 +237,8 @@ static const roundtrip_text_t roundtrip_texts[] = {
     ROUNDTRIP_TEXT("<<"),
     ROUNDTRIP_TEXT("What?"),
     ROUNDTRIP_TEXT("line\xe2\x80\xa8sep"),
+    ROUNDTRIP_TEXT("line\xe2\x80\xa8sep\n"),
+    ROUNDTRIP_TEXT("para\xe2\x80\xa9one\nline two\n"),
     ROUNDTRIP_TEXT("---"),
     ROUNDTRIP_TEXT(""),
     ROUNDTRIP_TEXT("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x81\xae\xe3\x82\xbf\xe3\x82\xa4\xe3\x83\x88\xe3\x83\xab"),

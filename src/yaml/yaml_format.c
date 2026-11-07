@@ -718,7 +718,9 @@ static size_t format_trailing_newlines(const char *text, size_t len)
 
 /*
  * 訳文をリテラル・折り返しのまま表現できるか（整形の規則の表のリテラルと折り返しの行）:
- * CR とタブ・改行以外の制御文字を含まない。空白だけの行を含まない。空でない行が 1 つ以上ある。
+ * CR とタブ・改行以外の制御文字を含まない。U+0085（C1 の制御文字）・U+2028・U+2029 を含まない
+ * （YAML 1.1 のパーサが改行として読み、ブロックスカラーの構造が壊れるため: 5.9）。
+ * 空白だけの行を含まない。空でない行が 1 つ以上ある。
  * インデント指示子がなければ、最初の空でない行が空白・タブで始まらない。折り返しでは、空白・タブで
  * 始まる行を含まない。末尾の改行の数 t がチョンプと合う: strip は 0、clip は範囲の直後の行末記号の数
  * （通常は 1。文書が最後の行で終わるなら 0）、keep はその数以上。
@@ -747,6 +749,10 @@ static bool format_block_keepable(const mnd_yaml_scalar_t *s, const format_block
         {
             return false;
         }
+    }
+    if (format_has_line_separator(text, len))
+    {
+        return false;
     }
     if (((s->chomp == MND_YAML_CHOMP_STRIP) && (trailing != 0))
         || ((s->chomp == MND_YAML_CHOMP_CLIP) && (trailing != eol_count))

@@ -12,6 +12,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <string.h>
 
 /* 雛形: 5 種類のスタイルと 3 種類のチョンプが区別でき、既定値（0）が PLAIN と CLIP */
@@ -880,6 +881,66 @@ NAOS_TEST(format_block_scalar_nested)
 }
 
 /*
+ * リテラル・折り返しの訳文が U+0085・U+2028・U+2029 を含むと、YAML 1.1 のパーサが改行として読み、
+ * ブロックスカラーの構造が壊れるため、ダブルクオートに切り替える（5.4、5.9）。U+2028・U+2029 は
+ * UTF-8 のまま、U+0085 は \x85 で出力する（5.7）。隣の文字（U+2027、U+202A）を含む訳文は維持する（5.3）
+ */
+NAOS_TEST(format_block_scalar_line_separators_switch)
+{
+    /* { 文脈, 各チョンプに合う末尾の改行, 維持するときのヘッダ, ダブルクオートの末尾のエスケープ } */
+    static const char *const contexts[][4] = {
+        { "k: |\n  v\nn: 1\n", "\n", "|", "\\n" },
+        { "k: |-\n  v\nn: 1\n", "", "|-", "" },
+        { "k: |+\n  v\nn: 1\n", "\n", "|+", "\\n" },
+        { "k: >\n  v\nn: 1\n", "\n", ">", "\\n" },
+        { "k: >-\n  v\nn: 1\n", "", ">-", "" },
+        { "k: >+\n  v\nn: 1\n", "\n", ">+", "\\n" }
+    };
+    /* { 文字, ダブルクオートでの表記 } */
+    static const char *const separators[][2] = {
+        { "\xe2\x80\xa8", "\xe2\x80\xa8" },
+        { "\xe2\x80\xa9", "\xe2\x80\xa9" },
+        { "\xc2\x85", "\\x85" }
+    };
+    static const char *const neighbors[] = { "\xe2\x80\xa7", "\xe2\x80\xaa" };
+    char text[64];
+    char expected[64];
+    size_t c;
+    size_t i;
+
+    for (c = 0; c < (sizeof(contexts) / sizeof(contexts[0])); ++c)
+    {
+        const char *needle = (contexts[c][2][0] == '|') ? "|" : ">";
+
+        for (i = 0; i < (sizeof(separators) / sizeof(separators[0])); ++i)
+        {
+            /* 行の途中、行の先頭、行の末尾 */
+            (void)snprintf(text, sizeof(text), "a%sb%s", separators[i][0], contexts[c][1]);
+            (void)snprintf(expected, sizeof(expected), "\"a%sb%s\"", separators[i][1], contexts[c][3]);
+            check_format(contexts[c][0], needle, text, expected);
+            (void)snprintf(text, sizeof(text), "%sa%s", separators[i][0], contexts[c][1]);
+            (void)snprintf(expected, sizeof(expected), "\"%sa%s\"", separators[i][1], contexts[c][3]);
+            check_format(contexts[c][0], needle, text, expected);
+            (void)snprintf(text, sizeof(text), "x\ny%s%s", separators[i][0], contexts[c][1]);
+            (void)snprintf(expected, sizeof(expected), "\"x\\ny%s%s\"", separators[i][1], contexts[c][3]);
+            check_format(contexts[c][0], needle, text, expected);
+        }
+        for (i = 0; i < (sizeof(neighbors) / sizeof(neighbors[0])); ++i)
+        {
+            (void)snprintf(text, sizeof(text), "a%sb%s", neighbors[i], contexts[c][1]);
+            (void)snprintf(expected, sizeof(expected), "%s\n  a%sb", contexts[c][2], neighbors[i]);
+            check_format(contexts[c][0], needle, text, expected);
+        }
+    }
+    /* ヘッダの行のコメントは、切り替えても値の後ろに残す（3.3 の扱い） */
+    check_format("k: | # c\n  v\nn: 1\n", "|", "a\xe2\x80\xa8" "b\n", "\"a\xe2\x80\xa8" "b\\n\" # c");
+    check_format("k: >- # c\n  v\nn: 1\n", ">", "a\xe2\x80\xa9" "b", "\"a\xe2\x80\xa9" "b\" # c");
+    /* インデント指示子があっても、CRLF の文書でも切り替える */
+    check_format("k: |2\n    v\nn: 1\n", "|", " a\xe2\x80\xa8\n", "\" a\xe2\x80\xa8\\n\"");
+    check_format("k: |\r\n  v\r\nn: 1\r\n", "|", "a\nb\xe2\x80\xa9\n", "\"a\\nb\xe2\x80\xa9\\n\"");
+}
+
+/*
  * 文脈と訳文の組み合わせ: 各文脈の needle の位置のスカラーを各訳文で整形して置き換え、
  * 解析し直すと論理値が訳文と一致する（5.1、5.8）
  */
@@ -992,5 +1053,6 @@ NAOS_SUITE(format,
     NAOS_ADD_TEST(format_folded_blank_lines),
     NAOS_ADD_TEST(format_block_scalar_crlf),
     NAOS_ADD_TEST(format_block_scalar_nested),
+    NAOS_ADD_TEST(format_block_scalar_line_separators_switch),
     NAOS_ADD_TEST(format_roundtrip_matrix)
 )
