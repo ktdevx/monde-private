@@ -18,7 +18,7 @@
   - _Requirements: 1.4, 3.3, 9.2_
 
 - [ ] 2. ドキュメント: README と利用マニュアルの各章
-- [ ] 2.1 (P) README を全面的に書き直す
+- [x] 2.1 (P) README を全面的に書き直す
   - 設計の README の「構成（節の順）」の 10 節をこの順に書く。サブコマンドの表、Release の対応表、3 行のビルド手順と `-DBUILD_TESTING=OFF`、初版の対応範囲と次の版、SemVer と 0.x の緩和規則、MIT License と The Monde Authors、サードパーティの表（spec.txt は CC-BY-SA 4.0、Naos v0.4.0 は MIT License、どちらもテスト専用で配布物に含まれない）
   - クイックスタートは 1.2 の例の文書を使う `extract` → `init` → 編集 → `translate` の 4 段階とし、コマンド列のコードブロックの直前にマーカー `<!-- monde-check: quickstart -->` を置く。各行はパイプやリダイレクトを使わず、`-o` で出力先を指定する（`init` の出力は `hello.ja.po`）。編集の段階は `#` で始まるコメント行で「`hello.ja.po` を翻訳する。ここでは `docs/examples/hello.ja.po` の訳を使う」と書き、検査がこの行を無視して例の `.po` で置き換えることを前提にする
   - 目次（`docs/README.md`）と 4 章への相対リンクを置く。配布物に同梱されるため、冒頭に「最新のドキュメントはリポジトリの `docs/` にある」と 1 行で示す
