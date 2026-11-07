@@ -48,6 +48,24 @@ X が 0 の間（`0.Y.Z`）は規則を緩めます。
 
    `check_version.cmake` は、一致すれば `version X.Y.Z` の 1 行を出して終了コード 0 で終わります。一致しなければ `tag vX.Y.Z does not match project VERSION A.B.C` を出して失敗します。`ctest -L docs` はテストを有効にした構成（`BUILD_TESTING` が `ON`、既定）のビルドディレクトリで実行します。
 
+   `ctest -L docs` が実行するのは README のクイックスタートのコマンド列だけです。翻訳フローの章（`docs/workflow.md`）のコマンド列は、リリースの前に手で実行して確かめます。リポジトリの外の空のディレクトリで、`<repo>` をリポジトリのパスに読み替えて次を順に実行し、すべての行が終了コード 0 で終わり、統計の書式が `docs/workflow.md` の説明と一致することを確かめます。
+
+   ```sh
+   cp <repo>/docs/examples/hello.md .
+   # 新規翻訳
+   monde extract --front-matter-keys title -o hello.pot hello.md
+   monde init -l ja -o hello.ja.po hello.pot
+   cp <repo>/docs/examples/hello.ja.po .
+   monde translate --front-matter-keys title -o hello.ja.md hello.md hello.ja.po
+   # 原文更新（hello.md の末尾に段落を 1 つ書き足してから実行する）
+   monde extract --front-matter-keys title -o hello.pot hello.md
+   monde update -o hello.ja.po hello.pot hello.ja.po
+   monde translate --front-matter-keys title -o hello.ja.md hello.md hello.ja.po
+   monde translate --use-fuzzy --front-matter-keys title -o hello.ja.md hello.md hello.ja.po
+   ```
+
+   `monde` はビルドした実行ファイル（`build/src/monde/monde`、複数構成のジェネレータでは `build/src/monde/Release/monde`）に読み替えます。`docs/workflow.md` のコマンドを変えたときは、この一覧も同じ変更で直します。
+
 4. **コミットして main に取り込む。** PR の CI が緑になったら main にマージします。マージ後の main の CI も緑であることを確かめます。
 5. **マージした main のコミットにタグを付けて push する。** 手元の main をマージ後のコミットに合わせ、もう一度バージョンの一致を確かめてからタグを付けます。
 
