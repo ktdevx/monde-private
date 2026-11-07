@@ -1,0 +1,66 @@
+# Japanese translation of the sample project.
+msgid ""
+msgstr ""
+"Project-Id-Version: sample 0.9\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-03-01 10:00+0900\n"
+"PO-Revision-Date: 2026-01-20 18:30+0900\n"
+"Last-Translator: Sample Translator <translator@example.com>\n"
+"Language-Team: Japanese\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. front matter: title
+#. heading (level 1)
+#: sample.md:2 sample.md:7
+msgid "Getting Started"
+msgstr "はじめに"
+
+#. front matter: description
+#: sample.md:3
+msgid "A short guide to the sample project."
+msgstr ""
+
+#. paragraph
+#: sample.md:9
+#, fuzzy
+#| msgid "This guide explains how to install the sample."
+msgid "This guide explains how to install the sample project."
+msgstr "このガイドでは、サンプルのインストール方法を説明します。"
+
+#. heading (level 2)
+#: sample.md:11
+msgid "Installation"
+msgstr "インストール"
+
+#. paragraph
+#: sample.md:13
+#, fuzzy
+#| msgid "Download the archive and extract it."
+msgid "Download the archive and extract it into any directory."
+msgstr "アーカイブをダウンロードして展開します。"
+
+#. list item > paragraph
+#: sample.md:15
+msgid "Open a terminal."
+msgstr "端末を開きます。"
+
+#. list item > paragraph
+#: sample.md:16
+msgid "Run the installer."
+msgstr ""
+
+#. heading (level 2)
+#: sample.md:18
+msgid "Usage"
+msgstr ""
+
+#. paragraph
+#: sample.md:20
+msgid "Run the program with the `--help` option to see the available commands."
+msgstr ""
+
+#~ msgid "Requirements"
+#~ msgstr "必要なもの"
