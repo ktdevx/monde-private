@@ -1,6 +1,7 @@
-# ドキュメントの記述をビルドした monde と照合する（4.3、9.1。cmake -P で実行する）。
+# ドキュメントの記述をビルドした monde と照合し、リポジトリ内リンクを確かめる（4.3、9.1、9.4。cmake -P で実行する）。
 #   cmake -DMODE=help -DMONDE=<実行ファイル> -DSOURCE_DIR=<リポジトリのルート>
 #         -DFILES=<;区切りの md> -DWORK=<作業先> [-DEXAMPLES=<docs/examples>] -P docs_check.cmake
+#   cmake -DMODE=links -DSOURCE_DIR=<リポジトリのルート> -DFILES=<;区切りの md> -P docs_check.cmake
 # MODE ごとの検査:
 #   help: マーカー <!-- monde-check: help [<subcommand>] --> の直後（空行を挟まない）の
 #         コードブロックの内容を、monde [<subcommand>] --help の標準出力と比べる。
@@ -13,25 +14,43 @@
 #         空であることを確かめてから EXAMPLES の hello.ja.po で置き換える（翻訳者の編集の代わり）。
 #         すべての行の後に hello.pot、hello.ja.po、hello.ja.md があり、hello.ja.md が hello.md と
 #         異なることを確かめる。マーカーは FILES 全体でちょうど 1 つであること。
+#   links: FILES の各ファイルからリンク [text](target) と画像 ![alt](target) を集め、target が
+#         http://、https://、mailto:、# で始まるものを除き、# 以降を取り除いて、そのファイルの
+#         ディレクトリからの相対パスとしてファイルかディレクトリが存在することを確かめる。
+#         target は <...> の形と、後ろに続くタイトル（"..." など）を許す。/ で始まる target は
+#         相対リンクではないので失敗にする。MONDE と WORK は使わない（省略できる）。
+#         フェンスのコードブロック（``` と ~~~）の中とコードスパン（`...`）の中は調べない。
+#         コードの例（リンクの書き方の説明など）は文書の中のリンクではないため。
+#         参照形式のリンク（[text][ref] と [ref]: target）、インデントのコードブロック、
+#         target の中の括弧と %xx のエンコードは扱わない（現在のドキュメントは使っていない）。
+#         相対リンクが FILES 全体で 0 件なら失敗。
 # 1 つの失敗で止めず、すべてのファイルとマーカーを調べてから失敗の一覧をまとめて出す（終了コード 1）。
 # Markdown の行には ; や [ ] が含まれるため、行は CMake のリストに入れず 1 行ずつ別の変数に置く。
 cmake_minimum_required(VERSION 3.21)
 
-foreach(var IN ITEMS MODE MONDE SOURCE_DIR FILES WORK)
+# links モードは monde を起動せず、作業先も使わない
+set(required_vars MODE SOURCE_DIR FILES)
+if(NOT MODE STREQUAL "links")
+  list(APPEND required_vars MONDE WORK)
+endif()
+foreach(var IN LISTS required_vars)
   if(NOT DEFINED ${var} OR "${${var}}" STREQUAL "")
     message(FATAL_ERROR "docs_check: ${var} is required")
   endif()
 endforeach()
-foreach(var IN ITEMS MONDE SOURCE_DIR WORK)
-  get_filename_component(${var} "${${var}}" ABSOLUTE)
-endforeach()
-if(NOT EXISTS "${MONDE}")
-  message(FATAL_ERROR "docs_check: MONDE does not exist: ${MONDE}")
-endif()
+get_filename_component(SOURCE_DIR "${SOURCE_DIR}" ABSOLUTE)
+if(NOT MODE STREQUAL "links")
+  foreach(var IN ITEMS MONDE WORK)
+    get_filename_component(${var} "${${var}}" ABSOLUTE)
+  endforeach()
+  if(NOT EXISTS "${MONDE}")
+    message(FATAL_ERROR "docs_check: MONDE does not exist: ${MONDE}")
+  endif()
 
-# 前回の出力が残らないように作業先を作り直す
-file(REMOVE_RECURSE "${WORK}")
-file(MAKE_DIRECTORY "${WORK}")
+  # 前回の出力が残らないように作業先を作り直す
+  file(REMOVE_RECURSE "${WORK}")
+  file(MAKE_DIRECTORY "${WORK}")
+endif()
 
 # 失敗の一覧（行に ; が含まれうるのでリストにせず改行でつなぐ）
 set(failure_count 0)
@@ -393,12 +412,143 @@ function(docs_check_quickstart)
   message(STATUS "docs_check: ran ${run_count} quickstart command(s)")
 endfunction()
 
+# 1 行の文字列 line からコードスパンを取り除き、out_var に置く。CommonMark と同じく、
+# ` の並びは同じ長さの ` の並びで閉じる。閉じのない ` の並びは文字としてそのまま残す。
+# 取り除いた箇所は空白 1 つにする（前後の文字がつながって別のリンクに見えないように）。
+# 行をまたぐコードスパンは扱わない。
+function(docs_check_strip_code_spans line out_var)
+  set(result "")
+  set(rest "${line}")
+  while(TRUE)
+    string(FIND "${rest}" "`" pos)
+    if(pos EQUAL -1)
+      break()
+    endif()
+    string(SUBSTRING "${rest}" 0 ${pos} before)
+    string(APPEND result "${before}")
+    string(SUBSTRING "${rest}" ${pos} -1 rest)
+    string(REGEX MATCH "^`+" open_run "${rest}")
+    string(LENGTH "${open_run}" open_length)
+    string(SUBSTRING "${rest}" ${open_length} -1 after)
+    # 同じ長さの ` の並びを探す（長さの違う並びは読み飛ばす）
+    set(search "${after}")
+    set(offset 0)
+    set(close_end -1)
+    while(TRUE)
+      string(FIND "${search}" "`" p)
+      if(p EQUAL -1)
+        break()
+      endif()
+      string(SUBSTRING "${search}" ${p} -1 tail)
+      string(REGEX MATCH "^`+" run "${tail}")
+      string(LENGTH "${run}" run_length)
+      math(EXPR skip "${p} + ${run_length}")
+      if(run_length EQUAL open_length)
+        math(EXPR close_end "${offset} + ${skip}")
+        break()
+      endif()
+      string(SUBSTRING "${search}" ${skip} -1 search)
+      math(EXPR offset "${offset} + ${skip}")
+    endwhile()
+    if(close_end EQUAL -1)
+      string(APPEND result "${open_run}")
+      set(rest "${after}")
+    else()
+      string(APPEND result " ")
+      string(SUBSTRING "${after}" ${close_end} -1 rest)
+    endif()
+  endwhile()
+  string(APPEND result "${rest}")
+  set(${out_var} "${result}" PARENT_SCOPE)
+endfunction()
+
+# links モード: 相対リンクの先が存在することを確かめる
+function(docs_check_links)
+  set(link_count 0)
+  foreach(md IN LISTS check_files)
+    file(RELATIVE_PATH md_name "${SOURCE_DIR}" "${md}")
+    get_filename_component(md_dir "${md}" DIRECTORY)
+    file(READ "${md}" content)
+    string(REPLACE "\r\n" "\n" content "${content}")
+    docs_check_split_lines("${content}" doc)
+    # フェンスのコードブロックの中にいる間は fence_char と fence_length に開始のフェンスを置く
+    set(in_fence FALSE)
+    set(fence_char "")
+    set(fence_length 0)
+    set(i 0)
+    while(i LESS doc_count)
+      math(EXPR i "${i} + 1")
+      set(line "${doc_${i}}")
+      if(in_fence)
+        # 閉じのフェンス: 開始と同じ文字で、開始と同じ数以上が並ぶだけの行（リストの中の字下げを許す）
+        if(line MATCHES "^[ \t]*(`+|~+)[ \t]*$")
+          set(run "${CMAKE_MATCH_1}")
+          string(SUBSTRING "${run}" 0 1 run_char)
+          string(LENGTH "${run}" run_length)
+          if("${run_char}" STREQUAL "${fence_char}" AND NOT run_length LESS fence_length)
+            set(in_fence FALSE)
+          endif()
+        endif()
+        continue()
+      endif()
+      if(line MATCHES "^[ \t]*(```+|~~~+)")
+        set(run "${CMAKE_MATCH_1}")
+        string(SUBSTRING "${run}" 0 1 fence_char)
+        string(LENGTH "${run}" fence_length)
+        set(in_fence TRUE)
+        continue()
+      endif()
+
+      docs_check_strip_code_spans("${line}" rest)
+      # リンクの文字列の部分は角括弧の入れ子があり得るので、"](" から ")" までを target とする
+      while("${rest}" MATCHES "\\]\\(([^)]*)\\)")
+        set(raw "${CMAKE_MATCH_1}")
+        set(whole "${CMAKE_MATCH_0}")
+        string(FIND "${rest}" "${whole}" p)
+        string(LENGTH "${whole}" whole_length)
+        math(EXPR p "${p} + ${whole_length}")
+        string(SUBSTRING "${rest}" ${p} -1 rest)
+
+        # <target> の形、または target の後ろの空白以降（タイトル）を除く
+        string(STRIP "${raw}" target)
+        if(target MATCHES "^<([^>]*)>")
+          set(target "${CMAKE_MATCH_1}")
+        else()
+          string(REGEX REPLACE "[ \t].*$" "" target "${target}")
+        endif()
+        if(target MATCHES "^(http://|https://|mailto:|#)")
+          continue()
+        endif()
+        math(EXPR link_count "${link_count} + 1")
+        string(REGEX REPLACE "#.*$" "" path "${target}")
+        set(where "${md_name}:${i}")
+        if(path STREQUAL "")
+          docs_check_fail("${where}: empty link target: (${raw})")
+        elseif(path MATCHES "^/")
+          docs_check_fail("${where}: link target is not relative: ${target}")
+        elseif(NOT EXISTS "${md_dir}/${path}")
+          docs_check_fail("${where}: link target does not exist: ${target} (resolved: ${md_dir}/${path})")
+        endif()
+      endwhile()
+    endwhile()
+  endforeach()
+  # 1 つも見つからないのは、抜き出しが壊れたか FILES の指定の誤りとみなす
+  if(link_count EQUAL 0)
+    docs_check_fail("no relative link found in: ${FILES}")
+  endif()
+  set(failure_count ${failure_count} PARENT_SCOPE)
+  set(failure_text "${failure_text}" PARENT_SCOPE)
+  message(STATUS "docs_check: checked ${link_count} relative link(s)")
+endfunction()
+
 if(MODE STREQUAL "help")
   docs_check_help()
 elseif(MODE STREQUAL "quickstart")
   docs_check_quickstart()
+elseif(MODE STREQUAL "links")
+  docs_check_links()
 else()
-  message(FATAL_ERROR "docs_check: unknown MODE: ${MODE} (expected: help, quickstart)")
+  message(FATAL_ERROR "docs_check: unknown MODE: ${MODE} (expected: help, quickstart, links)")
 endif()
 
 if(failure_count GREATER 0)
