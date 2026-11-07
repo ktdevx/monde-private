@@ -118,3 +118,50 @@
   - 完了時: `ctest --test-dir build -C Release --output-on-failure` が全件合格し、`cpack` の 2 形式が検証を通り、steering の記述が実際のファイル構成と一致する
   - _Boundary: README, docs の 4 章, steering（統合タスクとして明示的に複数の境界にまたがる）_
   - _Requirements: 7.11, 8.1, 8.2, 9.1, 9.2, 9.4_
+
+- [ ] 6. 改訂（2026-11-07）: 実行ファイルに取り込んだ素材の表示
+- [ ] 6.1 索引 `THIRD_PARTY_NOTICES` と素材ごとの `licenses/` を作る
+  - 設計の「改訂（2026-11-07）」の ThirdPartyNotices のとおり、索引の書式（コメント、空行で区切った塊、7 つのキーの順）で `unicode-ucd` と `whatwg-entities` の 2 つを書く
+  - `licenses/unicode-ucd.txt` は生成したファイルに載っている Unicode License V3（`Copyright © 1991-2022 Unicode, Inc.`）と同じ文面、`licenses/whatwg-entities.txt` は `Copyright © WHATWG (Apple, Google, Mozilla, Microsoft)` と BSD 3-Clause の全文。どちらも先頭に名称、版、出典、SPDX 識別子、著作権表示を書く
+  - `.gitattributes` に `THIRD_PARTY_NOTICES` と `licenses/*` の `text eol=lf` を加える
+  - 完了時: 2 つのファイルと索引があり、ライセンスの本文が出典の原文と一致する（Unicode は生成したファイルの文面と、BSD 3-Clause は SPDX の原文と比べる）
+  - _Boundary: THIRD_PARTY_NOTICES, licenses/, .gitattributes_
+  - _Requirements: 10.1, 10.2, 10.3, 10.6_
+
+- [ ] 6.2 生成スクリプトと生成したファイルに ID の行を加える
+  - 3 つの生成スクリプトが出力の先頭のコメントに `THIRD_PARTY_NOTICES: <ID>` の行を出すようにし、`gen_md_entities.py` はあわせて WHATWG の著作権表示と BSD 3-Clause の全文を出すようにする
+  - 生成元のデータ（UCD 15.0.0 のデータファイルと `entities.json`）から 3 つのファイルを再生成し、差分がコメントだけであることを確かめる
+  - 上流（markdown-parser、po-format）のファイルへの変更であり、表の内容と振る舞いは変えない
+  - 完了時: 3 つの生成したファイルに ID の行があり、再生成した結果とバイト単位で一致し、既存の `ctest` が全件合格する
+  - _Boundary: tools/gen_md_ucd.py, tools/gen_md_entities.py, tools/gen_po_ucd.py と、その生成物（コメントのみ）_
+  - _Depends: 6.1_
+  - _Requirements: 10.4_
+
+- [ ] 6.3 索引とファイルの対応の検査を加える
+  - 設計の docs_check（notices モード）の 6 つの確認を `tests/docs/docs_check.cmake` に加え、`docs_check.notices`（ラベル `docs`）を登録する
+  - 完了時: `ctest -L docs -R notices` が合格し、索引の行を消す、`licenses/` に余分なファイルを足す、生成したファイルの ID の行を消す、のそれぞれで失敗する（コピーで確かめる）
+  - _Boundary: tests/docs_
+  - _Depends: 6.1, 6.2_
+  - _Requirements: 10.5_
+
+- [ ] 6.4 配布物と検証に素材の表示を加える
+  - `MondePackage.cmake` の install に `THIRD_PARTY_NOTICES` と `licenses/` を加える。`verify_package.cmake` に `NOTICES` を加え、期待する一覧を索引から組み立てる。`release.yml` のアーカイブの検証に `-DNOTICES=THIRD_PARTY_NOTICES` を渡す
+  - 完了時: 静的リンクのビルドの TGZ と ZIP が新しい検証を通り、`licenses/` のファイルが 1 つ欠けたアーカイブと余分なファイルを含むアーカイブはどちらも失敗する。`release.yml` は actionlint を通る
+  - _Boundary: MondePackage, verify_package, release.yml_
+  - _Depends: 6.1_
+  - _Requirements: 8.3, 8.4, 8.7, 10.1_
+
+- [ ] 6.5 ドキュメントと steering を改める
+  - README の「サードパーティ」を、取り込んでいるもの（`THIRD_PARTY_NOTICES` と `licenses/` へのリンク）とテスト専用のものの 2 つの表に分ける。`docs/install.md` の展開した後の構成、`docs/dev/release.md` の同梱物、検証のコマンド（`-DNOTICES`）を改め、`docs/dev/release.md` に素材を追加・更新・削除するときの手順を加える
+  - steering の tech.md に取り込む素材の規則（実行時の依存はゼロのまま、許容型のライセンスに限る、同じ変更で登録する）を、structure.md に `THIRD_PARTY_NOTICES` と `licenses/` の役割を書く
+  - 完了時: `ctest -L docs` が合格し、要件 1.7、10.7 の記述がある
+  - _Boundary: README, docs/install.md, docs/dev/release.md, steering_
+  - _Depends: 6.1, 6.3, 6.4_
+  - _Requirements: 1.7, 8.3, 10.7_
+
+- [ ] 6.6 改訂の統合の検証
+  - 全テストの `ctest` と、静的リンクの TGZ と ZIP の `verify_package.cmake`（`NOTICES` 付き）を通し、アーカイブを展開して `THIRD_PARTY_NOTICES` と `licenses/` の中身が直下のファイルと一致することを確かめる
+  - 完了時: 全テストが合格し、2 形式の検証が通る
+  - _Boundary: 統合タスク_
+  - _Depends: 6.1, 6.2, 6.3, 6.4, 6.5_
+  - _Requirements: 8.3, 8.4, 10.1, 10.5_
