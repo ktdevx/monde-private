@@ -528,7 +528,7 @@ flowchart TB
   - `whatwg-entities`: WHATWG HTML Living Standard の named character references（`entities.json`）、版は Living Standard（取得した時点）、`https://html.spec.whatwg.org/entities.json`、`BSD-3-Clause`、`src/markdown/md_entity_table.c`。WHATWG の表示では、標準は CC BY 4.0 で、ソースコードに取り込んだ部分は BSD 3-Clause になる。
 
 **`licenses/<ID>.txt` の書式**
-- 先頭に素材の名称、版、出典、SPDX 識別子、著作権表示を書き、空行の後にライセンスの全文を原文のまま置く。
+- 先頭に素材の名称、版、出典、SPDX 識別子、著作権表示を `Key: Value` の行で書き、空行の後にライセンスの全文を原文のまま置く。ライセンスの適用の仕方に説明が要るとき（WHATWG のように、取り込んだ部分にだけ別のライセンスが適用されるとき）は、全文の前に説明の段落を置いてよい。
 - `unicode-ucd.txt`: 生成したファイルにすでに載せている Unicode License V3（`Copyright © 1991-2022 Unicode, Inc.`）と同じ文面。
 - `whatwg-entities.txt`: `Copyright © WHATWG (Apple, Google, Mozilla, Microsoft)` と BSD 3-Clause の全文。
 

@@ -120,7 +120,7 @@
   - _Requirements: 7.11, 8.1, 8.2, 9.1, 9.2, 9.4_
 
 - [ ] 6. 改訂（2026-11-07）: 実行ファイルに取り込んだ素材の表示
-- [ ] 6.1 索引 `THIRD_PARTY_NOTICES` と素材ごとの `licenses/` を作る
+- [x] 6.1 索引 `THIRD_PARTY_NOTICES` と素材ごとの `licenses/` を作る
   - 設計の「改訂（2026-11-07）」の ThirdPartyNotices のとおり、索引の書式（コメント、空行で区切った塊、7 つのキーの順）で `unicode-ucd` と `whatwg-entities` の 2 つを書く
   - `licenses/unicode-ucd.txt` は生成したファイルに載っている Unicode License V3（`Copyright © 1991-2022 Unicode, Inc.`）と同じ文面、`licenses/whatwg-entities.txt` は `Copyright © WHATWG (Apple, Google, Mozilla, Microsoft)` と BSD 3-Clause の全文。どちらも先頭に名称、版、出典、SPDX 識別子、著作権表示を書く
   - `.gitattributes` に `THIRD_PARTY_NOTICES` と `licenses/*` の `text eol=lf` を加える
