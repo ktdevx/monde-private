@@ -39,7 +39,7 @@
 ### Allowed Dependencies
 - 製品コード（`src/tu/`）: C 標準ライブラリ、`monde::markdown` の `markdown/md.h`・`markdown/md_parse.h`、`monde::yaml` の `yaml/yaml.h`・`yaml_front_matter.h`・`yaml_parse.h`・`yaml_path.h`・`yaml_format.h`、`monde::po` の `po/po.h`、`monde::foundation` の `buf.h`・`diag.h`・`eol.h`・`source.h`・`utf8.h`。
 - 使わないもの: `po/po_read.h`、`po/po_write.h`、`foundation/file_io.h`、各モジュールの `*_internal.h`、`markdown/md_dialect.h`（方言は既定の CommonMark だけを使う）。
-- テストコード（`tests/tu/`）: 上記に加えて Naos、`po/po_write.h`・`po/po_read.h`（抽出結果の確認と翻訳カタログの作成）、`foundation/file_io.h`（spec.txt の読み込み）、`tests/markdown/spec_reader.c`。
+- テストコード（`tests/tu/`）: 上記に加えて Naos、`po/po_write.h`・`po/po_read.h`（抽出結果の確認と翻訳カタログの作成）、`foundation/file_io.h`（spec.txt の読み込み）、`tests/markdown/spec_reader.c`、`markdown/md_dialect.h`（方言のノードを含む文書を作るテストだけ。製品コードでは使わない）。
 - モジュール間の依存は `foundation ← markdown / yaml / po ← tu ← monde-cli` の一方向。`tu` は `cli_args` と `po_merge` に依存しない。
 
 ### Revalidation Triggers
@@ -135,6 +135,8 @@ tests/tu/
 ├── check_test.c           # 構造の検査の各項目
 ├── translate_test.c       # 再構成: 状態ごとの出力、fuzzy の採用、統計、訳文の UTF-8 / NUL、エラー時の出力なし
 ├── roundtrip_test.c       # spec.txt の全例: 空のカタログ、msgstr == msgid、短絡なしの splice、CRLF 版、末尾改行なし版
+├── extract_pot_main.c     # Naos を使わない実行ファイル: 走査 → ヘッダ付きで抽出 → .pot を書き出す（互換性テスト用）
+├── msgfmt_check.cmake     # 上の実行ファイルで .pot を作り msgfmt --check に通す CTest のスクリプト
 └── data/                  # msgfmt の互換性テスト用の入力 Markdown
 ```
 
@@ -437,6 +439,7 @@ void mnd_tu_doc_free(mnd_tu_doc_t *doc);  /* NULL に対しても安全 */
 
 ##### State Management
 - `mnd_tu_doc_t`（`tu_internal.h`）: `const char *data; size_t len; char *path; mnd_md_doc_t *md; mnd_yaml_doc_t *yaml;（NULL 可）mnd_tu_seg_t *segs; size_t seg_count;`。`mnd_tu_seg_t` は `mnd_tu_segment_t pub` に `const mnd_md_node_t *node`（Markdown）と `const mnd_yaml_node_t *scalar`（フロントマター）を添えたもの。
+- セグメントの追加は Scanner の内部関数 `mnd_tu_doc_push_segment(doc) → mnd_tu_seg_t *`（配列の伸長と初期化。失敗なら NULL）だけが行い、MarkdownSegments と FrontMatterSegments はこれを使う。
 - 解放の順序: 各キーパスの matches は走査中に解放済み。`mnd_tu_doc_free` は segs の `msgid` / `kind` → yaml の文書 → md の文書 → path → 自身の順に解放する。
 
 **Implementation Notes**
