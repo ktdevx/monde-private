@@ -207,6 +207,21 @@ NAOS_TEST(scalar_double_quoted_escapes)
                 "\"\\u00e9\\u3042\\U0001F600\\x7f\\U0010FFFF\"");
 }
 
+/*
+ * ダブルクオートの \ の後ろのタブ文字は U+0009（3.5。YAML 1.2 の ns-esc-horizontal-tab）。
+ * 行末にあってもエスケープなので行末の空白として除かず、続く行の境目は空白に折り返す（PyYAML と同じ）
+ */
+NAOS_TEST(scalar_double_quoted_escaped_tab)
+{
+    check_value("\"a\\\tb\"", 0, 0, false, MND_YAML_DOUBLE_QUOTED, "a\tb", "\"a\\\tb\"");
+    check_value("k: \"a\\\tb\" # c\n", 3, 0, false, MND_YAML_DOUBLE_QUOTED, "a\tb", "\"a\\\tb\"");
+    check_value("k: \"\\\t\"\n", 3, 0, false, MND_YAML_DOUBLE_QUOTED, "\t", "\"\\\t\"");
+    check_value("k: \"a\\\t\n  b\"\n", 3, 0, false, MND_YAML_DOUBLE_QUOTED, "a\t b", "\"a\\\t\n  b\"");
+    check_value("k: \"a\\\t\t \n  b\"\n", 3, 0, false, MND_YAML_DOUBLE_QUOTED, "a\t b",
+                "\"a\\\t\t \n  b\"");
+    check_value("[\"a\\\tb\", c]", 1, 0, true, MND_YAML_DOUBLE_QUOTED, "a\tb", "\"a\\\tb\"");
+}
+
 /* シングルクオートの '' は '（3.6） */
 NAOS_TEST(scalar_single_quoted_doubled_quote)
 {
@@ -340,7 +355,6 @@ NAOS_TEST(scalar_invalid_escape_errors)
     check_error("k: \"\\u12G4\"\n", 3, 0, false, message, 1);
     check_error("k: \"\\uD800\"\n", 3, 0, false, message, 1);
     check_error("k: \"\\U00110000\"\n", 3, 0, false, message, 1);
-    check_error("k: \"\\\tb\"\n", 3, 0, false, message, 1);
     check_error("a: 1\nk: \"a\n\n  b \\q\"\n", 8, 0, false, message, 4);
 }
 
@@ -695,6 +709,7 @@ NAOS_ADD_TEST(scalar_scaffold_parser_reports_first_error_only),
     NAOS_ADD_TEST(scalar_fixture_builds_and_cleans_up),
     NAOS_ADD_TEST(scalar_span_and_style_of_each_style),
     NAOS_ADD_TEST(scalar_double_quoted_escapes),
+    NAOS_ADD_TEST(scalar_double_quoted_escaped_tab),
     NAOS_ADD_TEST(scalar_single_quoted_doubled_quote),
     NAOS_ADD_TEST(scalar_multi_line_plain_folding),
     NAOS_ADD_TEST(scalar_multi_line_quoted_folding),

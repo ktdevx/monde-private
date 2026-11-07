@@ -387,7 +387,7 @@ static int scalar_hex_value(char c)
     return -1;
 }
 
-/* 1 文字のエスケープ（\ の次の文字とコードポイント） */
+/* 1 文字のエスケープ（\ の次の文字とコードポイント。\ の後ろのタブ文字も U+0009） */
 typedef struct scalar_simple_escape
 {
     char c;
@@ -398,7 +398,7 @@ static const scalar_simple_escape_t scalar_simple_escapes[] =
 {
     { 'a', 0x07UL }, { 'b', 0x08UL }, { 't', 0x09UL }, { 'n', 0x0AUL }, { 'v', 0x0BUL }, { 'f', 0x0CUL },
     { 'r', 0x0DUL }, { 'e', 0x1BUL }, { ' ', 0x20UL }, { '"', 0x22UL }, { '/', 0x2FUL }, { '\\', 0x5CUL },
-    { 'N', 0x85UL }, { '_', 0xA0UL }, { 'L', 0x2028UL }, { 'P', 0x2029UL }
+    { 'N', 0x85UL }, { '_', 0xA0UL }, { 'L', 0x2028UL }, { 'P', 0x2029UL }, { '\t', 0x09UL }
 };
 
 /*
