@@ -95,3 +95,7 @@
   - 本部品が出すすべての診断（設計の「メッセージ」の表）が英語で、path と 1 起点の行番号（不明なら 0）を持つことを、2.3 と 4.3 のテストの観点に照らして確認する
   - 完了時: `ctest --test-dir build -C Release --output-on-failure` が tu の全テストを含めて成功し、steering の予約済みの短縮名に `tu` がある
   - _Requirements: 4.12, 7.6_
+
+## Implementation Notes
+- 1.1: `tests/tu` から spec_reader を使うときは `#include "../markdown/spec_reader.h"`（相対パス）。`monde_add_module_tests` に include ディレクトリの指定がないため。
+- 1.1: `struct mnd_tu_doc` は配列の伸長のために `seg_cap` を持つ。抽出の仮の実装は `out` を変えずに false を返す（失敗時に呼び出し前の件数へ戻す規約を優先）。
