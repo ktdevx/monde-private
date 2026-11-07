@@ -2,6 +2,7 @@
 monde_add_module_tests(tu
   SOURCES
     main.c
+    test_util.c
     ../markdown/spec_reader.c
     markdown_test.c
     front_matter_test.c
