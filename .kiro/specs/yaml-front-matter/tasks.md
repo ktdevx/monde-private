@@ -10,7 +10,7 @@
   - 完了時: 標準の 3 行の手順が成功し、CTest に `yaml_tests.<suite>.<test>` 形式のテストが 10 スイート分表示され、`ctest -L yaml` で実行できる。`BUILD_TESTING=OFF` でも `monde_yaml` がビルドできる
   - _Requirements: 6.8_
 
-- [ ] 1.2 (P) 構文木の型、アリーナ、文書のアクセサと解放を実装する
+- [x] 1.2 (P) 構文木の型、アリーナ、文書のアクセサと解放を実装する
   - 文書ごとのアリーナ（確保関数から塊を確保し、塊の連結リストで一括解放する）、空の文書の作成と根の設定、ノードの作成、論理値の文字列の複製、2 つのキーの論理値の比較、文書の根・内容・解析した範囲・行末記号のアクセサ、文書の解放を実装する
   - テスト用の木の検査の部品に、全ノードの範囲と行番号の不変条件（内容の範囲内、子が親の内側、兄弟が重ならず原文の順、行番号が foundation の数え方と一致）を確かめる検査関数を実装する（以降のスイートも使う）
   - 完了時: model スイートで、文書の作成と内部の関数で手で組み立てた木が検査関数を満たし、わざと壊した木（兄弟の逆転、親の外の子）を検査関数が検出し、文書の解放のあとに確保と解放の回数が等しく、確保の失敗で NULL が返り、キーの比較が論理値の長さと内容で判定するテストが合格する
@@ -112,3 +112,4 @@
 ## Implementation Notes
 - 1.1: 解析の診断は `mnd_yaml_parser_error(p, line, message)`（引数なしのメッセージ）、書式付きのメッセージは `mnd_yaml_parser_claim_error(p)` が true のときだけ呼び出し側が `mnd_diag_add` を直接呼ぶ（最初のエラーだけを報告する）。メモリ不足は `mnd_yaml_parser_oom(p)`。これらは `yaml_scalar.c` にある。`mnd_yaml_allocator_or_default` と `mnd_yaml_size_mul` は `yaml_node.c` にある。
 - 1.1: `mnd_yaml_lines_build` は解決済み（NULL でない）の確保関数を受け取る。ブロックスカラーの走査はカーソルを最後に消費した行の次の行の先頭へ進める。parser_fixture は自分の `diags` を持ち、`parser.diags` がそれを指すため移動しない。文書を引き取るときは `parser.doc` を NULL にする。
+- 1.2: `end_line` は `span.end` の位置の行番号（markdown の `span.end - 1` ではない）。解析のタスクは `mnd_yaml_parser_set_span` などで `mnd_source_line_of(data, len, span.end)` と同じ値を設定する。検査は `mnd_yaml_tree_check(doc, ...)` と `mnd_yaml_tree_check_note(doc)`（tests/yaml/tree_check.h）。
