@@ -49,15 +49,18 @@ typedef struct mnd_tu_doc mnd_tu_doc_t;  /* 不透明。原文を指す */
 
 /*
  * data[0..len)（BOM 除去後）を走査し、*out に文書を設定して true を返す。
- * 失敗したら *out を NULL にし、diags にエラーを追加して false を返す。警告だけなら true。
- * options は NULL 可（MND_TU_OPTIONS_INIT と同じ）。data は len == 0 なら NULL 可。
- * 文書は data を指し続けるので、呼び出し側は mnd_tu_doc_free まで data を保持する
+ * 失敗したら *out を NULL にし、diags にエラーを追加して false を返す（確保したものはすべて解放済み）。
+ * 警告だけなら true。
+ * options は NULL 可（MND_TU_OPTIONS_INIT と同じ）。data は len == 0 なら NULL 可。out と diags は NULL でない。
+ * 成功時、セグメントは span.start の昇順（フロントマター → 本文）で重ならず、msgid は空でなく \n で始まらない。
+ * 文書は data を指し続けるので、呼び出し側は mnd_tu_doc_free まで data を変更も解放もしない
  */
 bool mnd_tu_scan(const char *data, size_t len, const mnd_tu_options_t *options,
                  mnd_tu_doc_t **out, mnd_diag_list_t *diags);
 
 size_t mnd_tu_doc_segment_count(const mnd_tu_doc_t *doc);
-const mnd_tu_segment_t *mnd_tu_doc_segment(const mnd_tu_doc_t *doc, size_t index);  /* index < count */
+/* index < count。返したセグメントは mnd_tu_doc_free まで有効 */
+const mnd_tu_segment_t *mnd_tu_doc_segment(const mnd_tu_doc_t *doc, size_t index);
 void mnd_tu_doc_free(mnd_tu_doc_t *doc);  /* NULL に対しても安全 */
 
 /* 抽出（Extractor） */
@@ -66,7 +69,9 @@ void mnd_tu_doc_free(mnd_tu_doc_t *doc);  /* NULL に対しても安全 */
  * doc のセグメントから PO エントリを作り、out の末尾に加えて true を返す。ヘッダエントリは加えない。
  * ref_file は参照コメント（#:）に書くファイル名（NULL でない）。
  * 同じ msgid はひとつのエントリにまとめ、out に既にある msgctxt のない同じ msgid のエントリがあればそれに統合する。
+ * 加えるエントリの順は各 msgid の最初の出現の順。refs は出現順、extracted_comments は重複なし。
  * メモリ不足なら diags にエラーを追加し、out を呼び出し前の状態に戻して false を返す
+ * （加えたエントリを取り除き、既存のエントリに足した参照と抽出コメントも取り除く）。doc は変えない
  */
 bool mnd_tu_extract(const mnd_tu_doc_t *doc, const char *ref_file,
                     mnd_po_catalog_t *out, mnd_diag_list_t *diags);
@@ -95,7 +100,9 @@ typedef struct mnd_tu_stats
 
 /*
  * doc のセグメントを catalog の訳文で置き換えた内容を out（初期化済み。内容は捨てる）に入れ、true を返す。
- * options は NULL 可（MND_TU_TRANSLATE_OPTIONS_INIT と同じ）。stats は NULL 可。
+ * doc を作った data が生きていること。options は NULL 可（MND_TU_TRANSLATE_OPTIONS_INIT と同じ）。
+ * stats は NULL 可。doc、catalog、out、diags は NULL でない。
+ * 成功時、out はセグメント以外のすべてのバイトが data と同じで、stats->total はセグメントの数。
  * 構造を変え得る訳文は diags に警告を追加し、出力は変えない。
  * 訳文の不正な UTF-8 / NUL とメモリ不足は diags にエラーを追加し、out を空に、*stats を 0 にして false を返す
  */

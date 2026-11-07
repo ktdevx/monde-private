@@ -110,10 +110,10 @@ NAOS_TEST(front_matter_util_difference_reports_first_offset)
 }
 
 /*
- * diags の中にエラーの診断がちょうど 1 つあり、その最初のものの path が "test.md" で、
+ * diags の中にエラーの診断がちょうど 1 つあり、その最初のものの path が "test.md"、行番号が line で、
  * メッセージが needle を含むことを検査する
  */
-static void check_single_error(const mnd_diag_list_t *diags, const char *needle)
+static void check_single_error(const mnd_diag_list_t *diags, const char *needle, size_t line)
 {
     size_t i;
     size_t errors = 0;
@@ -136,6 +136,7 @@ static void check_single_error(const mnd_diag_list_t *diags, const char *needle)
     NAOS_REQUIRE_NOT_NULL(first);
     NAOS_REQUIRE_NOT_NULL(first->path);
     NAOS_CHECK_STR_EQ("test.md", first->path);
+    NAOS_CHECK_UINT_EQ(line, first->line);
     NAOS_CHECK_TRUE(strstr(first->message, needle) != NULL);
 }
 
@@ -226,7 +227,7 @@ NAOS_TEST(front_matter_scan_with_keys_invalid_yaml_fails)
         NAOS_CHECK_TRUE(diag->severity == MND_SEVERITY_ERROR);
         NAOS_REQUIRE_NOT_NULL(diag->path);
         NAOS_CHECK_STR_EQ("test.md", diag->path);
-        NAOS_CHECK_TRUE(diag->line > 0);
+        NAOS_CHECK_UINT_EQ(2, diag->line);
     }
     mnd_tu_doc_free(doc);
     mnd_diag_list_free(&diags);
@@ -257,7 +258,7 @@ NAOS_TEST(front_matter_scan_invalid_utf8_fails)
     options.path = "test.md";
     NAOS_CHECK_FALSE(mnd_tu_scan(text, strlen(text), &options, &doc, &diags));
     NAOS_CHECK_TRUE(doc == NULL);
-    check_single_error(&diags, "invalid UTF-8 sequence");
+    check_single_error(&diags, "invalid UTF-8 sequence", 1);
     mnd_tu_doc_free(doc);
     mnd_diag_list_free(&diags);
 }
@@ -276,7 +277,7 @@ NAOS_TEST(front_matter_scan_invalid_utf8_with_keys_fails)
     options.front_matter_key_count = 1;
     NAOS_CHECK_FALSE(mnd_tu_scan(text, strlen(text), &options, &doc, &diags));
     NAOS_CHECK_TRUE(doc == NULL);
-    check_single_error(&diags, "invalid UTF-8 sequence");
+    check_single_error(&diags, "invalid UTF-8 sequence", 2);
     mnd_tu_doc_free(doc);
     mnd_diag_list_free(&diags);
 }

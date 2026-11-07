@@ -663,7 +663,7 @@ mnd_tu_check_result_t mnd_tu_check_structure(const char *text, size_t len, bool 
 - 失敗した例は番号と節を出力する（spec_test と同じ形）。
 
 ### 互換性テスト（msgfmt のある環境）
-- `tests/tu/data/` の Markdown（フロントマター、見出し、リスト、引用、画像、複数行の段落、同一 msgid の重複を含む）から抽出し、ヘッダを付けて書き出した `.pot` を `msgfmt --check -o /dev/null` に通す（3.9）。po-merge と同じく `find_program(msgfmt)` で見つかった環境でだけ登録する。
+- `tests/tu/data/` の Markdown（フロントマター、見出し、リスト、引用、画像、複数行の段落、同一 msgid の重複を含む）から抽出し、ヘッダを付けて書き出した `.pot` を `msgfmt --check -o <pot>.mo` に通す（3.9。po と同じく `/dev/null` は使わない）。po-merge と同じく `find_program(msgfmt)` で見つかった環境でだけ登録する。
 
 ## Performance & Scalability
 - 性能目標はない（steering）。走査は構文木のサイズに線形、抽出は `mnd_po_catalog_find` によるセグメント数 × エントリ数、再構成も同じ。一般的な文書の規模（数百セグメント × 数千エントリ）で体感上すぐ終わる。
