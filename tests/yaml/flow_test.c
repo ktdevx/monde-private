@@ -8,6 +8,7 @@
 #include "tree_check.h"
 #include "yaml/yaml_flow.h"
 #include "yaml/yaml_internal.h"
+#include "yaml/yaml_parse.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -528,6 +529,58 @@ NAOS_TEST(flow_out_of_memory)
     NAOS_CHECK_TRUE(failures > 2);
 }
 
+/*
+ * 入口（mnd_yaml_parse）から、フロー形式の値を持つブロック形式のマッピングを解析する（2.3）。
+ * フロー形式の中のスカラーだけが flow の印を持ち、結果は木の検査を満たす
+ */
+NAOS_TEST(flow_values_in_block_mapping_via_entry)
+{
+    const char *text = "title: [a, 'b']\nmeta: {k: v, l: [1, 2]}\nlist:\n  - {x: \"y\"}\n";
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    mnd_yaml_doc_t *doc = NULL;
+    const mnd_yaml_node_t *root = NULL;
+    const mnd_yaml_node_t *v = NULL;
+    const mnd_yaml_node_t *l = NULL;
+    mnd_span_t content;
+
+    content.start = 0;
+    content.end = strlen(text);
+    NAOS_REQUIRE_TRUE(mnd_yaml_parse(text, strlen(text), content, NULL, &doc, &diags));
+    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
+    mnd_diag_list_free(&diags);
+    NAOS_REQUIRE_TRUE(doc != NULL);
+    NAOS_CHECK_TRUE(mnd_yaml_tree_check_note(doc));
+    root = mnd_yaml_doc_root(doc);
+    NAOS_REQUIRE_TRUE((root != NULL) && (root->kind == MND_YAML_MAPPING) && (root->as.mapping.count == 3));
+    NAOS_CHECK_UINT_EQ(0, root->span.start);
+    NAOS_CHECK_UINT_EQ(strlen(text) - 1, root->span.end);
+
+    NAOS_CHECK_FALSE(root->as.mapping.pairs[0].key->as.scalar.flow);
+    v = root->as.mapping.pairs[0].value;
+    NAOS_REQUIRE_TRUE((v->kind == MND_YAML_SEQUENCE) && (v->as.sequence.count == 2));
+    NAOS_CHECK_TRUE(v->parent == root);
+    check_scalar(text, v->as.sequence.items[0], v, MND_YAML_PLAIN, "a", "a");
+    check_scalar(text, v->as.sequence.items[1], v, MND_YAML_SINGLE_QUOTED, "b", "'b'");
+
+    v = root->as.mapping.pairs[1].value;
+    NAOS_REQUIRE_TRUE((v->kind == MND_YAML_MAPPING) && (v->as.mapping.count == 2));
+    NAOS_CHECK_TRUE(v->parent == root);
+    NAOS_CHECK_MEM_EQ("{k: v, l: [1, 2]}", 17, text + v->span.start, v->span.end - v->span.start);
+    check_scalar(text, v->as.mapping.pairs[0].key, v, MND_YAML_PLAIN, "k", "k");
+    check_scalar(text, v->as.mapping.pairs[0].value, v, MND_YAML_PLAIN, "v", "v");
+    l = v->as.mapping.pairs[1].value;
+    NAOS_REQUIRE_TRUE((l->kind == MND_YAML_SEQUENCE) && (l->as.sequence.count == 2));
+    check_scalar(text, l->as.sequence.items[1], l, MND_YAML_PLAIN, "2", "2");
+
+    v = root->as.mapping.pairs[2].value;
+    NAOS_REQUIRE_TRUE((v->kind == MND_YAML_SEQUENCE) && (v->as.sequence.count == 1));
+    l = v->as.sequence.items[0];
+    NAOS_REQUIRE_TRUE((l->kind == MND_YAML_MAPPING) && (l->as.mapping.count == 1));
+    NAOS_CHECK_TRUE(l->parent == v);
+    check_scalar(text, l->as.mapping.pairs[0].value, l, MND_YAML_DOUBLE_QUOTED, "y", "\"y\"");
+    mnd_yaml_doc_free(doc);
+}
+
 NAOS_SUITE(flow,
     NAOS_ADD_TEST(flow_sequence_of_scalars),
     NAOS_ADD_TEST(flow_mapping_with_nested_sequence),
@@ -542,5 +595,6 @@ NAOS_SUITE(flow,
     NAOS_ADD_TEST(flow_duplicate_key),
     NAOS_ADD_TEST(flow_distinct_keys_are_accepted),
     NAOS_ADD_TEST(flow_deep_nesting),
-    NAOS_ADD_TEST(flow_out_of_memory)
+    NAOS_ADD_TEST(flow_out_of_memory),
+    NAOS_ADD_TEST(flow_values_in_block_mapping_via_entry)
 )
