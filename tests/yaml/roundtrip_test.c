@@ -191,7 +191,8 @@ static const roundtrip_doc_t roundtrip_docs[] = {
 #define ROUNDTRIP_DOC_COUNT (sizeof(roundtrip_docs) / sizeof(roundtrip_docs[0]))
 
 /*
- * 訳文の集合: ASCII、記号、引用符、改行、先頭と末尾の空白、Core Schema の非文字列の形、日本語。
+ * 訳文の集合: ASCII、記号、引用符、改行、先頭と末尾の空白、Core Schema と YAML 1.1 の非文字列の形、
+ * フロー形式の中の ?、U+2028、日本語。
  * 日本語は UTF-8 のバイト列を \x で書く（日本語のタイトル / 見出し：説明\n二行目です / 「引用」と、句読点。）
  */
 typedef struct roundtrip_text
@@ -227,6 +228,15 @@ static const roundtrip_text_t roundtrip_texts[] = {
     ROUNDTRIP_TEXT("true"),
     ROUNDTRIP_TEXT("123"),
     ROUNDTRIP_TEXT("null"),
+    ROUNDTRIP_TEXT("yes"),
+    ROUNDTRIP_TEXT("No"),
+    ROUNDTRIP_TEXT("2024-01-01"),
+    ROUNDTRIP_TEXT("2024-01-02T03:04:05Z"),
+    ROUNDTRIP_TEXT("1_000"),
+    ROUNDTRIP_TEXT("1:30"),
+    ROUNDTRIP_TEXT("<<"),
+    ROUNDTRIP_TEXT("What?"),
+    ROUNDTRIP_TEXT("line\xe2\x80\xa8sep"),
     ROUNDTRIP_TEXT("---"),
     ROUNDTRIP_TEXT(""),
     ROUNDTRIP_TEXT("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x81\xae\xe3\x82\xbf\xe3\x82\xa4\xe3\x83\x88\xe3\x83\xab"),

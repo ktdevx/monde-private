@@ -168,6 +168,312 @@ static bool format_is_core_schema_non_string(const char *text, size_t len)
     return (i == len);
 }
 
+/* ASCII の英字の大文字と小文字を区別せずに text[0..len) が word と一致するか */
+static bool format_equals_nocase(const char *text, size_t len, const char *word)
+{
+    size_t i;
+    char a;
+    char b;
+
+    if (strlen(word) != len)
+    {
+        return false;
+    }
+    for (i = 0; i < len; ++i)
+    {
+        a = text[i];
+        b = word[i];
+        if ((a >= 'A') && (a <= 'Z'))
+        {
+            a = (char)(a - 'A' + 'a');
+        }
+        if (a != b)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/* text[i..len) の先頭から、数字と extra の文字の並びを読み飛ばした位置 */
+static size_t format_skip_digits(const char *text, size_t len, size_t i, const char *extra)
+{
+    while ((i < len) && (format_is_digit(text[i]) || ((text[i] != '\0') && (strchr(extra, text[i]) != NULL))))
+    {
+        ++i;
+    }
+
+    return i;
+}
+
+/* text[*i..len) の先頭の 1 桁以上 max 桁以下の数字を読む（*i を進める）。1 桁もなければ false */
+static bool format_take_digits(const char *text, size_t len, size_t *i, size_t max)
+{
+    size_t n = 0;
+
+    while ((*i < len) && (n < max) && format_is_digit(text[*i]))
+    {
+        ++*i;
+        ++n;
+    }
+
+    return (n > 0);
+}
+
+/*
+ * text[0..len) が YAML 1.1 の整数・小数の形か。https://yaml.org/type/int.html と float.html の正規表現より広く、
+ * 符号、`_` と `,`（Psych の区切り）、2 進・8 進（0o を含む）・16 進、60 進（1:30、1:30.5）、
+ * 指数の符号の省略、小数点の後ろの `.` と `_`、.inf と .nan の大文字小文字の変種を含める
+ */
+static bool format_is_yaml11_number(const char *text, size_t len)
+{
+    size_t i = 0;
+    size_t start;
+    size_t digits;
+    bool integral = false;
+    bool dot = false;
+
+    if ((len > 0) && ((text[0] == '-') || (text[0] == '+')))
+    {
+        i = 1;
+    }
+    if (format_equals_nocase(text + i, len - i, ".inf") || format_equals_nocase(text + i, len - i, ".nan"))
+    {
+        return true;
+    }
+    if (((len - i) > 2) && (text[i] == '0'))
+    {
+        if (text[i + 1] == 'b')
+        {
+            for (start = i + 2; start < len; ++start)
+            {
+                if ((text[start] != '0') && (text[start] != '1') && (text[start] != '_') && (text[start] != ','))
+                {
+                    break;
+                }
+            }
+            return (start == len);
+        }
+        if (text[i + 1] == 'o')
+        {
+            for (start = i + 2; start < len; ++start)
+            {
+                if (((text[start] < '0') || (text[start] > '7')) && (text[start] != '_'))
+                {
+                    break;
+                }
+            }
+            return (start == len);
+        }
+        if (text[i + 1] == 'x')
+        {
+            for (start = i + 2; start < len; ++start)
+            {
+                if (!format_is_hex_digit(text[start]) && (text[start] != '_') && (text[start] != ','))
+                {
+                    break;
+                }
+            }
+            return (start == len);
+        }
+    }
+    if ((i < len) && format_is_digit(text[i]))
+    {
+        integral = true;
+        i = format_skip_digits(text, len, i, "_,");
+    }
+    if (integral && (i < len) && (text[i] == ':'))
+    {
+        /* 60 進: (:[0-5]?[0-9])+ の後ろに、小数なら .[0-9_]* */
+        while ((i < len) && (text[i] == ':'))
+        {
+            ++i;
+            start = i;
+            if (!format_take_digits(text, len, &i, 2))
+            {
+                return false;
+            }
+            digits = i - start;
+            if ((digits == 2) && (text[start] > '5'))
+            {
+                return false;
+            }
+        }
+        if ((i < len) && (text[i] == '.'))
+        {
+            i = format_skip_digits(text, len, i + 1, "_");
+        }
+        return (i == len);
+    }
+    if ((i < len) && (text[i] == '.'))
+    {
+        dot = true;
+        i = format_skip_digits(text, len, i + 1, "._,");
+    }
+    if (!integral && !dot)
+    {
+        return false;
+    }
+    if ((i < len) && ((text[i] == 'e') || (text[i] == 'E')))
+    {
+        ++i;
+        if ((i < len) && ((text[i] == '-') || (text[i] == '+')))
+        {
+            ++i;
+        }
+        if (!format_take_digits(text, len, &i, len))
+        {
+            return false;
+        }
+        i = format_skip_digits(text, len, i, "");
+    }
+
+    return (i == len);
+}
+
+/*
+ * text[0..len) が YAML 1.1 の日付と時刻の形か（https://yaml.org/type/timestamp.html。
+ * 日付だけの形も月と日の 1 桁を許し、タイムゾーンの前の空白と `+0900` の形を含める）
+ */
+static bool format_is_yaml11_timestamp(const char *text, size_t len)
+{
+    size_t i = 0;
+    size_t start;
+
+    if (!format_take_digits(text, len, &i, 4) || (i != 4))
+    {
+        return false;
+    }
+    if ((i >= len) || (text[i] != '-'))
+    {
+        return false;
+    }
+    ++i;
+    if (!format_take_digits(text, len, &i, 2) || (i >= len) || (text[i] != '-'))
+    {
+        return false;
+    }
+    ++i;
+    if (!format_take_digits(text, len, &i, 2))
+    {
+        return false;
+    }
+    if (i == len)
+    {
+        return true;
+    }
+    if ((text[i] == 'T') || (text[i] == 't'))
+    {
+        ++i;
+    }
+    else if (format_is_white(text[i]))
+    {
+        while ((i < len) && format_is_white(text[i]))
+        {
+            ++i;
+        }
+    }
+    else
+    {
+        return false;
+    }
+    if (!format_take_digits(text, len, &i, 2) || (i >= len) || (text[i] != ':'))
+    {
+        return false;
+    }
+    ++i;
+    start = i;
+    if (!format_take_digits(text, len, &i, 2) || ((i - start) != 2) || (i >= len) || (text[i] != ':'))
+    {
+        return false;
+    }
+    ++i;
+    start = i;
+    if (!format_take_digits(text, len, &i, 2) || ((i - start) != 2))
+    {
+        return false;
+    }
+    if ((i < len) && (text[i] == '.'))
+    {
+        i = format_skip_digits(text, len, i + 1, "");
+    }
+    while ((i < len) && format_is_white(text[i]))
+    {
+        ++i;
+    }
+    if (i == len)
+    {
+        return true;
+    }
+    if (text[i] == 'Z')
+    {
+        return ((i + 1) == len);
+    }
+    if ((text[i] != '-') && (text[i] != '+'))
+    {
+        return false;
+    }
+    ++i;
+    if (!format_take_digits(text, len, &i, 2))
+    {
+        return false;
+    }
+    if ((i < len) && (text[i] == ':'))
+    {
+        ++i;
+    }
+    if (i < len)
+    {
+        start = i;
+        if (!format_take_digits(text, len, &i, 2) || ((i - start) != 2))
+        {
+            return false;
+        }
+    }
+
+    return (i == len);
+}
+
+/*
+ * text[0..len) が YAML 1.1 で文字列以外に解決されうる形か（整形の規則「YAML 1.1 の非文字列の形」）:
+ * 真偽値と null（大文字小文字を区別しない。Psych に合わせて広く取る）、整数、小数、日付と時刻、<<、=
+ */
+static bool format_is_yaml11_non_string(const char *text, size_t len)
+{
+    static const char *const words[] = {
+        "y", "n", "yes", "no", "true", "false", "on", "off", "null", "~", "<<", "="
+    };
+    size_t j;
+
+    for (j = 0; j < (sizeof(words) / sizeof(words[0])); ++j)
+    {
+        if (format_equals_nocase(text, len, words[j]))
+        {
+            return true;
+        }
+    }
+
+    return format_is_yaml11_number(text, len) || format_is_yaml11_timestamp(text, len);
+}
+
+/* text[0..len) が U+2028（E2 80 A8）または U+2029（E2 80 A9）を含むか。U+0085 は C1 の制御文字として別に扱う */
+static bool format_has_line_separator(const char *text, size_t len)
+{
+    size_t i;
+
+    for (i = 0; (i + 2) < len; ++i)
+    {
+        if (((unsigned char)text[i] == 0xE2U) && ((unsigned char)text[i + 1] == 0x80U)
+            && (((unsigned char)text[i + 2] == 0xA8U) || ((unsigned char)text[i + 2] == 0xA9U)))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 /*
  * 訳文をプレーンのまま表現できるか（整形の規則の表のプレーンの行）。
  * `: ` と ` #` の空白は、解析と同じく空白とタブの両方とする。
@@ -223,12 +529,27 @@ static bool format_plain_keepable(const char *text, size_t len, bool flow)
         return false;
     }
 
+    /* YAML 1.1 のパーサとの互換（5.9）: タブ、フロー形式の中の ?、U+2028・U+2029、非文字列の形 */
+    if ((memchr(text, '\t', len) != NULL) || (flow && (memchr(text, '?', len) != NULL))
+        || format_has_line_separator(text, len) || format_is_yaml11_non_string(text, len))
+    {
+        return false;
+    }
+
     return !format_is_core_schema_non_string(text, len);
 }
 
-/* 訳文をシングルクオートのまま表現できるか（改行・CR・タブ以外の制御文字を含まない） */
+/*
+ * 訳文をシングルクオートのまま表現できるか（改行・CR・タブ以外の制御文字を含まない。
+ * U+0085 は C1 の制御文字に含まれ、U+2028・U+2029 も YAML 1.1 のパーサが改行として読みうるため除く: 5.9）
+ */
 static bool format_single_keepable(const char *text, size_t len)
 {
+    if (format_has_line_separator(text, len))
+    {
+        return false;
+    }
+
     return !format_has_control_except_tab(text, len);
 }
 

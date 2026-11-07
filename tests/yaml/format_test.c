@@ -417,19 +417,16 @@ NAOS_TEST(format_plain_kept)
     check_format("title: Hello # c\n", "Hello", "Bonjour", "Bonjour");
     check_format("- Hello\n", "Hello", "Bonjour", "Bonjour");
     check_format("Hello\n", "Hello", "Bonjour", "Bonjour");
-    /* Core Schema の非文字列の形でないもの */
-    check_format("title: Hello\n", "Hello", "yes", "yes");
+    /* Core Schema と YAML 1.1 の非文字列の形でないもの */
     check_format("title: Hello\n", "Hello", "true1", "true1");
-    check_format("title: Hello\n", "Hello", "1.2.3", "1.2.3");
     check_format("title: Hello\n", "Hello", "0x", "0x");
     check_format("title: Hello\n", "Hello", "0xG", "0xG");
     check_format("title: Hello\n", "Hello", ".in", ".in");
     check_format("title: Hello\n", "Hello", "+", "+");
     check_format("title: Hello\n", "Hello", "nul", "nul");
     check_format("title: Hello\n", "Hello", "1e", "1e");
-    check_format("title: Hello\n", "Hello", "....", "....");
-    /* 設計の規則でプレーンに残すタブ（先頭と末尾以外） */
-    check_format("title: Hello\n", "Hello", "a\tb", "a\tb");
+    /* フロー形式の外の ? はプレーンを妨げない */
+    check_format("title: Hello\n", "Hello", "What?", "What?");
 }
 
 /* プレーンを維持できない訳文はダブルクオートに切り替える（5.4） */
@@ -458,6 +455,88 @@ NAOS_TEST(format_plain_switches_to_double_quoted)
     check_format("title: Hello\n", "Hello", "a\x01" "b", "\"a\\x01b\"");
     check_format("title: Hello\n", "Hello", "a\x7f" "b", "\"a\\x7Fb\"");
     check_format("title: Hello\n", "Hello", "a\xc2\x85" "b", "\"a\\x85b\"");
+}
+
+/*
+ * YAML 1.1 の非文字列の形（真偽値、null、整数、小数、日付と時刻、<<、=）はダブルクオートに切り替える（5.9）。
+ * 判定に迷う形（1.2.3、.、....）も切り替える側に倒す
+ */
+NAOS_TEST(format_plain_yaml11_forms_switch)
+{
+    static const char *const forms[] = {
+        /* 真偽値 */
+        "y", "Y", "yes", "Yes", "YES", "n", "N", "no", "No", "NO", "on", "On", "ON", "off", "Off", "OFF",
+        "yEs", "oN",
+        /* null */
+        "nULL",
+        /* 整数 */
+        "1_000", "-1_000", "+0", "0b101", "-0b1_0", "012", "0_7", "0x_1F", "0xFF_FF", "1:30", "-1:30:59",
+        "190:20:30", "1,000",
+        /* 小数 */
+        "1_000.5", "1.", "1._5", "+.5", ".5e+3", "1.5e-3", "1_0e5", "1:30.5", "1:30.", "-.inf", ".nAn",
+        ".", "+.", "1.2.3", "....",
+        /* 日付と時刻 */
+        "2024-01-01", "2024-1-2", "2024-01-02T03:04:05Z", "2024-01-02t03:04:05", "2024-01-02 03:04:05",
+        "2024-01-02  3:04:05.123", "2024-1-2 3:04:05 +09:00", "2024-01-02T03:04:05-5", "2024-01-02T03:04:05+0900",
+        "2024-01-02T03:04:05.5 Z",
+        /* merge と value */
+        "<<", "="
+    };
+    char expected[64];
+    size_t i;
+    size_t n;
+
+    for (i = 0; i < (sizeof(forms) / sizeof(forms[0])); ++i)
+    {
+        n = strlen(forms[i]);
+        expected[0] = '"';
+        memcpy(expected + 1, forms[i], n);
+        expected[n + 1] = '"';
+        expected[n + 2] = '\0';
+        check_format("title: Hello\n", "Hello", forms[i], expected);
+    }
+    check_format("title: Hello\n", "Hello", "2024-01-02\t03:04:05Z", "\"2024-01-02\\t03:04:05Z\"");
+}
+
+/* YAML 1.1 の非文字列の形に似ているが一致しない訳文はプレーンのまま（5.2、5.9） */
+NAOS_TEST(format_plain_yaml11_lookalikes_kept)
+{
+    static const char *const forms[] = {
+        "Yesterday", "yes!", "Noon", "onion", "y2k", "nil", "2024-01-01 release", "2024-01", "2024-01-01T",
+        "2024-01-02T03:04", "2024-01-02T03:04:05Zulu", "20240-01-01", "12a", "1:3x", "1:60", "0b", "0b2",
+        "0xG1", "1e", "1e+", "=x", "x=", "<", "<<<", "<<a", "a.b", "v1.2", "1-2", "inf", "nan", ".infinity"
+    };
+    size_t i;
+
+    for (i = 0; i < (sizeof(forms) / sizeof(forms[0])); ++i)
+    {
+        check_format("title: Hello\n", "Hello", forms[i], forms[i]);
+    }
+}
+
+/*
+ * プレーンの中のタブ、フロー形式の中の ?、U+0085・U+2028・U+2029 はダブルクオートに切り替える（5.9）。
+ * シングルクオートも U+0085・U+2028・U+2029 では切り替える。ダブルクオートでは U+2028・U+2029 を
+ * UTF-8 のまま出力する（5.7）
+ */
+NAOS_TEST(format_yaml11_characters_switch)
+{
+    check_format("title: Hello\n", "Hello", "a\tb", "\"a\\tb\"");
+    check_format("tags: [a, b]\n", "b]", "What?", "\"What?\"");
+    check_format("tags: [a, b]\n", "b]", "a?b", "\"a?b\"");
+    check_format("m: {k: v}\n", "v}", "What?", "\"What?\"");
+    check_format("m: {k: v}\n", "k:", "a?", "\"a?\"");
+    check_format("title: Hello\n", "Hello", "a\xe2\x80\xa8" "b", "\"a\xe2\x80\xa8" "b\"");
+    check_format("title: Hello\n", "Hello", "a\xe2\x80\xa9" "b", "\"a\xe2\x80\xa9" "b\"");
+    check_format("title: 'Hello'\n", "'Hello'", "a\xe2\x80\xa8" "b", "\"a\xe2\x80\xa8" "b\"");
+    check_format("title: 'Hello'\n", "'Hello'", "a\xe2\x80\xa9" "b", "\"a\xe2\x80\xa9" "b\"");
+    check_format("title: 'Hello'\n", "'Hello'", "a\xc2\x85" "b", "\"a\\x85b\"");
+    /* 似ているが別の文字（U+2027、U+202A）はそのまま */
+    check_format("title: Hello\n", "Hello", "a\xe2\x80\xa7" "b", "a\xe2\x80\xa7" "b");
+    check_format("title: 'Hello'\n", "'Hello'", "a\xe2\x80\xaa" "b", "'a\xe2\x80\xaa" "b'");
+    /* シングルクオートのタブと YAML 1.1 の非文字列の形はシングルクオートのまま */
+    check_format("title: 'Hello'\n", "'Hello'", "yes", "'yes'");
+    check_format("title: [a, 'Hello']\n", "'Hello'", "What?", "'What?'");
 }
 
 /* 先頭の指示文字（-?:,[]{}#&*!|>'"%@ と `）ではダブルクオートに切り替える（5.4） */
@@ -866,6 +945,8 @@ NAOS_TEST(format_roundtrip_matrix)
         "&a", "*a", "!t", "|", ">", "\x01" "ctl", "del\x7f", "nel\xc2\x85", "\xc2\xa0" "nbsp", "a\r\nb", "\r",
         "x # y: z", "a\\nb", "x\"y'z", "a  b", "%", "a: ", "- ", "?", "<<", "a,b", "a:b:c", "http://x.y/z?a=b#c",
         "\t", "a\tb\tc", "\xe2\x80\xa8" "sep", "\xef\xbb\xbf" "bom",
+        "yes", "No", "y", "2024-01-01", "2024-01-02T03:04:05Z", "1_000", "0b101", "012", "1:30", "1:30.5", "=",
+        "What?", "a?b", "a\xe2\x80\xa9" "b", "1.2.3", ".",
         "a\n", "a\nb\n", "a\n\n", "a\n\n\n", "\na\n", "\n\na", "a\n\nb\n", "a\n\n\nb\nc\n", " a\n", "  a",
         "a\n b\n", "a\n\tb\n", "a\n \nb\n", "a\r\n", "\n\n", "a \n", "- a\n# b\n", "---\n...\n", "a: |\n  b\n",
         "#\n", "\xe6\x97\xa5\n\xe6\x9c\xac\n"
@@ -893,6 +974,9 @@ NAOS_SUITE(format,
     NAOS_ADD_TEST(format_plain_switches_to_double_quoted),
     NAOS_ADD_TEST(format_plain_leading_indicators_switch),
     NAOS_ADD_TEST(format_plain_core_schema_forms_switch),
+    NAOS_ADD_TEST(format_plain_yaml11_forms_switch),
+    NAOS_ADD_TEST(format_plain_yaml11_lookalikes_kept),
+    NAOS_ADD_TEST(format_yaml11_characters_switch),
     NAOS_ADD_TEST(format_single_quoted),
     NAOS_ADD_TEST(format_double_quoted_escapes),
     NAOS_ADD_TEST(format_flow_context_symbols),
