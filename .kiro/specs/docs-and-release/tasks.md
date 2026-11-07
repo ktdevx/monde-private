@@ -87,7 +87,7 @@
   - _Boundary: check_version_
   - _Requirements: 6.3, 7.8_
 
-- [ ] 4.2 (P) 実行ファイルとアーカイブを検証するスクリプトを作る
+- [x] 4.2 (P) 実行ファイルとアーカイブを検証するスクリプトを作る
   - 設計の verify_package の契約のとおり: `--version` の標準出力が `monde X.Y.Z` の 1 行と一致、Linux は `ldd` で静的、macOS は `otool -L` の依存が libSystem だけ、Windows は確認しない。アーカイブの一覧が最上位ディレクトリの下の実行ファイル、`LICENSE`、`README.md` の 3 つだけで、TGZ では実行ファイルに実行権限がある。実行ファイルの前置きコマンド（macOS x64 の `arch -x86_64`）を受け取れる
   - アーカイブの指定を省略すると `--version` と動的依存の確認だけを行う（ワークフローが `cpack` の前に実行ファイルを確かめるため）
   - 失敗は一覧にして終了コード 1、すべて通れば `package <archive> verified`（アーカイブ省略時は `executable verified`）を出す
