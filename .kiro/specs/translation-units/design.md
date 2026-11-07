@@ -195,6 +195,11 @@ graph TB
 - 空: msgid が空、または空白・タブ・改行だけなら、セグメントにしない（1.6）。
 - `line = node->start_line`。`kind` は「ラベルの規則」で作る。
 
+### 原文の NUL（7.8）
+- フロントマターと Markdown のセグメントを集め終えたあと、Scanner は各セグメントの `msgid` に NUL（0x00）が含まれないかを確かめる。含まれていれば、最初に見つかったセグメントについてエラー `NUL in source text` を走査の `path` とセグメントの `line` を添えて追加し、走査を失敗させる（`*out = NULL`）。
+- 理由: po-format のカタログの文字列は NUL を含まないことが不変条件で、NUL を含む msgid はエスケープされずに `.pot` に書かれ、検索（C 文字列の比較）では NUL の前までの別の msgid に一致してしまう。CommonMark は NUL を許すが、翻訳の対象にはできないので、黙って誤った出力を作らずに止める。
+- 判定は Scanner の 1 か所で行うので、抽出と再構成の両方に同じ規則が適用される（4.12）。セグメントにならない要素（コードブロックなど）の NUL は検査しない。
+
 ### ラベルの規則（3.5、3.6）
 - 根から葉へ向かう祖先のうち、`MND_MD_BLOCK_QUOTE` を `block quote`、`MND_MD_ITEM` を `list item` とし（`MND_MD_LIST`・方言のノードは出さない）、葉を `paragraph` または `heading (level N)` として、` > ` で連結する。例: `list item > block quote > paragraph`、`heading (level 2)`。
 - フロントマターは `front matter: <キーパス>`（キーパスは呼び出し側が渡した文字列そのまま）。
@@ -301,6 +306,7 @@ StructureCheck は Markdown のセグメントの訳文（短絡しなかった�
 | warning | `translation line %zu starts with a block marker (msgid at line %zu)` | 同上 | 4.11 |
 | error | `invalid UTF-8 sequence in translation` | `catalog_path` / `entry->line` | 7.4 |
 | error | `NUL in translation` | 同上 | 7.4 |
+| error | `NUL in source text` | 走査の path / セグメントの line | 7.8 |
 | error | `out of memory` | 走査の path / 0 | 7.5 |
 
 警告だけなら公開関数は `true` を返し、出力を生成する（7.7）。エラーがあれば `false` を返し、出力を生成しない（7.1〜7.5）。
@@ -347,12 +353,13 @@ StructureCheck は Markdown のセグメントの訳文（短絡しなかった�
 | 7.5 | メモリ不足 | 全部品 | 診断 | 規約 |
 | 7.6 | 英語・path・行番号 | 全部品 | `mnd_diag_add` | メッセージ |
 | 7.7 | 警告だけなら成功 | Scanner、Rebuilder | 戻り値 | メッセージ |
+| 7.8 | 原文の msgid の NUL | Scanner | 診断 | 走査の規則（原文の NUL）、メッセージ |
 
 ## Components and Interfaces
 
 | Component | Domain/Layer | Intent | Req Coverage | Key Dependencies | Contracts |
 |-----------|--------------|--------|--------------|------------------|-----------|
-| Scanner | 公開 | 文書の解析とセグメントの列の生成、文書のライフサイクル | 1.9, 3.8, 4.12, 7.1, 7.2, 7.5〜7.7 | MarkdownSegments、FrontMatterSegments（P0）、markdown / yaml（P0） | Service、State |
+| Scanner | 公開 | 文書の解析とセグメントの列の生成、文書のライフサイクル | 1.9, 3.8, 4.12, 7.1, 7.2, 7.5〜7.8 | MarkdownSegments、FrontMatterSegments（P0）、markdown / yaml（P0） | Service、State |
 | MarkdownSegments | 内部 | 構文木から Markdown のセグメントを作る | 1.1〜1.7, 2.1〜2.5, 2.8, 3.5 | markdown Model（P0） | Service（内部） |
 | FrontMatterSegments | 内部 | キーパスの照合とフロントマターのセグメント | 1.8, 1.10〜1.12, 2.6〜2.8, 7.3 | yaml Path・Model（P0） | Service（内部） |
 | Extractor | 公開 | セグメントの列から PO エントリの列を作る | 3.1〜3.7, 3.9 | po Model（P0） | Service |
@@ -367,7 +374,7 @@ StructureCheck は Markdown のセグメントの訳文（短絡しなかった�
 | Field | Detail |
 |-------|--------|
 | Intent | 原文を解析し、翻訳セグメントの列を持つ文書を作る |
-| Requirements | 1.9, 3.8, 4.12, 7.1, 7.2, 7.5, 7.6, 7.7 |
+| Requirements | 1.9, 3.8, 4.12, 7.1, 7.2, 7.5, 7.6, 7.7, 7.8 |
 
 **Responsibilities & Constraints**
 - 「走査の規則」の順に上流を呼び、FrontMatterSegments と MarkdownSegments の結果を連結する。セグメントの列は `span.start` の昇順で重ならない。
@@ -434,7 +441,7 @@ const mnd_tu_segment_t *mnd_tu_doc_segment(const mnd_tu_doc_t *doc, size_t index
 void mnd_tu_doc_free(mnd_tu_doc_t *doc);  /* NULL に対しても安全 */
 ```
 - Preconditions: `data` は BOM 除去後の内容。`out` と `diags` は NULL でない。
-- Postconditions: 成功時、セグメントは `span.start` の昇順で重ならず、`msgid` は空でなく `\n` で始まらない。失敗時、確保したものはすべて解放済み。
+- Postconditions: 成功時、セグメントは `span.start` の昇順で重ならず、`msgid` は空でなく `\n` で始まらず、NUL を含まない。失敗時、確保したものはすべて解放済み。
 - Invariants: 同じ入力とオプションに対して常に同じセグメントの列を返す。
 
 ##### State Management
@@ -640,7 +647,7 @@ mnd_tu_check_result_t mnd_tu_check_structure(const char *text, size_t len, bool 
 
 ### Error Strategy
 - 上流の失敗（UTF-8、YAML の構文、不正なキーパス、Markdown の解析、メモリ不足）は、上流が追加した診断をそのまま返し、本部品は何も生成しない（7.1〜7.3、7.5）。
-- 本部品のエラーは訳文の UTF-8 / NUL（7.4）とメモリ不足（7.5）だけで、どちらも出力を空にして `false` を返す。
+- 本部品のエラーは原文の msgid の NUL（7.8）、訳文の UTF-8 / NUL（7.4）、メモリ不足（7.5）だけで、いずれも何も生成せずに（再構成では出力を空にして）`false` を返す。
 - 警告（非スカラーのキー、構造の検査）は処理を止めず、`true` を返す（7.7）。呼び出し側は `mnd_diag_list_has_error` で成否を、診断の列で警告を扱う。
 - すべての診断は英語で、`path` と 1 起点の行番号（不明なら 0）を持つ（7.6）。
 
@@ -652,7 +659,7 @@ mnd_tu_check_result_t mnd_tu_check_structure(const char *text, size_t len, bool 
 
 ### Unit Tests
 - **markdown_test**（1.1〜1.7、2.1〜2.5、2.8、3.5）: 段落・ATX・setext・リスト項目内・引用内・入れ子のラベル、コード・HTML・リンク参照定義・区切り線の除外、空の見出し `#`、画像だけの段落（msgid が `![alt](url)`）、リンクの title、ハードブレーク（末尾の 2 空白とバックスラッシュ）、最後の行の末尾の空白、CRLF と単独 CR の行境界、方言のノード（テスト用の方言で子に段落を持つコンテナを作る）。
-- **front_matter_test**（1.8〜1.12、2.6、2.7、7.2、7.3）: 複数キーパス、ネストしたキー、列の展開、該当なし、マッピングへの一致（警告）、空の値、空白だけの値、`|` の末尾改行と先頭空行の除去と数、クオートの解決、キー未指定で不正な YAML でも成功、キー指定で不正な YAML はエラー、不正なキーパス、`present == false` で `body_start == 0`。
+- **front_matter_test**（1.8〜1.12、2.6、2.7、7.2、7.3）: 複数キーパス、ネストしたキー、列の展開、該当なし、マッピングへの一致（警告）、空の値、空白だけの値、`|` の末尾改行と先頭空行の除去と数、クオートの解決、キー未指定で不正な YAML でも成功、キー指定で不正な YAML はエラー、不正なキーパス、`present == false` で `body_start == 0`、本文とフロントマターの msgid の NUL（7.8）。
 - **extract_test**（3.1〜3.7、3.9）: 統合と順序（フロントマター → 本文、最初の出現の順）、`#:` の行番号と順、`#.` の重複なしと複数種類、msgstr と flags、ヘッダ入りの `out` への追加、失敗時の件数の復元、`mnd_po_write` で書けること。
 - **splice_test**（4.8、4.9、5.4）: 引用内の 2 行の段落で訳文が 1 / 2 / 3 行、リスト項目内の段落、リスト項目内の引用、遅延継続行、タブのインデント、CRLF の原文と LF の追加行（`eol` = CRLF）、混在、ATX 見出し、`eol == MND_EOL_NONE`。
 - **check_test**（4.11）: 表の各項目の検出と非検出（`#foo`、`1.5`、`- ` の前の 4 空白、`---` 2 個など）。

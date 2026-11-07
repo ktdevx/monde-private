@@ -96,6 +96,14 @@
   - 完了時: `ctest --test-dir build -C Release --output-on-failure` が tu の全テストを含めて成功し、steering の予約済みの短縮名に `tu` がある
   - _Requirements: 4.12, 7.6_
 
+- [ ] 6. 原文の NUL
+- [ ] 6.1 msgid に NUL を含むセグメントを走査のエラーにする
+  - 設計の「原文の NUL」のとおり、Scanner がフロントマターと Markdown のセグメントを集め終えたあとに各セグメントの msgid を検査し、NUL があれば最初のセグメントについてエラー `NUL in source text`（走査の path、セグメントの行番号）を追加して走査を失敗させる（`*out == NULL`）
+  - 公開ヘッダの `mnd_tu_scan` の事後条件に「msgid は NUL を含まない」を書き足す
+  - 完了時: front_matter スイートで、段落の NUL（エラー、行番号、`*out == NULL`）、同じ文書の別の段落 `abc` との統合が起きないこと（走査が失敗する）、見出しの NUL、フロントマターの値の NUL（キー指定時）、キー未指定ならフロントマターの NUL は検査しないこと、コードブロック内の NUL はエラーにならないこと、のテストが合格する
+  - _Boundary: Scanner（tu_scan.c、tu.h のコメント）_
+  - _Requirements: 7.8, 7.6, 4.12_
+
 ## Implementation Notes
 - 1.1: `tests/tu` から spec_reader を使うときは `#include "../markdown/spec_reader.h"`（相対パス）。`monde_add_module_tests` に include ディレクトリの指定がないため。
 - 1.1: `struct mnd_tu_doc` は配列の伸長のために `seg_cap` を持つ。抽出の仮の実装は `out` を変えずに false を返す（失敗時に呼び出し前の件数へ戻す規約を優先）。
