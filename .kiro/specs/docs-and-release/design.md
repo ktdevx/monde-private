@@ -390,7 +390,7 @@ flowchart TB
 **Contracts**: Batch [x]
 
 ##### Batch / Job Contract
-- Trigger: `ctest -L docs`。登録するテストは `docs_check.help`（README と `docs/commands.md` のマーカー `help` をすべて照合）、`docs_check.quickstart`（README のマーカー `quickstart`）、`docs_check.links`（`README.md` と `docs/*.md`）。
+- Trigger: `ctest -L docs`。登録するテストは `docs_check.help`（`docs/commands.md` のマーカー `help` をすべて照合。マーカーが 0 件の判定は渡したファイル全体で行う）、`docs_check.quickstart`（README のマーカー `quickstart`）、`docs_check.links`（`README.md` と `docs/*.md`）。
 - Input / validation: `-DMODE=help|quickstart|links -DMONDE=<path> -DSOURCE_DIR=<repo root> -DFILES=<;区切りの md> -DWORK=<作業先> [-DEXAMPLES=<docs/examples>]`。マーカーの直後（空行を挟まない）に ``` で始まるコードブロックがなければ失敗。
   - `help`: コードブロックの内容と `monde [<subcommand>] --help` の標準出力を、CRLF を LF に正規化してから比べる。終了コードが 0 でなければ失敗。マーカーが 1 つもなければ失敗（マーカーの付け忘れを検出）。
   - `quickstart`: `EXAMPLES` の `hello.md` だけを `WORK` にコピーし、コードブロックの各行（`#` と空行を除く）を `separate_arguments(UNIX_COMMAND)` で分け、先頭の `monde` を `MONDE` に置き換えて `WORK` で実行する。各行の終了コードが 0 でなければ失敗。先頭の引数が `init` の行の直後に、その出力 `hello.ja.po` の msgstr がすべて空であることを確かめてから `EXAMPLES` の `hello.ja.po` で置き換える（翻訳者の編集の代わり）。すべての行の後に `hello.pot`、`hello.ja.po`、`hello.ja.md` が存在し、`hello.ja.md` が `hello.md` と異なることを確かめる。行にパイプやリダイレクトがあれば失敗（検査できない行は書かない約束）。
