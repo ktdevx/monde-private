@@ -1,7 +1,6 @@
 /* Formatter: スタイルの維持の判定、各スタイルの整形、ダブルクオートへの切り替え */
 
 #include "yaml/yaml_format.h"
-#include "yaml/yaml_internal.h"
 
 #include "foundation/utf8.h"
 
