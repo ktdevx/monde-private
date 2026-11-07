@@ -58,7 +58,7 @@
   - _Requirements: 2.3, 2.4, 2.5, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7_
 
 - [ ] 3. ドキュメントの検査を CTest に登録する
-- [ ] 3.1 ヘルプの引用の検査を作り、`docs` ラベルのテストとして登録する
+- [x] 3.1 ヘルプの引用の検査を作り、`docs` ラベルのテストとして登録する
   - 設計の docs_check の Batch / Job Contract のとおり `cmake -P` のスクリプトを作る。`help` モードは対象の Markdown からマーカー `monde-check: help [<subcommand>]` の直後のコードブロックを抜き出し、ビルドした `monde` の `--help` の標準出力と CRLF を LF に正規化してから比べる。マーカーが 0 件、マーカーの直後にコードブロックがない、終了コードが 0 でない、内容が異なる、のそれぞれを失敗の一覧に加え、最後にまとめて報告する
   - マーカーが 0 件の失敗は、渡されたファイル全体で数えて判定する。`docs_check.help` の対象は `docs/commands.md` だけにする（README には `help` のマーカーがない）
   - `tests/docs/` のビルド構成で `docs_check.help` を登録し、`tests/` のビルド構成に 1 行加える。`BUILD_TESTING=OFF` では何も登録しない
