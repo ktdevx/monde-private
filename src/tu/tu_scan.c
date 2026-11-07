@@ -104,6 +104,27 @@ static bool scan_has_error_since(const mnd_diag_list_t *diags, size_t first)
 }
 
 /*
+ * 集め終えたセグメントの msgid に NUL があれば、配列の順で最初のものについてエラーを追加して false。
+ * セグメントにならない要素（コードブロックなど）の NUL は検査しない（7.8）
+ */
+static bool scan_check_nul(const mnd_tu_doc_t *doc, const char *path, mnd_diag_list_t *diags)
+{
+    size_t i;
+
+    for (i = 0; i < doc->seg_count; i++)
+    {
+        const mnd_tu_segment_t *seg = &doc->segs[i].pub;
+
+        if ((seg->msgid.len > 0) && (memchr(seg->msgid.data, '\0', seg->msgid.len) != NULL))
+        {
+            mnd_diag_add(diags, MND_SEVERITY_ERROR, path, seg->line, "NUL in source text");
+            return false;
+        }
+    }
+    return true;
+}
+
+/*
  * 走査の規則の順に上流の解析とセグメントの収集を行う。
  * 失敗したら false（上流の診断はそのまま残し、診断のない失敗はメモリ不足として扱う）。
  * 確保したものは doc が持ち、呼び出し側が mnd_tu_doc_free で解放する
@@ -156,6 +177,12 @@ static bool scan_run(mnd_tu_doc_t *doc, const mnd_tu_options_t *options, mnd_dia
     if (!mnd_tu_collect_markdown(doc))
     {
         mnd_diag_add(diags, MND_SEVERITY_ERROR, path, 0, "out of memory");
+        return false;
+    }
+
+    /* 原文の NUL はカタログに入れられないので、セグメントを集め終えたあとに検査する（7.8） */
+    if (!scan_check_nul(doc, path, diags))
+    {
         return false;
     }
     return true;

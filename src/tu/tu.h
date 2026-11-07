@@ -52,7 +52,9 @@ typedef struct mnd_tu_doc mnd_tu_doc_t;  /* 不透明。原文を指す */
  * 失敗したら *out を NULL にし、diags にエラーを追加して false を返す（確保したものはすべて解放済み）。
  * 警告だけなら true。
  * options は NULL 可（MND_TU_OPTIONS_INIT と同じ）。data は len == 0 なら NULL 可。out と diags は NULL でない。
- * 成功時、セグメントは span.start の昇順（フロントマター → 本文）で重ならず、msgid は空でなく \n で始まらない。
+ * 成功時、セグメントは span.start の昇順（フロントマター → 本文）で重ならず、
+ * msgid は空でなく \n で始まらず、NUL を含まない（含むセグメントがあれば最初のものについて
+ * エラー NUL in source text で失敗する）。
  * 文書は data を指し続けるので、呼び出し側は mnd_tu_doc_free まで data を変更も解放もしない
  */
 bool mnd_tu_scan(const char *data, size_t len, const mnd_tu_options_t *options,

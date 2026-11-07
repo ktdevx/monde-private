@@ -96,8 +96,8 @@
   - 完了時: `ctest --test-dir build -C Release --output-on-failure` が tu の全テストを含めて成功し、steering の予約済みの短縮名に `tu` がある
   - _Requirements: 4.12, 7.6_
 
-- [ ] 6. 原文の NUL
-- [ ] 6.1 msgid に NUL を含むセグメントを走査のエラーにする
+- [x] 6. 原文の NUL
+- [x] 6.1 msgid に NUL を含むセグメントを走査のエラーにする
   - 設計の「原文の NUL」のとおり、Scanner がフロントマターと Markdown のセグメントを集め終えたあとに各セグメントの msgid を検査し、NUL があれば最初のセグメントについてエラー `NUL in source text`（走査の path、セグメントの行番号）を追加して走査を失敗させる（`*out == NULL`）
   - 公開ヘッダの `mnd_tu_scan` の事後条件に「msgid は NUL を含まない」を書き足す
   - 完了時: front_matter スイートで、段落の NUL（エラー、行番号、`*out == NULL`）、同じ文書の別の段落 `abc` との統合が起きないこと（走査が失敗する）、見出しの NUL、フロントマターの値の NUL（キー指定時）、キー未指定ならフロントマターの NUL は検査しないこと、コードブロック内の NUL はエラーにならないこと、のテストが合格する
@@ -117,3 +117,4 @@
 - 5.2: 互換性テストは po の `MONDE_MSGFMT` のキャッシュ変数を再利用し、`msgfmt --check -o <pot>.mo` で検査する（po と同じく `/dev/null` を使わない）。キーパスは CTest の `;` のエスケープを避けるためカンマ区切りでスクリプトに渡す。msgfmt がない経路の確認には `CMAKE_IGNORE_PATH` を使う（`-DMONDE_MSGFMT=...-NOTFOUND` では再検索される）。
 - 5.3: 診断の監査で 7.6 を満たさないのは、上流の `mnd_yaml_path_find` が出す `invalid key path "%s"`（と照合中の `out of memory`）の path が NULL になる件だけ（2.3 のメモを参照）。人の判断を待つ未解決事項として残す。
 - 最終検証: 2.3 / 5.3 の 7.6 の未解決事項は、`tu_front_matter.c` の `fm_path_find` で解決した。照合の診断を一時的な一覧で受け取り、公開 API の `mnd_diag_add` で path を添えて移す（foundation の内部には依存しない）。上流は変更しない。design.md の「走査の規則 / フロントマター」に追記した。
+- 6.1: 原文の NUL の検査は `scan_run` の最後（両方の収集のあと）に置いたので、Scanner の「診断なしの false はメモリ不足」の判定とは重ならない。tests/data/commonmark/spec.txt には生の NUL はない。

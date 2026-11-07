@@ -678,6 +678,109 @@ NAOS_TEST(front_matter_push_segment_grows_and_initializes)
     mnd_diag_list_free(&diags);
 }
 
+/*
+ * data[0..len) を path "test.md" とキーパス keys で走査し、NUL のエラーで失敗することを検査する。
+ * エラーはちょうど 1 つで、行番号は line、*out は NULL に戻る（7.8）
+ */
+static void check_scan_fails_with_nul(const char *data, size_t len, const char *const *keys,
+                                      size_t key_count, size_t line)
+{
+    mnd_tu_options_t options = MND_TU_OPTIONS_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    mnd_tu_doc_t *doc = (mnd_tu_doc_t *)&diags;  /* NULL に戻ることを確かめるための仮の値 */
+
+    options.path = "test.md";
+    options.front_matter_keys = keys;
+    options.front_matter_key_count = key_count;
+    NAOS_CHECK_FALSE(mnd_tu_scan(data, len, &options, &doc, &diags));
+    NAOS_CHECK_TRUE(doc == NULL);
+    check_single_error(&diags, "NUL in source text", line);
+    mnd_tu_doc_free(doc);
+    mnd_diag_list_free(&diags);
+}
+
+/* data[0..len) を path "test.md" とキーパス keys で走査し、成功して診断がないことを検査して文書を返す */
+static mnd_tu_doc_t *scan_bytes_without_diags(const char *data, size_t len, const char *const *keys,
+                                              size_t key_count)
+{
+    mnd_tu_options_t options = MND_TU_OPTIONS_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    mnd_tu_doc_t *doc = NULL;
+
+    options.path = "test.md";
+    options.front_matter_keys = keys;
+    options.front_matter_key_count = key_count;
+    NAOS_CHECK_TRUE(mnd_tu_scan(data, len, &options, &doc, &diags));
+    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
+    mnd_diag_list_free(&diags);
+    return doc;
+}
+
+/* 段落の msgid に NUL があれば、その段落の行番号のエラーで走査が失敗する（7.8） */
+NAOS_TEST(front_matter_scan_nul_in_paragraph_fails)
+{
+    static const char text[] = "Intro.\n\nHel\0lo\n";
+
+    check_scan_fails_with_nul(text, sizeof(text) - 1, NULL, 0, 3);
+}
+
+/* NUL の前までが同じ別の段落 abc があっても、統合されずに走査が失敗する（7.8、4.12） */
+NAOS_TEST(front_matter_scan_nul_does_not_merge_with_prefix)
+{
+    static const char text[] = "abc\n\nabc\0def\n";
+
+    check_scan_fails_with_nul(text, sizeof(text) - 1, NULL, 0, 3);
+}
+
+/* NUL を含むセグメントが複数あれば、配列の順で最初のものだけを報告する（7.8） */
+NAOS_TEST(front_matter_scan_nul_reports_first_segment)
+{
+    static const char text[] = "Ok.\n\na\0b\n\nc\0d\n";
+
+    check_scan_fails_with_nul(text, sizeof(text) - 1, NULL, 0, 3);
+}
+
+/* 見出しの msgid の NUL もエラーになる（7.8） */
+NAOS_TEST(front_matter_scan_nul_in_heading_fails)
+{
+    static const char text[] = "Body.\n\n## Ti\0tle\n";
+
+    check_scan_fails_with_nul(text, sizeof(text) - 1, NULL, 0, 3);
+}
+
+/* キーパスを指定したフロントマターの値の NUL はエラーになる（7.8） */
+NAOS_TEST(front_matter_scan_nul_in_front_matter_value_fails)
+{
+    static const char text[] = "---\ntitle: a\0b\n---\nBody.\n";
+    static const char *const keys[] = { "title" };
+
+    check_scan_fails_with_nul(text, sizeof(text) - 1, keys, 1, 2);
+}
+
+/* キーパスの指定がなければ、フロントマターの NUL は検査しない（7.8、1.9） */
+NAOS_TEST(front_matter_scan_nul_in_front_matter_without_keys_succeeds)
+{
+    static const char text[] = "---\ntitle: a\0b\n---\nBody.\n";
+    mnd_tu_doc_t *doc = scan_bytes_without_diags(text, sizeof(text) - 1, NULL, 0);
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    NAOS_REQUIRE_UINT_EQ(1, mnd_tu_doc_segment_count(doc));
+    NAOS_CHECK_STR_EQ("Body.", mnd_buf_cstr(&mnd_tu_doc_segment(doc, 0)->msgid));
+    mnd_tu_doc_free(doc);
+}
+
+/* セグメントにならないコードブロックの中の NUL はエラーにならない（7.8） */
+NAOS_TEST(front_matter_scan_nul_in_code_block_succeeds)
+{
+    static const char text[] = "```\na\0b\n```\n\nBody.\n";
+    mnd_tu_doc_t *doc = scan_bytes_without_diags(text, sizeof(text) - 1, NULL, 0);
+
+    NAOS_REQUIRE_NOT_NULL(doc);
+    NAOS_REQUIRE_UINT_EQ(1, mnd_tu_doc_segment_count(doc));
+    NAOS_CHECK_STR_EQ("Body.", mnd_buf_cstr(&mnd_tu_doc_segment(doc, 0)->msgid));
+    mnd_tu_doc_free(doc);
+}
+
 NAOS_SUITE(front_matter,
     NAOS_ADD_TEST(front_matter_options_init_has_no_keys),
     NAOS_ADD_TEST(front_matter_util_scan_empty_has_no_segments),
@@ -703,5 +806,12 @@ NAOS_SUITE(front_matter,
     NAOS_ADD_TEST(front_matter_collect_resolves_styles_and_escapes),
     NAOS_ADD_TEST(front_matter_collect_duplicate_key_path_once),
     NAOS_ADD_TEST(front_matter_collect_invalid_key_path_fails),
-    NAOS_ADD_TEST(front_matter_push_segment_grows_and_initializes)
+    NAOS_ADD_TEST(front_matter_push_segment_grows_and_initializes),
+    NAOS_ADD_TEST(front_matter_scan_nul_in_paragraph_fails),
+    NAOS_ADD_TEST(front_matter_scan_nul_does_not_merge_with_prefix),
+    NAOS_ADD_TEST(front_matter_scan_nul_reports_first_segment),
+    NAOS_ADD_TEST(front_matter_scan_nul_in_heading_fails),
+    NAOS_ADD_TEST(front_matter_scan_nul_in_front_matter_value_fails),
+    NAOS_ADD_TEST(front_matter_scan_nul_in_front_matter_without_keys_succeeds),
+    NAOS_ADD_TEST(front_matter_scan_nul_in_code_block_succeeds)
 )
