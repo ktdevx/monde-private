@@ -96,7 +96,7 @@
   - _Depends: 1.1_
   - _Requirements: 6.3, 7.3, 8.5, 8.6, 8.7_
 
-- [ ] 4.3 リリースワークフローを作る
+- [x] 4.3 リリースワークフローを作る
   - 設計の release.yml の契約のとおり: `vX.Y.Z` 形式のタグの push と `workflow_dispatch`（入力 `tag`）で起動。`check` ジョブはタグの存在と 4.1 のスクリプトによる一致の確認。`build` ジョブは `needs: check`、`fail-fast: false` で設計のマトリクスの 4 対象（Windows x64 は MSVC、macOS arm64 と x64 は同じランナーでアーキテクチャとデプロイ対象を指定、Linux x64 は静的リンク）を、`BUILD_TESTING=OFF` と対象名を渡した 3 行の手順でビルドし、4.2 のスクリプトをアーカイブ省略で実行して `--version` を確かめ（macOS x64 は `arch -x86_64` を前置き）、`cpack -C Release`、4.2 のスクリプトでアーカイブを検証し、artifact として保存。`publish` ジョブは `needs: build` で artifact を集め、4 つ揃っていることを確かめ、`SHA256SUMS` を作って自己検証し、Release がなければタグ名を題名に本文なしで作成し、アーカイブと `SHA256SUMS` を `--clobber` で添付する
   - 権限はワークフロー全体で `contents: read`、`publish` だけ `contents: write`。入力の `tag` は環境変数経由で渡し、シェルに直接展開しない。サードパーティの Action は `actions/*` に限り、メジャーバージョンで固定する。全ステップで `shell: bash`
   - 既存の CI のワークフローは変更しない

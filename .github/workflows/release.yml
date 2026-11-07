@@ -1,0 +1,235 @@
+name: Release
+
+# vX.Y.Z のタグの push と手動起動だけで動く。ブランチの push と pull request では起動しない（CI は ci.yml）
+on:
+  push:
+    tags:
+      # フィルタのパターンでは + が直前の文字の 1 回以上の繰り返しを表す（v0.1.0、v1.20.3 などに一致する）
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'リリースするタグ（vX.Y.Z の形式。例: v0.1.0）'
+        required: true
+        type: string
+
+# 既定は読み取りだけ。Release に書き込む publish ジョブだけ contents: write に上げる
+permissions:
+  contents: read
+
+# 同じタグの実行（タグの push と手動起動など）が重なったときは順に動かし、Release の作成が競合しないようにする
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+    env:
+      # 入力はシェルに直接展開せず、環境変数で渡す
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      # タグの存在を確かめるため、すべてのタグを取得する
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 形式を確かめてから git に渡す（check_version.cmake も同じ形式を確かめる）
+      - name: Check tag format
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::tag '$TAG' is not of the form vX.Y.Z (for example v0.1.0)"
+            exit 1
+          fi
+
+      - name: Check out the tag
+        run: |
+          if ! git rev-parse --verify --quiet "refs/tags/$TAG" >/dev/null; then
+            echo "::error::tag $TAG does not exist"
+            exit 1
+          fi
+          git checkout --detach "refs/tags/$TAG"
+
+      # タグとビルド構成のバージョンの一致を確かめ、後続のジョブにバージョンを渡す
+      - name: Check version
+        id: version
+        run: |
+          line="$(cmake -DTAG="$TAG" -DSOURCE_DIR="$PWD" -P tools/release/check_version.cmake)"
+          echo "$line"
+          if [[ ! "$line" =~ ^version\ ([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::unexpected output from check_version.cmake: $line"
+            exit 1
+          fi
+          echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: build (${{ matrix.target }})
+    needs: check
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # 1 対象の失敗で他の対象を中断しない（失敗した対象がジョブ名から分かる）
+      fail-fast: false
+      matrix:
+        include:
+          # MSVC の既定のジェネレータ（複数構成）。静的 CRT は CMakeLists.txt で指定済み
+          - target: windows-x64
+            os: windows-latest
+          - target: macos-arm64
+            os: macos-latest
+            configure-args: -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+          # Apple Silicon のランナーで x86_64 向けにクロスビルドし、Rosetta 2 で実行して確かめる
+          - target: macos-x64
+            os: macos-latest
+            configure-args: -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+            runner: arch;-x86_64
+          # 外部の実行時ライブラリに依存しないよう静的にリンクする
+          - target: linux-x64
+            os: ubuntu-latest
+            configure-args: -DCMAKE_EXE_LINKER_FLAGS=-static
+    env:
+      TAG: ${{ needs.check.outputs.tag }}
+      VERSION: ${{ needs.check.outputs.version }}
+      TARGET: ${{ matrix.target }}
+      # 空白で区切った追加の configure 引数（空のときは何も足さない）
+      CONFIGURE_ARGS: ${{ matrix.configure-args }}
+      # verify_package.cmake の RUNNER（CMake のリスト。空のときは前置きなしで実行する）
+      RUNNER: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ needs.check.outputs.tag }}
+
+      - name: Configure
+        run: |
+          read -r -a extra_args <<< "$CONFIGURE_ARGS"
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+            "-DMONDE_RELEASE_TARGET=$TARGET" "${extra_args[@]}"
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      # 単一構成（build/src/monde/monde）と複数構成（build/src/monde/Release/monde.exe）の両方を探す
+      - name: Locate executable
+        id: exe
+        run: |
+          if [[ "$TARGET" == windows-* ]]; then exe_name=monde.exe; else exe_name=monde; fi
+          for candidate in "build/src/monde/Release/$exe_name" "build/src/monde/$exe_name"; do
+            if [[ -f "$candidate" ]]; then
+              echo "path=$candidate" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "::error::$exe_name not found under build/src/monde"
+          exit 1
+
+      # アーカイブを作る前に --version と動的依存を確かめる
+      - name: Verify executable
+        env:
+          MONDE: ${{ steps.exe.outputs.path }}
+        run: |
+          runner_args=()
+          if [[ -n "$RUNNER" ]]; then runner_args=("-DRUNNER=$RUNNER"); fi
+          cmake "-DMONDE=$MONDE" "-DVERSION=$VERSION" "-DTARGET=$TARGET" "${runner_args[@]}" \
+            -P tools/release/verify_package.cmake
+
+      # Windows のランナーでは Chocolatey の cpack が PATH 上で先に見つかることがあるため、cmake と同じ場所の cpack を使う
+      - name: Package
+        id: package
+        run: |
+          cpack_program="$(dirname "$(command -v cmake)")/cpack"
+          (cd build && "$cpack_program" -C Release)
+          if [[ "$TARGET" == windows-* ]]; then ext=zip; else ext=tar.gz; fi
+          archive="build/monde-$VERSION-$TARGET.$ext"
+          if [[ ! -f "$archive" ]]; then
+            echo "::error::$archive was not created by cpack"
+            exit 1
+          fi
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+
+      - name: Verify package
+        env:
+          MONDE: ${{ steps.exe.outputs.path }}
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+        run: |
+          runner_args=()
+          if [[ -n "$RUNNER" ]]; then runner_args=("-DRUNNER=$RUNNER"); fi
+          cmake "-DMONDE=$MONDE" "-DVERSION=$VERSION" "-DTARGET=$TARGET" "-DARCHIVE=$ARCHIVE" "${runner_args[@]}" \
+            -P tools/release/verify_package.cmake
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.target }}
+          path: ${{ steps.package.outputs.archive }}
+          if-no-files-found: error
+
+  # 4 対象のビルドと検証がすべて成功したときだけ動く。失敗があれば Release を作らない
+  publish:
+    name: publish
+    needs: [check, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.check.outputs.tag }}
+      VERSION: ${{ needs.check.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          path: dist
+          merge-multiple: true
+
+      # 4 つのアーカイブがちょうど揃っていることを確かめ、SHA256SUMS を作って自己検証する
+      - name: Create SHA256SUMS
+        working-directory: dist
+        run: |
+          shopt -s nullglob
+          archives=(monde-*.zip monde-*.tar.gz)
+          expected=(
+            "monde-$VERSION-windows-x64.zip"
+            "monde-$VERSION-macos-arm64.tar.gz"
+            "monde-$VERSION-macos-x64.tar.gz"
+            "monde-$VERSION-linux-x64.tar.gz"
+          )
+          ls -l
+          if [[ ${#archives[@]} -ne 4 ]]; then
+            echo "::error::expected 4 archives, found ${#archives[@]}: ${archives[*]}"
+            exit 1
+          fi
+          for name in "${expected[@]}"; do
+            if [[ ! -f "$name" ]]; then
+              echo "::error::$name is missing"
+              exit 1
+            fi
+          done
+          sha256sum "${archives[@]}" > SHA256SUMS
+          cat SHA256SUMS
+          sha256sum -c SHA256SUMS
+
+      # Release（下書きを含む）がなければタグ名を題名として作る。あれば本文に触れない
+      - name: Create release
+        run: |
+          if gh release view "$TAG" --repo "$GH_REPO" >/dev/null; then
+            echo "release $TAG already exists; keeping its title and notes"
+          else
+            gh release create "$TAG" --repo "$GH_REPO" --verify-tag --title "$TAG" --notes ""
+          fi
+
+      # 同じタグでの再実行では同名の添付を置き換える
+      - name: Upload assets
+        working-directory: dist
+        run: |
+          shopt -s nullglob
+          archives=(monde-*.zip monde-*.tar.gz)
+          gh release upload "$TAG" --repo "$GH_REPO" "${archives[@]}" SHA256SUMS --clobber
