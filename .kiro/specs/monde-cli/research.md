@@ -99,3 +99,87 @@
 - POSIX / Windows でのプロセス起動の最小実装（`posix_spawn` / `CreateProcessW`）が必要になるか、`cmake -P` で足りるか。
 - 一時ファイル + rename を行う場合の Windows の置き換え API と、非 ASCII パスでの動作。
 - `getenv` が Windows で返す文字コード（ANSI）と、言語コードとして使う範囲（ASCII のみを想定してよいか）。
+
+---
+
+## 設計ディスカバリー（/kiro-spec-design、2026-11-07）
+
+### Summary
+- **Feature**: `monde-cli`
+- **Discovery Scope**: Extension（既存部品の統合。light discovery）
+- **参照したスキル・規則**: kiro-spec-design の `design-principles.md`、`design-discovery-light.md`、`design-synthesis.md`、`design-review-gate.md`。steering の `product.md`、`tech.md`、`structure.md`。外部ライブラリの追加はないため WebSearch は行っていない。
+- **Key Findings**:
+  - 統合に必要な公開 API はすべて揃っており（上記ギャップ分析の表）、新規の論理は OS 境界の小部品（標準入出力、日時、環境変数、診断と統計の整形）に限られる。
+  - Naos にプロセス起動の支援はなく、外部ツールを使う既存テストは `cmake -P` + `execute_process` で書かれている。この流儀をそのまま実行ファイルの起動テストに使える。
+  - Linux でのプロセス起動は約 1 ms/回（`/bin/true` を 1,000 回で 1.0 秒）。652 例 × 2 変種 × 2 コマンド ≈ 2,600 回は Linux で数秒、Windows でも数十秒の見込み。
+
+### Research Log
+
+#### 実行ファイルの起動テストの方式
+- **Context**: 10.1〜10.4 は「ビルドした実行ファイルで」全例のラウンドトリップを求める。
+- **Sources Consulted**: `tests/tu/msgfmt_check.cmake`、`tests/po/msgcat_compare.cmake`、`tests/tu/roundtrip_test.c`、`tests/markdown/spec_reader.h`、本環境での起動コストの計測。
+- **Findings**: CMake の `execute_process` は全環境で同じに動き、引用符のエスケープを気にしなくてよい。例の取り出しは C の `spec_reader` にしかないので、例をファイルに書き出す Naos 不要の補助実行ファイルが必要。
+- **Implications**: 「補助実行ファイルで例をファイル群に展開 → `cmake -P` で `monde` を例ごとに起動して比較」を採用する。C でのプロセス起動（`posix_spawn` / `CreateProcessW`）は書かない。
+
+#### 標準入出力の扱い
+- **Context**: 2.3〜2.4、3.8。foundation の `file_io` はパスからしか読めず、Windows の標準入出力はテキストモードで開かれる。
+- **Findings**: `fread` / `fwrite` によるストリームの読み書きは `mnd_file_read` の内部処理と同じで、`FILE *` を受け取る関数に切り出せる。Windows では `_setmode(_fileno(stdin), _O_BINARY)` を `main` で 1 回呼べば改行の変換を止められる。
+- **Implications**: foundation に `mnd_file_read_stream` / `mnd_file_write_stream` を追加し、`mnd_file_read` / `mnd_file_write` をその上に乗せる。バイナリモードの設定は `src/monde/main.c` の責務。
+
+#### 日時と UTC オフセット
+- **Context**: 4.2、5.8。`mnd_po_date_format(tm, utc_offset_minutes, out)` は分単位のオフセットを要求し、po は時計を読まない。
+- **Findings**: C99 の範囲では `timegm` がない。`localtime` と `gmtime` の結果の差（年月日時分を日数に直して引く）で求められる。MSVC の `localtime` の警告は `_CRT_SECURE_NO_WARNINGS` で抑止済み。
+- **Implications**: 時計の取得を関数ポインタで差し替えられるようにして、テストでは固定の時刻を与える。
+
+#### 言語コードの環境変数
+- **Context**: 5.3〜5.5。
+- **Findings**: `getenv` は C99 で全環境にある。Windows では `LANG` は通常設定されておらず、設定されていれば ANSI 文字列だが、言語コードは ASCII の範囲で扱う。
+- **Implications**: `getenv` も関数ポインタで差し替え可能にし、テストでは表から引く。
+
+### Architecture Pattern Evaluation
+
+| Option | Description | Strengths | Risks / Limitations | Notes |
+| --- | --- | --- | --- | --- |
+| A: 実行ファイル 1 ターゲット | `src/monde/` に全ソース | 最少のファイル | Naos から内部関数をテストできず、テストの規約（`monde::<module>`）から外れる | 不採用 |
+| B: ライブラリ `monde::cli` + 極薄 main | `src/cli/` にハンドラと小部品、`src/monde/main.c` は数十行 | 規約に沿う。入出力と時計・環境変数を差し替えてプロセス内でテストできる | 10.1 の「実行ファイルで」を別途満たす必要 | **採用** |
+| C: B + 実行ファイルの起動テスト | B に加え、`cmake -P` で `monde` を全例について起動 | 10.1〜10.4 を字義どおり満たす | CI 時間（Windows で数十秒の見込み） | **採用**（B と組み合わせる） |
+
+### Design Decisions
+
+#### Decision: 入口 `mnd_cli_run` と差し替え可能な環境
+- **Context**: プロセスを起動せずにサブコマンド全体をテストしたい。日時と環境変数は実行環境に依存する。
+- **Alternatives Considered**: (1) `main` に直接書く、(2) `FILE *` と関数ポインタをまとめた環境構造体を渡す、(3) 入出力をバッファに抽象化する独自ストリーム型を作る。
+- **Selected Approach**: (2)。`mnd_cli_env_t { FILE *in; FILE *out; FILE *err; const char *version; mnd_cli_getenv_fn getenv; mnd_cli_now_fn now; }` を受け取る `int mnd_cli_run(const mnd_cli_env_t *env, int argc, char *const *argv)`。`NULL` の関数ポインタは実物（`getenv`、`time`）を使う。
+- **Rationale**: `FILE *` は C99 の範囲で、テストでは作業ディレクトリのファイルを開いて渡せる（`tmpfile` は Windows でルートに作ろうとして失敗することがあるため使わない）。独自ストリーム型は過剰。
+- **Trade-offs**: ライブラリが `FILE *` に書く（I/O が境界に寄る原則は CLI 層が境界なので満たす）。
+- **Follow-up**: 標準出力への書き込み失敗（パイプ切断など）の検出を `fflush` の戻り値で行う。
+
+#### Decision: 出力は処理完了後に 1 回だけ書き、一時ファイル + rename は行わない
+- **Context**: 2.7〜2.8。
+- **Alternatives Considered**: (1) 完了後に `mnd_file_write` で 1 回書く、(2) 一時ファイルに書いて rename で置き換える。
+- **Selected Approach**: (1)。
+- **Rationale**: 全入力をメモリに読み終えてから処理し、成功したときだけ書く流れで要件を満たす。(2) は Windows の置き換え API と非 ASCII パスの扱いを foundation に足す必要があり、要件が求めていない。
+- **Trade-offs**: 書き込み途中のディスク満杯などでは出力先が不完全になり得る（既存の `.po` を上書きする場合も同じ）。利用マニュアルで注意を促す（docs-and-release）。
+
+#### Decision: 統計と情報の文面は固定の英語の書式
+- **Selected Approach**: 「Components and Interfaces」の Reporter に書式を列挙する。翻訳率は整数演算で 0.1% 単位に四捨五入する（`(translated * 1000 + total / 2) / total`）。
+- **Rationale**: 8.8（機械的に取り出せる固定の書式）。浮動小数点の丸めの環境差を避ける。
+
+#### Decision: 言語コードの検査は CLI が先に行い、使い方のエラー（終了コード 2）にする
+- **Context**: 5.7。`mnd_po_init` も同じ検査をして診断を返すが、終了コードの区別（1 と 2）は CLI の責務。
+- **Selected Approach**: CLI が `--language` の値と環境変数から得た値を検査し、不正なら使い方のエラーにする。`mnd_po_init` の検査は二重の安全装置として残す。
+
+#### Synthesis（一般化・採用・単純化）
+- **一般化**: 4 つのハンドラは「入力を読む → 処理 → 改行コードを決める → 出力を書く → 統計を出す」の同じ骨格を持つ。入力の読み込み（`-` を含む）、出力の書き込み、改行コードの決定、診断の表示を共通部品（IO、Reporter）に寄せ、ハンドラは部品の呼び出し順だけを持つ。
+- **採用**: 引数解析（cli-args）、PO の読み書きと init（po-format）、マージ（po-merge）、抽出と再構成（translation-units）はすべて既存部品を使い、CLI では再実装しない。プロセス起動は CMake に任せる。
+- **単純化**: 独自ストリーム型、一時ファイル + rename、`--werror`、方言オプション、設定ファイルは作らない。`extract` のヘッダ値は `mnd_po_header_template` + `mnd_po_header_set` だけで組む。
+
+### Risks & Mitigations
+- 実行ファイルの起動テストが Windows の CI で遅い（見込み数十秒） — 変種ごとに 1 テストに分け、遅ければ `cmake -P` の対象を抜き取りに減らしてプロセス内テストを正とする（設計の Open Questions に記載）。
+- UTC オフセットの計算の誤り（DST、負のオフセット、日付境界） — 固定時刻を与える単体テストで境界値を検証する。
+- 標準出力への書き込みの失敗の見落とし — `fwrite` と `fflush` の戻り値を検査し、失敗を終了コード 1 にする。
+
+### References
+- `src/cli_args/args.h`、`src/po/po.h`、`src/po/po_init.h`、`src/po/po_write.h`、`src/po_merge/merge.h`、`src/tu/tu.h`、`src/foundation/file_io.h` — 統合する公開 API
+- `tests/tu/extract_pot_main.c`、`tests/tu/msgfmt_check.cmake` — extract の手順と msgfmt テストの型
+- `tests/markdown/spec_reader.h`、`tests/tu/roundtrip_test.c` — spec.txt の読み込みと変種の生成
