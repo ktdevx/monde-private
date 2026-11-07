@@ -136,6 +136,8 @@ tests/yaml/
 ├── CMakeLists.txt         # monde_add_module_tests(yaml SOURCES ...)
 ├── main.c                 # スイートの登録
 ├── test_alloc.h / .c      # n 回目の確保で失敗する確保関数、確保と解放の回数（markdown の test_alloc と同じ形）
+├── tree_check.h / .c      # 全ノードの範囲と行番号の不変条件の検査（markdown の tree_check と同じ形。各スイートが使う）
+├── parser_fixture.h / .c  # 入口を使わずに解析の作業状態（文書と行の表）を組み立て・片付ける（scalar と flow のスイートが使う）
 ├── front_matter_test.c    # スイート front_matter（1.1〜1.7、6.6、7.1）
 ├── lines_test.c           # スイート lines（Lines の単体テスト、7.2）
 ├── scalar_test.c          # スイート scalar（3.2〜3.9、6.5）
@@ -429,7 +431,8 @@ mnd_eol_t mnd_yaml_doc_eol(const mnd_yaml_doc_t *doc);       /* MND_EOL_LF か M
 void mnd_yaml_doc_free(mnd_yaml_doc_t *doc);                 /* NULL に対しても安全 */
 ```
 - State: 文書は不変。`mnd_yaml_doc_free` 後にノードへのポインタを使ってはならない。
-- 内部（`yaml_internal.h`）: `mnd_yaml_arena_alloc(doc, size)`、`mnd_yaml_node_new(doc, kind)`、`mnd_yaml_arena_strdup(doc, data, len)`。失敗したら NULL。
+- 内部（`yaml_internal.h`）: `mnd_yaml_doc_new(data, len, content, eol, allocator)`（空の文書を作る。Parse とテストが使う）、`mnd_yaml_doc_set_root(doc, node)`、`mnd_yaml_arena_alloc(doc, size)`、`mnd_yaml_node_new(doc, kind)`、`mnd_yaml_arena_strdup(doc, data, len)`。失敗したら NULL。`mnd_yaml_key_equal(a, b)`（2 つのスカラーの論理値が長さと内容で一致するか。Parse と Flow が重複キーの検出に使う）。
+- 内部の型（`yaml_internal.h`）: 解析の作業状態 `mnd_yaml_parser_t`（文書、行の表、オプション、診断、エラー済みの印）とカーソル `mnd_yaml_cursor_t`。行の型 `mnd_yaml_line_t`・`mnd_yaml_lines_t` は `yaml_lines.h` に置き、`yaml_internal.h` がそれを include する。
 
 ### 入口
 
@@ -570,11 +573,7 @@ void mnd_yaml_lines_free(const mnd_yaml_allocator_t *allocator, mnd_yaml_lines_t
 
 ##### Service Interface（`yaml_scalar.h`、内部）
 ```c
-typedef struct mnd_yaml_cursor
-{
-    size_t line_index;    /* 行の表の添字 */
-    size_t offset;        /* 文書のオフセット */
-} mnd_yaml_cursor_t;
+/* mnd_yaml_cursor_t（行の表の添字 line_index と文書のオフセット offset）は yaml_internal.h に置く */
 
 /*
  * at の位置から 1 つのスカラーを読み、ノードを作って *out に設定し、*at を終わりの直後に進める。
@@ -604,7 +603,7 @@ bool mnd_yaml_scalar_is_block_header(const mnd_yaml_parser_t *p, mnd_yaml_cursor
 bool mnd_yaml_flow_parse(mnd_yaml_parser_t *p, mnd_yaml_cursor_t *at, mnd_yaml_node_t **out);
 ```
 - スタックの各段は、作りかけのノードと、作業用の項目の配列（確保関数から直接確保し、閉じるときにアリーナへ複製する）。
-- マッピングの重複キーは Parse と同じ比較で検出する。
+- マッピングの重複キーは Model の `mnd_yaml_key_equal` で検出する（Parse と同じ）。
 
 ### 利用側
 
