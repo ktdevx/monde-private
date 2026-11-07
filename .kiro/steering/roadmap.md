@@ -68,8 +68,8 @@ Monde は、Markdown 文書を gettext の `.pot` / `.po` を介して翻訳す�
 - [x] cli-args -- 再利用できるコマンドライン引数パーサ（サブコマンド、オプション、英語のヘルプとエラー）。Dependencies: project-foundation
 - [x] po-format -- `.po` / `.pot` の読み書き（ヘッダ、各種コメント、fuzzy、廃止エントリ、エスケープ、複数形の読み込み許容）。Dependencies: project-foundation
 - [x] po-merge -- msgmerge 相当のマージ（完全一致、あいまい一致による fuzzy の付与、廃止エントリ化）。Dependencies: po-format
-- [ ] markdown-parser -- ソース範囲を保持する CommonMark パーサと、方言を差し替えるインターフェース。Dependencies: project-foundation
-- [ ] yaml-front-matter -- フロントマターの検出と YAML サブセットの解析（スカラー値のソース範囲を保持）。Dependencies: project-foundation
-- [ ] translation-units -- Markdown とフロントマターからの翻訳単位の抽出（msgid、`#:`、`#.`、重複の統合）と、翻訳済み Markdown の範囲置換による再構成。Dependencies: po-format, markdown-parser, yaml-front-matter
-- [ ] monde-cli -- `extract` / `init` / `update` / `translate` の統合、各オプション、翻訳率の表示、CommonMark spec のラウンドトリップによる受け入れテスト。Dependencies: cli-args, po-merge, translation-units
-- [ ] docs-and-release -- 日本語の README と利用マニュアル、GitHub Releases での各 OS 向けバイナリ配布ワークフロー。Dependencies: monde-cli
+- [x] markdown-parser -- ソース範囲を保持する CommonMark パーサと、方言を差し替えるインターフェース。Dependencies: project-foundation
+- [x] yaml-front-matter -- フロントマターの検出と YAML サブセットの解析（スカラー値のソース範囲を保持）。Dependencies: project-foundation
+- [x] translation-units -- Markdown とフロントマターからの翻訳単位の抽出（msgid、`#:`、`#.`、重複の統合）と、翻訳済み Markdown の範囲置換による再構成。Dependencies: po-format, markdown-parser, yaml-front-matter
+- [x] monde-cli -- `extract` / `init` / `update` / `translate` の統合、各オプション、翻訳率の表示、CommonMark spec のラウンドトリップによる受け入れテスト。Dependencies: cli-args, po-merge, translation-units
+- [x] docs-and-release -- 日本語の README と利用マニュアル、GitHub Releases での各 OS 向けバイナリ配布ワークフロー。Dependencies: monde-cli
