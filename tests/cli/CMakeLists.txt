@@ -146,3 +146,20 @@ monde_cli_case(translate_crlf ARGS translate "${data}/translate_crlf.md" "${data
 # 存在しない入力は 1（2.9、9.6）
 monde_cli_case(missing_input ARGS extract "${data}/no_such_file.md" EXIT 1
   STDOUT "${data}/empty.txt" STDERR_CONTAINS "no_such_file.md: error: cannot open file for reading")
+
+# 互換性テスト: extract → init → update の出力が msgfmt --check を通ることを確かめる（11.1〜11.3。
+# msgfmt のある環境でだけ登録する）。MONDE_MSGFMT は po と tu の互換性テストと同じキャッシュ変数
+# （find_program は見つけた結果をキャッシュする）。入力は起動テストと同じ tests/cli/data/ を使う
+find_program(MONDE_MSGFMT msgfmt)
+if(MONDE_MSGFMT)
+  add_test(NAME cli_msgfmt_check.flow
+    COMMAND ${CMAKE_COMMAND}
+      "-DMONDE=$<TARGET_FILE:monde>"
+      "-DMSGFMT=${MONDE_MSGFMT}"
+      "-DDATA=${MONDE_CLI_DATA_DIR}"
+      "-DWORK=${CMAKE_CURRENT_BINARY_DIR}/gettext/flow"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/gettext_check.cmake")
+  set_tests_properties(cli_msgfmt_check.flow PROPERTIES LABELS cli)
+else()
+  message(STATUS "cli: msgfmt not found; the cli_msgfmt_check tests are not registered")
+endif()
