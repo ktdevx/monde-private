@@ -119,7 +119,7 @@
   - _Boundary: README, docs の 4 章, steering（統合タスクとして明示的に複数の境界にまたがる）_
   - _Requirements: 7.11, 8.1, 8.2, 9.1, 9.2, 9.4_
 
-- [ ] 6. 改訂（2026-11-07）: 実行ファイルに取り込んだ素材の表示
+- [x] 6. 改訂（2026-11-07）: 実行ファイルに取り込んだ素材の表示
 - [x] 6.1 索引 `THIRD_PARTY_NOTICES` と素材ごとの `licenses/` を作る
   - 設計の「改訂（2026-11-07）」の ThirdPartyNotices のとおり、索引の書式（コメント、空行で区切った塊、7 つのキーの順）で `unicode-ucd` と `whatwg-entities` の 2 つを書く
   - `licenses/unicode-ucd.txt` は生成したファイルに載っている Unicode License V3（`Copyright © 1991-2022 Unicode, Inc.`）と同じ文面、`licenses/whatwg-entities.txt` は `Copyright © WHATWG (Apple, Google, Mozilla, Microsoft)` と BSD 3-Clause の全文。どちらも先頭に名称、版、出典、SPDX 識別子、著作権表示を書く
@@ -159,7 +159,7 @@
   - _Depends: 6.1, 6.3, 6.4_
   - _Requirements: 1.7, 8.3, 10.7_
 
-- [ ] 6.6 改訂の統合の検証
+- [x] 6.6 改訂の統合の検証
   - 全テストの `ctest` と、静的リンクの TGZ と ZIP の `verify_package.cmake`（`NOTICES` 付き）を通し、アーカイブを展開して `THIRD_PARTY_NOTICES` と `licenses/` の中身が直下のファイルと一致することを確かめる
   - 完了時: 全テストが合格し、2 形式の検証が通る
   - _Boundary: 統合タスク_
