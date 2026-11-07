@@ -1,7 +1,7 @@
 # Implementation Plan
 
 - [ ] 1. 基盤: 配布物の定義とクイックスタートの材料
-- [ ] 1.1 配布物の定義（install の規則と CPack の設定）を 1 か所に置き、手元でアーカイブを作れるようにする
+- [x] 1.1 配布物の定義（install の規則と CPack の設定）を 1 か所に置き、手元でアーカイブを作れるようにする
   - 設計の MondePackage のとおり、実行ファイルと LICENSE、README.md だけを install の対象にし、アーカイブ名 `monde-<version>-<os>-<arch>`、最上位ディレクトリ、OS ごとの生成器の既定（Windows は ZIP、それ以外は TGZ）、対象名のキャッシュ変数（未指定時は OS とプロセッサから決め、macOS のアーキテクチャ指定を優先）を定義する。ソースパッケージは作らない
   - ルートのビルド構成には読み込みの 1 行だけを加え、既存のターゲット作成関数やコンパイラオプションは変更しない
   - 完了時: `BUILD_TESTING=OFF` の構成からビルドして `cpack -C Release` を実行すると、`monde-0.1.0-linux-x64.tar.gz` ができ、その一覧が `monde-0.1.0-linux-x64/` の下の実行ファイル（実行権限あり）、`LICENSE`、`README.md` の 3 つだけで、`cpack -G ZIP` でも同じ構成になる。既存の `ctest` の結果は変わらない
