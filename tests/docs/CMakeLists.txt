@@ -38,3 +38,12 @@ add_test(NAME docs_check.links
     "-DFILES=${MONDE_DOCS_LINK_FILES}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/docs_check.cmake")
 set_tests_properties(docs_check.links PROPERTIES LABELS docs)
+
+# 取り込んだ素材の表示: THIRD_PARTY_NOTICES の索引と licenses/ と src/ の ID の行の対応を確かめる（10.5）。
+# monde を起動せず、リポジトリのファイルだけを読む。
+add_test(NAME docs_check.notices
+  COMMAND ${CMAKE_COMMAND}
+    "-DMODE=notices"
+    "-DSOURCE_DIR=${PROJECT_SOURCE_DIR}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/docs_check.cmake")
+set_tests_properties(docs_check.notices PROPERTIES LABELS docs)

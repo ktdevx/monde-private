@@ -137,7 +137,7 @@
   - _Depends: 6.1_
   - _Requirements: 10.4_
 
-- [ ] 6.3 索引とファイルの対応の検査を加える
+- [x] 6.3 索引とファイルの対応の検査を加える
   - 設計の docs_check（notices モード）の 6 つの確認を `tests/docs/docs_check.cmake` に加え、`docs_check.notices`（ラベル `docs`）を登録する
   - 完了時: `ctest -L docs -R notices` が合格し、索引の行を消す、`licenses/` に余分なファイルを足す、生成したファイルの ID の行を消す、のそれぞれで失敗する（コピーで確かめる）
   - _Boundary: tests/docs_
