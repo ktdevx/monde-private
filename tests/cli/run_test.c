@@ -11,7 +11,9 @@
 #include "foundation/diag.h"
 #include "test_util.h"
 
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <string.h>
 
 /* 雛形: 終了コードの定数が 0 / 1 / 2 であり、作業ディレクトリのパスが渡されている */
@@ -21,20 +23,6 @@ NAOS_TEST(run_scaffold_exit_codes_and_work_dir)
     NAOS_CHECK_INT_EQ(1, MND_CLI_EXIT_FAILURE);
     NAOS_CHECK_INT_EQ(2, MND_CLI_EXIT_USAGE);
     NAOS_CHECK_STR_NE("", test_work_dir());
-}
-
-/* 雛形: 補助関数で仮の入口を呼ぶと、err に診断が出て 1 が返り、out は空である */
-NAOS_TEST(run_scaffold_provisional_entry_reports_error)
-{
-    char arg0[] = "monde";
-    char *argv[] = {arg0, NULL};
-    test_cli_result_t result = TEST_CLI_RESULT_INIT;
-
-    NAOS_REQUIRE_TRUE(test_cli_run("run_scaffold_provisional", NULL, 0, 1, argv, &result));
-    NAOS_CHECK_INT_EQ(MND_CLI_EXIT_FAILURE, result.exit_code);
-    NAOS_CHECK_UINT_EQ(0, result.out.len);
-    NAOS_CHECK_TRUE(strstr(mnd_buf_cstr(&result.err), "monde: error: ") != NULL);
-    test_cli_result_free(&result);
 }
 
 /* 補助関数: 作業ディレクトリに書いたバイト列（NUL と CR を含む）がそのまま読み戻せる */
@@ -506,9 +494,450 @@ NAOS_TEST(run_commands_every_declared_command_has_handler)
     }
 }
 
+/* ---- Run: 入口の分岐と終了コード（3.1） ---- */
+
+/* NULL で終わる tokens を copy に複製する（argv[argc] == NULL） */
+static void copy_tokens(const char *const *tokens, argv_copy_t *copy)
+{
+    copy->argc = 0;
+    while (tokens[copy->argc] != NULL)
+    {
+        NAOS_REQUIRE_TRUE(copy->argc < ARGV_MAX_ARGS);
+        NAOS_REQUIRE_TRUE(strlen(tokens[copy->argc]) < ARGV_MAX_LEN);
+        strcpy(copy->storage[copy->argc], tokens[copy->argc]);
+        copy->argv[copy->argc] = copy->storage[copy->argc];
+        copy->argc++;
+    }
+    copy->argv[copy->argc] = NULL;
+}
+
+/* test_cli_run で tokens を実行する（name はテストごとに一意） */
+static void run_tokens(const char *name, const char *const *tokens, test_cli_result_t *result)
+{
+    static argv_copy_t copy;
+
+    copy_tokens(tokens, &copy);
+    NAOS_REQUIRE_TRUE(test_cli_run(name, NULL, 0, copy.argc, copy.argv, result));
+}
+
+/* 作業ディレクトリの <name><suffix> を mode で開く（テストコードのみ fopen を直接使う） */
+static FILE *open_work_stream(const char *name, const char *suffix, const char *mode)
+{
+    mnd_buf_t path = MND_BUF_INIT;
+    FILE *fp = NULL;
+
+    if (test_work_path(name, &path) && mnd_buf_append_str(&path, suffix))
+    {
+        fp = fopen(mnd_buf_cstr(&path), mode);
+    }
+    mnd_buf_free(&path);
+
+    return fp;
+}
+
+/* test_cli_run と同じ環境で、ハンドラを find_handler で引く mnd_cli_run_with を呼ぶ */
+static void run_tokens_with(const char *name, const char *const *tokens, mnd_cli_find_handler_fn find_handler,
+                            test_cli_result_t *result)
+{
+    static argv_copy_t copy;
+    mnd_buf_t out_name = MND_BUF_INIT;
+    mnd_buf_t err_name = MND_BUF_INIT;
+    mnd_cli_env_t env;
+    FILE *in;
+    FILE *out;
+    FILE *err;
+
+    copy_tokens(tokens, &copy);
+    NAOS_REQUIRE_TRUE(test_write_file(name, "", 0));
+    in = open_work_stream(name, "", "rb");
+    out = open_work_stream(name, ".out", "wb");
+    err = open_work_stream(name, ".err", "wb");
+    NAOS_REQUIRE_TRUE((in != NULL) && (out != NULL) && (err != NULL));
+
+    env.in = in;
+    env.out = out;
+    env.err = err;
+    env.version = TEST_CLI_VERSION;
+    env.getenv = test_env_getenv;
+    env.now = test_clock_now;
+    result->exit_code = mnd_cli_run_with(&env, copy.argc, copy.argv, find_handler);
+
+    NAOS_REQUIRE_TRUE((fclose(in) == 0) && (fclose(out) == 0) && (fclose(err) == 0));
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&out_name, name) && mnd_buf_append_str(&out_name, ".out"));
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&err_name, name) && mnd_buf_append_str(&err_name, ".err"));
+    NAOS_REQUIRE_TRUE(test_read_file(mnd_buf_cstr(&out_name), &result->out));
+    NAOS_REQUIRE_TRUE(test_read_file(mnd_buf_cstr(&err_name), &result->err));
+    mnd_buf_free(&out_name);
+    mnd_buf_free(&err_name);
+}
+
+/* 期待するヘルプの文面（command_name が NULL なら全体） */
+static void expected_help(const char *command_name, mnd_buf_t *out)
+{
+    mnd_args_program_t program = mnd_cli_program(TEST_CLI_VERSION);
+    const mnd_args_command_t *command = NULL;
+
+    if (command_name != NULL)
+    {
+        command = find_command(&program, command_name);
+        NAOS_REQUIRE_NOT_NULL(command);
+    }
+    NAOS_REQUIRE_TRUE(mnd_args_format_help(&program, command, out));
+}
+
+/* --help / -h / help は全体のヘルプを out に書いて 0 を返し、err には何も書かない（1.2） */
+NAOS_TEST(run_entry_global_help_goes_to_out)
+{
+    static const char *const long_argv[] = {"monde", "--help", NULL};
+    static const char *const short_argv[] = {"monde", "-h", NULL};
+    static const char *const help_argv[] = {"monde", "help", NULL};
+    static const char *const *const argvs[] = {long_argv, short_argv, help_argv};
+    static const char *const names[] = {"run_entry_global_help_long", "run_entry_global_help_short",
+                                        "run_entry_global_help_word"};
+    mnd_buf_t expected = MND_BUF_INIT;
+    size_t i;
+
+    expected_help(NULL, &expected);
+    NAOS_CHECK_TRUE(buf_contains(&expected, "extract"));
+    for (i = 0; i < sizeof argvs / sizeof argvs[0]; i++)
+    {
+        test_cli_result_t result = TEST_CLI_RESULT_INIT;
+
+        NAOS_TRACE_PUSH("%s", argvs[i][1]);
+        run_tokens(names[i], argvs[i], &result);
+        NAOS_CHECK_INT_EQ(MND_CLI_EXIT_OK, result.exit_code);
+        NAOS_CHECK_MEM_EQ(expected.data, expected.len, result.out.data, result.out.len);
+        NAOS_CHECK_UINT_EQ(0, result.err.len);
+        test_cli_result_free(&result);
+        NAOS_TRACE_POP();
+    }
+    mnd_buf_free(&expected);
+}
+
+/* <sub> --help / <sub> -h / help <sub> はそのサブコマンドのヘルプを out に書いて 0 を返す（1.3） */
+NAOS_TEST(run_entry_subcommand_help_goes_to_out)
+{
+    static const char *const extract_argv[] = {"monde", "extract", "--help", NULL};
+    static const char *const init_argv[] = {"monde", "init", "-h", NULL};
+    static const char *const update_argv[] = {"monde", "help", "update", NULL};
+    static const char *const translate_argv[] = {"monde", "translate", "in.md", "--help", NULL};
+    static const char *const *const argvs[] = {extract_argv, init_argv, update_argv, translate_argv};
+    static const char *const commands[] = {"extract", "init", "update", "translate"};
+    static const char *const names[] = {"run_entry_sub_help_extract", "run_entry_sub_help_init",
+                                        "run_entry_sub_help_update", "run_entry_sub_help_translate"};
+    size_t i;
+
+    for (i = 0; i < sizeof argvs / sizeof argvs[0]; i++)
+    {
+        test_cli_result_t result = TEST_CLI_RESULT_INIT;
+        mnd_buf_t expected = MND_BUF_INIT;
+
+        NAOS_TRACE_PUSH("%s", commands[i]);
+        expected_help(commands[i], &expected);
+        run_tokens(names[i], argvs[i], &result);
+        NAOS_CHECK_INT_EQ(MND_CLI_EXIT_OK, result.exit_code);
+        NAOS_CHECK_MEM_EQ(expected.data, expected.len, result.out.data, result.out.len);
+        NAOS_CHECK_UINT_EQ(0, result.err.len);
+        mnd_buf_free(&expected);
+        test_cli_result_free(&result);
+        NAOS_TRACE_POP();
+    }
+}
+
+/* --version は "monde <version>" の 1 行を out に書いて 0 を返す（1.4） */
+NAOS_TEST(run_entry_version_goes_to_out)
+{
+    static const char *const tokens[] = {"monde", "--version", NULL};
+    test_cli_result_t result = TEST_CLI_RESULT_INIT;
+
+    run_tokens("run_entry_version", tokens, &result);
+    NAOS_CHECK_INT_EQ(MND_CLI_EXIT_OK, result.exit_code);
+    NAOS_CHECK_STR_EQ("monde " TEST_CLI_VERSION "\n", mnd_buf_cstr(&result.out));
+    NAOS_CHECK_UINT_EQ(0, result.err.len);
+    test_cli_result_free(&result);
+}
+
+/* 引数なしは全体のヘルプを err に書いて 2 を返し、out には何も書かない（1.5、9.7） */
+NAOS_TEST(run_entry_no_arguments_prints_help_to_err)
+{
+    static const char *const tokens[] = {"monde", NULL};
+    test_cli_result_t result = TEST_CLI_RESULT_INIT;
+    mnd_buf_t expected = MND_BUF_INIT;
+
+    expected_help(NULL, &expected);
+    run_tokens("run_entry_no_arguments", tokens, &result);
+    NAOS_CHECK_INT_EQ(MND_CLI_EXIT_USAGE, result.exit_code);
+    NAOS_CHECK_UINT_EQ(0, result.out.len);
+    NAOS_CHECK_MEM_EQ(expected.data, expected.len, result.err.data, result.err.len);
+    mnd_buf_free(&expected);
+    test_cli_result_free(&result);
+}
+
+/* 使い方のエラーの 1 件: 引数列、err の期待する全体 */
+typedef struct usage_case
+{
+    const char *name;
+    const char *tokens[8];
+    const char *expected_err;
+} usage_case_t;
+
+/* 引数の誤りは "monde: error: <message>" と案内の 1 行を err に書いて 2 を返す（1.6、9.7、9.8、9.9） */
+NAOS_TEST(run_entry_usage_errors_print_message_and_hint)
+{
+    static const usage_case_t cases[] = {
+        {"run_entry_usage_unknown_command", {"monde", "frobnicate", NULL},
+         "monde: error: unknown command 'frobnicate'\n"
+         "Run 'monde --help' for usage.\n"},
+        {"run_entry_usage_unknown_option", {"monde", "extract", "in.md", "--bogus", NULL},
+         "monde: error: unknown option '--bogus'\n"
+         "Run 'monde extract --help' for usage.\n"},
+        {"run_entry_usage_too_many", {"monde", "init", "a.pot", "b.pot", NULL},
+         "monde: error: unexpected argument 'b.pot'\n"
+         "Run 'monde init --help' for usage.\n"},
+        {"run_entry_usage_too_few", {"monde", "update", "new.pot", NULL},
+         "monde: error: missing argument <PO>\n"
+         "Run 'monde update --help' for usage.\n"},
+        {"run_entry_usage_empty_item", {"monde", "translate", "in.md", "ja.po", "--front-matter-keys", "title,,tags",
+                                        NULL},
+         "monde: error: option '--front-matter-keys' has an empty item in 'title,,tags'\n"
+         "Run 'monde translate --help' for usage.\n"},
+    };
+    size_t i;
+
+    for (i = 0; i < sizeof cases / sizeof cases[0]; i++)
+    {
+        test_cli_result_t result = TEST_CLI_RESULT_INIT;
+
+        NAOS_TRACE_PUSH("%s", cases[i].name);
+        run_tokens(cases[i].name, cases[i].tokens, &result);
+        NAOS_CHECK_INT_EQ(MND_CLI_EXIT_USAGE, result.exit_code);
+        NAOS_CHECK_UINT_EQ(0, result.out.len);
+        NAOS_CHECK_STR_EQ(cases[i].expected_err, mnd_buf_cstr(&result.err));
+        test_cli_result_free(&result);
+        NAOS_TRACE_POP();
+    }
+}
+
+/* 入口から呼ばれたハンドラ（仮の実装を含む）の失敗は、err に診断を書いて 1 を返し、out には何も書かない（9.6、9.8） */
+NAOS_TEST(run_entry_handler_failure_reports_diags_and_returns_1)
+{
+    static const char *const tokens[] = {"monde", "extract", "run_entry_handler_failure_missing.md", NULL};
+    test_cli_result_t result = TEST_CLI_RESULT_INIT;
+
+    NAOS_REQUIRE_TRUE(test_remove_file("run_entry_handler_failure_missing.md"));
+    run_tokens("run_entry_handler_failure", tokens, &result);
+    NAOS_CHECK_INT_EQ(MND_CLI_EXIT_FAILURE, result.exit_code);
+    NAOS_CHECK_UINT_EQ(0, result.out.len);
+    NAOS_CHECK_TRUE(buf_contains(&result.err, "error: "));
+    NAOS_CHECK_FALSE(buf_contains(&result.err, "for usage."));
+    test_cli_result_free(&result);
+}
+
+/* ---- 差し替えのハンドラ ---- */
+
+/* 差し替えのハンドラが見た文脈 */
+static struct
+{
+    int calls;
+    const mnd_cli_env_t *env;
+    const char *command;
+    size_t positionals;
+    bool quiet;
+    bool usage_error_initial;
+} g_seen;
+
+static void record_ctx(const mnd_cli_ctx_t *ctx)
+{
+    g_seen.calls++;
+    g_seen.env = ctx->env;
+    g_seen.command = (ctx->result->command != NULL) ? ctx->result->command->name : NULL;
+    g_seen.positionals = mnd_args_positional_count(ctx->result);
+    g_seen.quiet = ctx->quiet;
+    g_seen.usage_error_initial = ctx->usage_error;
+}
+
+static void reset_seen(void)
+{
+    memset(&g_seen, 0, sizeof g_seen);
+}
+
+/* 警告と 3 形式のエラーを順に加えて失敗する */
+static bool handler_fail_with_diags(mnd_cli_ctx_t *ctx)
+{
+    record_ctx(ctx);
+    mnd_diag_add(ctx->diags, MND_SEVERITY_WARNING, "a.md", 3, "first warning");
+    mnd_diag_add(ctx->diags, MND_SEVERITY_ERROR, "b.po", 0, "second error");
+    mnd_diag_add(ctx->diags, MND_SEVERITY_ERROR, NULL, 0, "third error");
+    return false;
+}
+
+/* 使い方のエラーの印を付けて失敗する */
+static bool handler_fail_usage(mnd_cli_ctx_t *ctx)
+{
+    record_ctx(ctx);
+    mnd_diag_add(ctx->diags, MND_SEVERITY_ERROR, NULL, 0, "cannot determine the target language");
+    ctx->usage_error = true;
+    return false;
+}
+
+/* 警告を 1 件加えて成功する */
+static bool handler_succeed_with_warning(mnd_cli_ctx_t *ctx)
+{
+    record_ctx(ctx);
+    mnd_diag_add(ctx->diags, MND_SEVERITY_WARNING, "c.md", 7, "just a warning");
+    return true;
+}
+
+/* 成功を返すが、エラーの診断を加えている */
+static bool handler_succeed_with_error(mnd_cli_ctx_t *ctx)
+{
+    record_ctx(ctx);
+    mnd_diag_add(ctx->diags, MND_SEVERITY_ERROR, NULL, 0, "inconsistent error");
+    return true;
+}
+
+static mnd_cli_handler_fn find_fail_with_diags(const char *name)
+{
+    (void)name;
+    return handler_fail_with_diags;
+}
+
+static mnd_cli_handler_fn find_fail_usage(const char *name)
+{
+    (void)name;
+    return handler_fail_usage;
+}
+
+static mnd_cli_handler_fn find_succeed_with_warning(const char *name)
+{
+    (void)name;
+    return handler_succeed_with_warning;
+}
+
+static mnd_cli_handler_fn find_succeed_with_error(const char *name)
+{
+    (void)name;
+    return handler_succeed_with_error;
+}
+
+static mnd_cli_handler_fn find_none(const char *name)
+{
+    (void)name;
+    return NULL;
+}
+
+/* ハンドラの失敗では、集まった診断を順にすべて err に書いて 1 を返す（9.1〜9.4、9.6、9.8） */
+NAOS_TEST(run_entry_failed_handler_prints_all_diags_in_order)
+{
+    static const char *const tokens[] = {"monde", "update", "new.pot", "old.po", NULL};
+    test_cli_result_t result = TEST_CLI_RESULT_INIT;
+
+    reset_seen();
+    run_tokens_with("run_entry_failed_handler_diags", tokens, find_fail_with_diags, &result);
+    NAOS_CHECK_INT_EQ(MND_CLI_EXIT_FAILURE, result.exit_code);
+    NAOS_CHECK_INT_EQ(1, g_seen.calls);
+    NAOS_CHECK_STR_EQ("update", g_seen.command);
+    NAOS_CHECK_UINT_EQ(2, g_seen.positionals);
+    NAOS_CHECK_FALSE(g_seen.quiet);
+    NAOS_CHECK_FALSE(g_seen.usage_error_initial);
+    NAOS_CHECK_NOT_NULL(g_seen.env);
+    if (g_seen.env != NULL)
+    {
+        NAOS_CHECK_STR_EQ(TEST_CLI_VERSION, g_seen.env->version);
+    }
+    NAOS_CHECK_UINT_EQ(0, result.out.len);
+    NAOS_CHECK_STR_EQ("a.md:3: warning: first warning\n"
+                      "b.po: error: second error\n"
+                      "monde: error: third error\n",
+                      mnd_buf_cstr(&result.err));
+    test_cli_result_free(&result);
+}
+
+/* 使い方のエラーの印を付けて失敗したハンドラでは 2 を返す（9.7） */
+NAOS_TEST(run_entry_handler_usage_error_returns_2)
+{
+    static const char *const tokens[] = {"monde", "init", "in.pot", NULL};
+    test_cli_result_t result = TEST_CLI_RESULT_INIT;
+
+    reset_seen();
+    run_tokens_with("run_entry_handler_usage_error", tokens, find_fail_usage, &result);
+    NAOS_CHECK_INT_EQ(MND_CLI_EXIT_USAGE, result.exit_code);
+    NAOS_CHECK_INT_EQ(1, g_seen.calls);
+    NAOS_CHECK_STR_EQ("init", g_seen.command);
+    NAOS_CHECK_UINT_EQ(0, result.out.len);
+    NAOS_CHECK_STR_EQ("monde: error: cannot determine the target language\n", mnd_buf_cstr(&result.err));
+    test_cli_result_free(&result);
+}
+
+/* 警告だけで成功したハンドラは 0 を返し、警告は err に出る。-q は文脈の quiet になる（9.5、8.x） */
+NAOS_TEST(run_entry_successful_handler_returns_0_and_passes_quiet)
+{
+    static const char *const tokens[] = {"monde", "translate", "-q", "in.md", "ja.po", NULL};
+    test_cli_result_t result = TEST_CLI_RESULT_INIT;
+
+    reset_seen();
+    run_tokens_with("run_entry_successful_handler", tokens, find_succeed_with_warning, &result);
+    NAOS_CHECK_INT_EQ(MND_CLI_EXIT_OK, result.exit_code);
+    NAOS_CHECK_INT_EQ(1, g_seen.calls);
+    NAOS_CHECK_STR_EQ("translate", g_seen.command);
+    NAOS_CHECK_TRUE(g_seen.quiet);
+    NAOS_CHECK_UINT_EQ(0, result.out.len);
+    NAOS_CHECK_STR_EQ("c.md:7: warning: just a warning\n", mnd_buf_cstr(&result.err));
+    test_cli_result_free(&result);
+}
+
+/* 成功を返してもエラーの診断があれば成功として扱わず 1 を返す（9.6） */
+NAOS_TEST(run_entry_success_with_error_diag_returns_1)
+{
+    static const char *const tokens[] = {"monde", "extract", "--quiet", "in.md", NULL};
+    test_cli_result_t result = TEST_CLI_RESULT_INIT;
+
+    reset_seen();
+    run_tokens_with("run_entry_success_with_error", tokens, find_succeed_with_error, &result);
+    NAOS_CHECK_INT_EQ(MND_CLI_EXIT_FAILURE, result.exit_code);
+    NAOS_CHECK_TRUE(g_seen.quiet);
+    NAOS_CHECK_UINT_EQ(0, result.out.len);
+    NAOS_CHECK_STR_EQ("monde: error: inconsistent error\n", mnd_buf_cstr(&result.err));
+    test_cli_result_free(&result);
+}
+
+/* ハンドラが見つからないのは内部エラーで、診断を err に書いて 1 を返す */
+NAOS_TEST(run_entry_missing_handler_is_internal_error)
+{
+    static const char *const tokens[] = {"monde", "extract", "in.md", NULL};
+    test_cli_result_t result = TEST_CLI_RESULT_INIT;
+
+    run_tokens_with("run_entry_missing_handler", tokens, find_none, &result);
+    NAOS_CHECK_INT_EQ(MND_CLI_EXIT_FAILURE, result.exit_code);
+    NAOS_CHECK_UINT_EQ(0, result.out.len);
+    NAOS_CHECK_TRUE(buf_contains(&result.err, "monde: error: "));
+    test_cli_result_free(&result);
+}
+
+/* ヘルプ・バージョン・使い方のエラーではハンドラを呼ばない */
+NAOS_TEST(run_entry_handler_not_called_for_help_version_usage)
+{
+    static const char *const help_argv[] = {"monde", "extract", "--help", NULL};
+    static const char *const version_argv[] = {"monde", "--version", NULL};
+    static const char *const usage_argv[] = {"monde", "extract", NULL};
+    static const char *const none_argv[] = {"monde", NULL};
+    test_cli_result_t result = TEST_CLI_RESULT_INIT;
+
+    reset_seen();
+    run_tokens_with("run_entry_not_called_help", help_argv, find_fail_with_diags, &result);
+    NAOS_CHECK_INT_EQ(MND_CLI_EXIT_OK, result.exit_code);
+    run_tokens_with("run_entry_not_called_version", version_argv, find_fail_with_diags, &result);
+    NAOS_CHECK_INT_EQ(MND_CLI_EXIT_OK, result.exit_code);
+    run_tokens_with("run_entry_not_called_usage", usage_argv, find_fail_with_diags, &result);
+    NAOS_CHECK_INT_EQ(MND_CLI_EXIT_USAGE, result.exit_code);
+    run_tokens_with("run_entry_not_called_none", none_argv, find_fail_with_diags, &result);
+    NAOS_CHECK_INT_EQ(MND_CLI_EXIT_USAGE, result.exit_code);
+    NAOS_CHECK_INT_EQ(0, g_seen.calls);
+    test_cli_result_free(&result);
+}
+
 NAOS_SUITE(run,
     NAOS_ADD_TEST(run_scaffold_exit_codes_and_work_dir),
-    NAOS_ADD_TEST(run_scaffold_provisional_entry_reports_error),
     NAOS_ADD_TEST(run_util_write_and_read_back_file),
     NAOS_ADD_TEST(run_util_getenv_looks_up_table),
     NAOS_ADD_TEST(run_util_clock_returns_fixed_time),
@@ -519,5 +948,17 @@ NAOS_SUITE(run,
     NAOS_ADD_TEST(run_commands_help_lists_all_options_and_positionals),
     NAOS_ADD_TEST(run_commands_order_of_arguments_does_not_matter),
     NAOS_ADD_TEST(run_commands_find_handler_maps_names),
-    NAOS_ADD_TEST(run_commands_every_declared_command_has_handler)
+    NAOS_ADD_TEST(run_commands_every_declared_command_has_handler),
+    NAOS_ADD_TEST(run_entry_global_help_goes_to_out),
+    NAOS_ADD_TEST(run_entry_subcommand_help_goes_to_out),
+    NAOS_ADD_TEST(run_entry_version_goes_to_out),
+    NAOS_ADD_TEST(run_entry_no_arguments_prints_help_to_err),
+    NAOS_ADD_TEST(run_entry_usage_errors_print_message_and_hint),
+    NAOS_ADD_TEST(run_entry_handler_failure_reports_diags_and_returns_1),
+    NAOS_ADD_TEST(run_entry_failed_handler_prints_all_diags_in_order),
+    NAOS_ADD_TEST(run_entry_handler_usage_error_returns_2),
+    NAOS_ADD_TEST(run_entry_successful_handler_returns_0_and_passes_quiet),
+    NAOS_ADD_TEST(run_entry_success_with_error_diag_returns_1),
+    NAOS_ADD_TEST(run_entry_missing_handler_is_internal_error),
+    NAOS_ADD_TEST(run_entry_handler_not_called_for_help_version_usage)
 )

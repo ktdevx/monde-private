@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 
 /* 診断に付けるプログラム名（パスがないとき） */
 #define REPORT_PROGRAM "monde"
@@ -64,6 +65,60 @@ void mnd_cli_report_diags(FILE *err, const mnd_diag_list_t *diags)
 }
 
 /* 使い方のエラーはパスと行を付けず "monde: <severity>: <message>" で書き、最後に cli-args の案内を 1 行書く（1.6） */
+/* text が "<first> <second>: "（second が NULL なら "<first>: "）で始まるなら、その直後を返す。でなければ NULL */
+static const char *skip_prefix(const char *text, const char *first, const char *second)
+{
+    size_t len = strlen(first);
+
+    if (strncmp(text, first, len) != 0)
+    {
+        return NULL;
+    }
+    text += len;
+
+    if (second != NULL)
+    {
+        len = strlen(second);
+        if ((text[0] != ' ') || (strncmp(text + 1, second, len) != 0))
+        {
+            return NULL;
+        }
+        text += 1 + len;
+    }
+
+    if ((text[0] != ':') || (text[1] != ' '))
+    {
+        return NULL;
+    }
+
+    return text + 2;
+}
+
+/*
+ * cli-args の使い方のエラーのメッセージから接頭辞を除く。"<program> <command>: "（command があるとき）、
+ * 次に "<program>: " を試し、どちらも一致しなければそのまま返す
+ */
+static const char *strip_usage_prefix(const char *message, const mnd_args_program_t *program,
+                                      const mnd_args_command_t *command)
+{
+    const char *rest = NULL;
+
+    if ((program == NULL) || (program->name == NULL))
+    {
+        return message;
+    }
+    if ((command != NULL) && (command->name != NULL))
+    {
+        rest = skip_prefix(message, program->name, command->name);
+    }
+    if (rest == NULL)
+    {
+        rest = skip_prefix(message, program->name, NULL);
+    }
+
+    return (rest != NULL) ? rest : message;
+}
+
 void mnd_cli_report_usage_error(FILE *err, const mnd_args_program_t *program,
                                 const mnd_args_command_t *command, const mnd_diag_list_t *diags)
 {
@@ -75,7 +130,8 @@ void mnd_cli_report_usage_error(FILE *err, const mnd_args_program_t *program,
     {
         const mnd_diag_t *diag = mnd_diag_list_at(diags, i);
 
-        fprintf(err, "%s: %s: %s\n", REPORT_PROGRAM, severity_name(diag->severity), message_text(diag));
+        fprintf(err, "%s: %s: %s\n", REPORT_PROGRAM, severity_name(diag->severity),
+                strip_usage_prefix(message_text(diag), program, command));
     }
     write_dropped(err, diags);
 

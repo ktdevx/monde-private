@@ -5,13 +5,155 @@
 #include "cli/cli_internal.h"
 #include "cli/cli_report.h"
 
+#include "cli_args/args.h"
+#include "cli_args/args_help.h"
+#include "foundation/buf.h"
+#include "foundation/diag.h"
+
+#include <stdbool.h>
 #include <stdio.h>
 
-/* 仮の実装: 診断を 1 つ err に書いて失敗を返す（分岐は 3.1 で作る） */
+/* 文面の生成に失敗したとき（メモリ不足）の診断 */
+#define RUN_OUT_OF_MEMORY_MESSAGE "out of memory"
+
+/* buf の内容を fp に書いて flush する。書き込みに失敗したら false */
+static bool write_buf(FILE *fp, const mnd_buf_t *buf)
+{
+    bool ok = true;
+
+    if ((buf->len > 0) && (fwrite(mnd_buf_cstr(buf), 1, buf->len, fp) != buf->len))
+    {
+        ok = false;
+    }
+    if (fflush(fp) != 0)
+    {
+        ok = false;
+    }
+
+    return ok;
+}
+
+/* 診断を 1 件だけ作って err に書く（ハンドラの外で起きた内部エラー用） */
+static void report_single_error(FILE *err, const char *message)
+{
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+
+    mnd_diag_add(&diags, MND_SEVERITY_ERROR, NULL, 0, "%s", message);
+    mnd_cli_report_diags(err, &diags);
+    mnd_diag_list_free(&diags);
+}
+
+/*
+ * ヘルプ（command が NULL なら全体）またはバージョンの文面を fp に書き、成功なら exit_code を返す。
+ * 文面の生成や書き込みに失敗したら err に診断を書いて 1 を返す
+ */
+static int write_text(const mnd_cli_env_t *env, FILE *fp, const mnd_args_program_t *program,
+                      const mnd_args_command_t *command, bool version, int exit_code)
+{
+    mnd_buf_t text = MND_BUF_INIT;
+    bool formatted;
+    int result = exit_code;
+
+    if (version)
+    {
+        formatted = mnd_args_format_version(program, &text);
+    }
+    else
+    {
+        formatted = mnd_args_format_help(program, command, &text);
+    }
+
+    if (!formatted)
+    {
+        report_single_error(env->err, RUN_OUT_OF_MEMORY_MESSAGE);
+        result = MND_CLI_EXIT_FAILURE;
+    }
+    else if (!write_buf(fp, &text))
+    {
+        report_single_error(env->err, (fp == env->out) ? "failed to write to standard output"
+                                                       : "failed to write to standard error");
+        result = MND_CLI_EXIT_FAILURE;
+    }
+
+    mnd_buf_free(&text);
+
+    return result;
+}
+
+/* 解析に成功したサブコマンドのハンドラを呼び、診断を表示して終了コードを返す */
+static int run_handler(const mnd_cli_env_t *env, const mnd_args_result_t *result, mnd_diag_list_t *diags,
+                       mnd_cli_find_handler_fn find_handler)
+{
+    mnd_cli_handler_fn handler = find_handler(result->command->name);
+    mnd_cli_ctx_t ctx;
+    bool ok;
+
+    if (handler == NULL)
+    {
+        mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0, "internal error: no handler for command '%s'",
+                     result->command->name);
+        mnd_cli_report_diags(env->err, diags);
+        return MND_CLI_EXIT_FAILURE;
+    }
+
+    ctx.env = env;
+    ctx.result = result;
+    ctx.diags = diags;
+    ctx.quiet = mnd_args_flag(result, MND_CLI_OPT_QUIET);
+    ctx.usage_error = false;
+
+    ok = handler(&ctx);
+    mnd_cli_report_diags(env->err, diags);
+
+    /* dropped を含め、エラーの診断があれば成功として扱わない */
+    if (ok && !mnd_diag_list_has_error(diags))
+    {
+        return MND_CLI_EXIT_OK;
+    }
+
+    return ctx.usage_error ? MND_CLI_EXIT_USAGE : MND_CLI_EXIT_FAILURE;
+}
+
+int mnd_cli_run_with(const mnd_cli_env_t *env, int argc, char *const *argv, mnd_cli_find_handler_fn find_handler)
+{
+    mnd_args_program_t program = mnd_cli_program(env->version);
+    mnd_args_result_t result = MND_ARGS_RESULT_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    int exit_code;
+
+    switch (mnd_args_parse(&program, argc, argv, &result, &diags))
+    {
+    case MND_ARGS_OK:
+        exit_code = run_handler(env, &result, &diags, find_handler);
+        break;
+    case MND_ARGS_HELP:
+        exit_code = write_text(env, env->out, &program, result.command, false, MND_CLI_EXIT_OK);
+        break;
+    case MND_ARGS_VERSION:
+        exit_code = write_text(env, env->out, &program, NULL, true, MND_CLI_EXIT_OK);
+        break;
+    case MND_ARGS_NO_COMMAND:
+        exit_code = write_text(env, env->err, &program, NULL, false, MND_CLI_EXIT_USAGE);
+        break;
+    case MND_ARGS_USAGE_ERROR:
+        mnd_cli_report_usage_error(env->err, &program, result.command, &diags);
+        exit_code = MND_CLI_EXIT_USAGE;
+        break;
+    case MND_ARGS_DECL_ERROR:
+    case MND_ARGS_OUT_OF_MEMORY:
+    default:
+        mnd_cli_report_diags(env->err, &diags);
+        exit_code = MND_CLI_EXIT_FAILURE;
+        break;
+    }
+
+    mnd_args_result_free(&result);
+    mnd_diag_list_free(&diags);
+
+    return exit_code;
+}
+
 int mnd_cli_run(const mnd_cli_env_t *env, int argc, char *const *argv)
 {
-    (void)argc;
-    (void)argv;
-    fputs("monde: error: the command line interface is not implemented\n", env->err);
-    return MND_CLI_EXIT_FAILURE;
+    return mnd_cli_run_with(env, argc, argv, mnd_cli_find_handler);
 }

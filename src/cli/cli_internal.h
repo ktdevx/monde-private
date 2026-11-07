@@ -29,4 +29,13 @@ bool mnd_cli_cmd_init(mnd_cli_ctx_t *ctx);
 bool mnd_cli_cmd_update(mnd_cli_ctx_t *ctx);
 bool mnd_cli_cmd_translate(mnd_cli_ctx_t *ctx);
 
+/* サブコマンド名からハンドラを引く関数の型（mnd_cli_find_handler の形） */
+typedef mnd_cli_handler_fn (*mnd_cli_find_handler_fn)(const char *name);
+
+/*
+ * mnd_cli_run の本体。ハンドラを find_handler で引く（mnd_cli_run は mnd_cli_find_handler を渡す）。
+ * テストがハンドラを差し替えるための継ぎ目
+ */
+int mnd_cli_run_with(const mnd_cli_env_t *env, int argc, char *const *argv, mnd_cli_find_handler_fn find_handler);
+
 #endif

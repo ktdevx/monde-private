@@ -224,6 +224,88 @@ NAOS_TEST(report_usage_error_without_command)
     mnd_diag_list_free(&diags);
 }
 
+/* 使い方のエラー: cli-args の "<program> <command>: " と "<program>: " の接頭辞を除いて書く（1.6） */
+NAOS_TEST(report_usage_error_strips_cli_args_prefix_with_command)
+{
+    static const char *const name = "report_usage_error_strips_prefix_with_command";
+    mnd_args_program_t program = mnd_cli_program(TEST_CLI_VERSION);
+    const mnd_args_command_t *command = report_find_command(&program, "update");
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    mnd_buf_t text = MND_BUF_INIT;
+    FILE *fp;
+
+    NAOS_REQUIRE_NOT_NULL(command);
+    mnd_diag_add(&diags, MND_SEVERITY_ERROR, NULL, 0, "monde update: unknown option '--bogus'");
+    mnd_diag_add(&diags, MND_SEVERITY_ERROR, NULL, 0, "monde: option '--x' requires a value");
+
+    fp = report_open(name);
+    NAOS_REQUIRE_NOT_NULL(fp);
+    mnd_cli_report_usage_error(fp, &program, command, &diags);
+    NAOS_REQUIRE_TRUE(report_close_read(fp, name, &text));
+
+    REPORT_CHECK_BYTES("monde: error: unknown option '--bogus'\n"
+                       "monde: error: option '--x' requires a value\n"
+                       "Run 'monde update --help' for usage.\n",
+                       text);
+
+    mnd_buf_free(&text);
+    mnd_diag_list_free(&diags);
+}
+
+/* 使い方のエラー: サブコマンドが決まらないときは "<program>: " だけを除く（1.6） */
+NAOS_TEST(report_usage_error_strips_cli_args_prefix_without_command)
+{
+    static const char *const name = "report_usage_error_strips_prefix_without_command";
+    mnd_args_program_t program = mnd_cli_program(TEST_CLI_VERSION);
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    mnd_buf_t text = MND_BUF_INIT;
+    FILE *fp;
+
+    mnd_diag_add(&diags, MND_SEVERITY_ERROR, NULL, 0, "monde: unknown command 'bogus'");
+
+    fp = report_open(name);
+    NAOS_REQUIRE_NOT_NULL(fp);
+    mnd_cli_report_usage_error(fp, &program, NULL, &diags);
+    NAOS_REQUIRE_TRUE(report_close_read(fp, name, &text));
+
+    REPORT_CHECK_BYTES("monde: error: unknown command 'bogus'\n"
+                       "Run 'monde --help' for usage.\n",
+                       text);
+
+    mnd_buf_free(&text);
+    mnd_diag_list_free(&diags);
+}
+
+/* 使い方のエラー: 接頭辞が一致しないメッセージ（別のサブコマンド名、コロンなし）はそのまま書く */
+NAOS_TEST(report_usage_error_keeps_unmatched_prefix)
+{
+    static const char *const name = "report_usage_error_keeps_unmatched_prefix";
+    mnd_args_program_t program = mnd_cli_program(TEST_CLI_VERSION);
+    const mnd_args_command_t *command = report_find_command(&program, "update");
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    mnd_buf_t text = MND_BUF_INIT;
+    FILE *fp;
+
+    NAOS_REQUIRE_NOT_NULL(command);
+    mnd_diag_add(&diags, MND_SEVERITY_ERROR, NULL, 0, "monde extract: unknown option '--bogus'");
+    mnd_diag_add(&diags, MND_SEVERITY_ERROR, NULL, 0, "monde update");
+    mnd_diag_add(&diags, MND_SEVERITY_ERROR, NULL, 0, "mondex: odd");
+
+    fp = report_open(name);
+    NAOS_REQUIRE_NOT_NULL(fp);
+    mnd_cli_report_usage_error(fp, &program, command, &diags);
+    NAOS_REQUIRE_TRUE(report_close_read(fp, name, &text));
+
+    REPORT_CHECK_BYTES("monde: error: monde extract: unknown option '--bogus'\n"
+                       "monde: error: monde update\n"
+                       "monde: error: mondex: odd\n"
+                       "Run 'monde update --help' for usage.\n",
+                       text);
+
+    mnd_buf_free(&text);
+    mnd_diag_list_free(&diags);
+}
+
 /* extract / init / 言語の出どころ / update の統計の書式（5.6、8.1〜8.3、8.8） */
 NAOS_TEST(report_stats_formats)
 {
@@ -389,6 +471,9 @@ NAOS_SUITE(report,
     NAOS_ADD_TEST(report_diags_dropped_without_items),
     NAOS_ADD_TEST(report_usage_error_with_command),
     NAOS_ADD_TEST(report_usage_error_without_command),
+    NAOS_ADD_TEST(report_usage_error_strips_cli_args_prefix_with_command),
+    NAOS_ADD_TEST(report_usage_error_strips_cli_args_prefix_without_command),
+    NAOS_ADD_TEST(report_usage_error_keeps_unmatched_prefix),
     NAOS_ADD_TEST(report_stats_formats),
     NAOS_ADD_TEST(report_translate_rate_two_thirds),
     NAOS_ADD_TEST(report_translate_rate_rounding),
