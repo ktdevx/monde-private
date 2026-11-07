@@ -20,8 +20,9 @@ typedef struct mnd_cli_language
 /*
  * explicit が NULL でなければそれを使う。NULL なら LC_ALL → LC_MESSAGES → LANG の順に env->getenv で引き、
  * 空・"C"・"POSIX"（"." / "@" 以降を除いた後で判定）は未設定として次を見る。
- * 値は "." / "@" 以降を除く。決まらなければ使い方のエラー（--language を求める）、
- * 値が空か空白・制御文字を含めば使い方のエラー（値と出どころを示す）。どちらも診断を追加して false
+ * 環境変数の値は "." / "@" 以降を除く（explicit はそのまま使う）。決まらなければ使い方のエラー（--language を求める）、
+ * 決めた値が空か空白・制御文字・非 ASCII のバイトを含めば使い方のエラー（値と出どころを示す。
+ * 制御文字と非 ASCII は \xHH の形）。どちらも診断を追加して false。失敗時の out は NULL / NULL
  */
 bool mnd_cli_resolve_language(const mnd_cli_env_t *env, const char *explicit,
                               mnd_cli_language_t *out, mnd_diag_list_t *diags);
