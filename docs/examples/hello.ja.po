@@ -1,0 +1,48 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-11-07 13:25+0000\n"
+"PO-Revision-Date: 2026-11-07 13:25+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. front matter: title
+#: hello.md:2
+msgid "Hello, monde"
+msgstr "こんにちは、monde"
+
+#. heading (level 1)
+#: hello.md:5
+msgid "Getting started"
+msgstr "はじめに"
+
+#. paragraph
+#: hello.md:7
+msgid ""
+"This is a *small* example document for the quick start.\n"
+"It shows how monde translates Markdown text with\n"
+"[GNU gettext](https://www.gnu.org/software/gettext/) translation files."
+msgstr ""
+"これはクイックスタートのための*小さな*例の文書です。\n"
+"monde が [GNU gettext](https://www.gnu.org/software/gettext/)\n"
+"の翻訳ファイルを使って Markdown のテキストを翻訳する様子を示します。"
+
+#. list item > paragraph
+#: hello.md:11
+msgid "Extract the text into a translation template."
+msgstr "テキストを翻訳テンプレートに抽出します。"
+
+#. list item > paragraph
+#: hello.md:12
+msgid "Create a translation file for your language."
+msgstr "あなたの言語の翻訳ファイルを作ります。"
+
+#. list item > paragraph
+#: hello.md:13
+msgid "Translate the document with the translation file."
+msgstr "翻訳ファイルを使って文書を翻訳します。"
