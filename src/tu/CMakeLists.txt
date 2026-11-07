@@ -1,0 +1,15 @@
+monde_add_module(tu
+  SOURCES
+    tu_scan.c
+    tu_markdown.c
+    tu_front_matter.c
+    tu_extract.c
+    tu_translate.c
+    tu_splice.c
+    tu_check.c
+  DEPENDS
+    markdown
+    yaml
+    po
+    foundation
+)
