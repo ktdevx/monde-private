@@ -345,6 +345,246 @@ static bool format_emit_double(const char *text, size_t len, mnd_buf_t *out)
 }
 
 /*
+ * ブロックスカラーの範囲とヘッダの行の位置（原文から読み取る）。
+ * 範囲が内容の行まで続くとき、範囲はヘッダの行のコメントを含む。内容の行がなければ範囲は
+ * 指示子の直後で終わり、ヘッダの行の残りは範囲の外にある
+ */
+typedef struct format_block_source
+{
+    const char *header;     /* ヘッダの `|` か `>` */
+    size_t header_len;      /* 出力するヘッダのバイト数（範囲の中にあるヘッダの行の内容） */
+    size_t rest_start;      /* ヘッダの中の指示子の直後（header からのバイト数） */
+    bool header_ok;         /* ヘッダの行の範囲の外に、行末記号の前の内容がない */
+    bool eol_after;         /* 範囲の直後に行末記号がある（最後の行で文書が終わらない） */
+} format_block_source_t;
+
+static void format_block_source_of(const mnd_yaml_doc_t *doc, const mnd_yaml_node_t *scalar,
+                                   format_block_source_t *src)
+{
+    const char *data = mnd_yaml_doc_data(doc);
+    size_t content_end = mnd_yaml_doc_content(doc).end;
+    size_t start = scalar->span.start;
+    size_t end = scalar->span.end;
+    size_t line_end = start;
+    size_t i = start + 1;
+
+    while ((line_end < content_end) && (data[line_end] != '\n') && (data[line_end] != '\r'))
+    {
+        ++line_end;
+    }
+    while ((i < line_end) && (data[i] != '\0') && (strchr("-+123456789", data[i]) != NULL))
+    {
+        ++i;
+    }
+    src->header = data + start;
+    src->rest_start = i - start;
+    src->header_ok = (end >= line_end);
+    src->header_len = (end >= line_end) ? (line_end - start) : (end - start);
+    src->eol_after = (end < content_end);
+}
+
+/* text[0..len) の末尾の改行の数 */
+static size_t format_trailing_newlines(const char *text, size_t len)
+{
+    size_t count = 0;
+
+    while ((count < len) && (text[len - 1 - count] == '\n'))
+    {
+        ++count;
+    }
+
+    return count;
+}
+
+/*
+ * 訳文をリテラル・折り返しのまま表現できるか（整形の規則の表のリテラルと折り返しの行）:
+ * CR とタブ・改行以外の制御文字を含まない。空白だけの行を含まない。空でない行が 1 つ以上ある。
+ * インデント指示子がなければ、最初の空でない行が空白・タブで始まらない。折り返しでは、空白・タブで
+ * 始まる行を含まない。末尾の改行の数 t がチョンプと合う: strip は 0、clip は範囲の直後の行末記号の数
+ * （通常は 1。文書が最後の行で終わるなら 0）、keep はその数以上。
+ * ヘッダの行の範囲の外に内容がある（内容の行のない元のスカラーで、指示子の後ろに空白やコメントがある）
+ * ときは、内容の行を置けないため維持できない
+ */
+static bool format_block_keepable(const mnd_yaml_scalar_t *s, const format_block_source_t *src,
+                                  const char *text, size_t len)
+{
+    size_t eol_count = src->eol_after ? 1U : 0U;
+    size_t trailing = format_trailing_newlines(text, len);
+    size_t body_len = len - trailing;
+    size_t line_start = 0;
+    size_t i;
+    size_t j;
+    bool first = true;
+    bool white_only;
+
+    if (!src->header_ok || (body_len == 0))
+    {
+        return false;
+    }
+    for (i = 0; i < len; ++i)
+    {
+        if ((text[i] != '\t') && (text[i] != '\n') && (format_control_len(text, len, i) > 0))
+        {
+            return false;
+        }
+    }
+    if (((s->chomp == MND_YAML_CHOMP_STRIP) && (trailing != 0))
+        || ((s->chomp == MND_YAML_CHOMP_CLIP) && (trailing != eol_count))
+        || ((s->chomp == MND_YAML_CHOMP_KEEP) && (trailing < eol_count)))
+    {
+        return false;
+    }
+    for (i = 0; i <= body_len; ++i)
+    {
+        if ((i < body_len) && (text[i] != '\n'))
+        {
+            continue;
+        }
+        if (i > line_start)
+        {
+            white_only = true;
+            for (j = line_start; (j < i) && white_only; ++j)
+            {
+                white_only = format_is_white(text[j]);
+            }
+            if (white_only)
+            {
+                return false;
+            }
+            if (format_is_white(text[line_start])
+                && ((s->style == MND_YAML_FOLDED) || (first && !s->has_indent_indicator)))
+            {
+                return false;
+            }
+            first = false;
+        }
+        line_start = i + 1;
+    }
+
+    return true;
+}
+
+static bool format_append_spaces(mnd_buf_t *out, size_t count)
+{
+    static const char spaces[] = "                                ";
+    size_t chunk;
+
+    while (count > 0)
+    {
+        chunk = (count < (sizeof(spaces) - 1)) ? count : (sizeof(spaces) - 1);
+        if (!mnd_buf_append(out, spaces, chunk))
+        {
+            return false;
+        }
+        count -= chunk;
+    }
+
+    return true;
+}
+
+static bool format_append_eols(mnd_buf_t *out, const char *eol, size_t count)
+{
+    size_t i;
+
+    for (i = 0; i < count; ++i)
+    {
+        if (!mnd_buf_append_str(out, eol))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/*
+ * リテラル・折り返しの整形（format_block_keepable が true のとき）: ヘッダを原文のまま出し、
+ * 訳文の各行を content_indent 個の空白で始めて出力する。行末記号は eol。
+ * 先頭の改行 j 個は j 個の空行にする。内容の行の間の改行 k 個は、リテラルでは k - 1 個、
+ * 折り返しでは k 個の空行にする。最後の内容の行の行末記号は範囲の外にあるため出力せず、
+ * keep では残りの末尾の改行を空行にする
+ */
+static bool format_emit_block(const mnd_yaml_scalar_t *s, const format_block_source_t *src, const char *eol,
+                              const char *text, size_t len, mnd_buf_t *out)
+{
+    size_t trailing = format_trailing_newlines(text, len);
+    size_t body_len = len - trailing;
+    size_t breaks = 1;
+    size_t i = 0;
+    size_t line_end;
+    bool has_content = false;
+
+    if (!mnd_buf_append(out, src->header, src->header_len))
+    {
+        return false;
+    }
+    while (i < body_len)
+    {
+        if (text[i] == '\n')
+        {
+            ++breaks;
+            ++i;
+            continue;
+        }
+        if (has_content && (s->style == MND_YAML_FOLDED))
+        {
+            ++breaks;
+        }
+        line_end = i;
+        while ((line_end < body_len) && (text[line_end] != '\n'))
+        {
+            ++line_end;
+        }
+        if (!format_append_eols(out, eol, breaks) || !format_append_spaces(out, s->content_indent)
+            || !mnd_buf_append(out, text + i, line_end - i))
+        {
+            return false;
+        }
+        has_content = true;
+        breaks = 0;
+        i = line_end;
+    }
+    if (s->chomp == MND_YAML_CHOMP_KEEP)
+    {
+        return format_append_eols(out, eol, trailing - (src->eol_after ? 1U : 0U));
+    }
+
+    return true;
+}
+
+/*
+ * ブロックスカラーの整形。維持できなければダブルクオートに切り替え、範囲の中にあるヘッダの行の
+ * コメントを値の後ろに残す（`| # c` → `"..." # c`）
+ */
+static bool format_block(const mnd_yaml_doc_t *doc, const mnd_yaml_node_t *scalar, const char *text, size_t len,
+                         mnd_buf_t *out)
+{
+    const mnd_yaml_scalar_t *s = &scalar->as.scalar;
+    format_block_source_t src;
+    const char *rest = NULL;
+    size_t rest_len;
+
+    format_block_source_of(doc, scalar, &src);
+    if (format_block_keepable(s, &src, text, len))
+    {
+        return format_emit_block(s, &src, (mnd_yaml_doc_eol(doc) == MND_EOL_CRLF) ? "\r\n" : "\n", text, len,
+                                 out);
+    }
+    if (!format_emit_double(text, len, out))
+    {
+        return false;
+    }
+    rest = src.header + src.rest_start;
+    rest_len = src.header_len - src.rest_start;
+    if ((rest_len > 0) && (memchr(rest, '#', rest_len) != NULL))
+    {
+        return mnd_buf_append(out, rest, rest_len);
+    }
+
+    return true;
+}
+
+/*
  * 空の範囲（値のないキー）の前に付ける内容。通常は 1 つの空白（`key:` → `key: 訳文`）。
  * フロー形式の `{k}` の値（範囲がキーの直後）では、値の指示文字がないため `: ` を付ける
  */
@@ -375,12 +615,6 @@ bool mnd_yaml_format_value(const mnd_yaml_doc_t *doc, const mnd_yaml_node_t *sca
     const mnd_yaml_scalar_t *s = &scalar->as.scalar;
     size_t invalid_offset = 0;
     bool ok;
-
-    /*
-     * 複数行の出力（ブロックスカラー、タスク 3.3）は文書の行末記号を使う。
-     * プレーンと引用符付きの出力は 1 行なので doc を参照しない
-     */
-    (void)doc;
 
     if (len == 0)
     {
@@ -428,11 +662,7 @@ bool mnd_yaml_format_value(const mnd_yaml_doc_t *doc, const mnd_yaml_node_t *sca
             break;
         case MND_YAML_LITERAL:
         case MND_YAML_FOLDED:
-            /*
-             * ブロックスカラーの維持の判定と整形はタスク 3.3 がここに加える。
-             * それまでは、維持できないときと同じくダブルクオートに切り替える
-             */
-            ok = format_emit_double(text, len, out);
+            ok = format_block(doc, scalar, text, len, out);
             break;
         case MND_YAML_DOUBLE_QUOTED:
         default:

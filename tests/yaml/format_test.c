@@ -213,11 +213,93 @@ static mnd_yaml_doc_t *format_parse(const char *data, size_t len)
 }
 
 /*
- * replaced[0..replaced_len) を解析し直し、木の検査を満たし、path の位置のスカラーの論理値が text[0..len) と
- * 一致することを確かめる。すべて満たせば true
+ * doc のスカラーを、根から明示的なスタックでたどった順に scalars に入れて数を返す（再帰を使わない）。
+ * FORMAT_STACK_MAX を超える分は入れない
  */
-static bool format_check_reparsed(const char *replaced, size_t replaced_len, const format_path_t *path,
-                                  const char *text, size_t len)
+static size_t format_collect_scalars(const mnd_yaml_doc_t *doc, const mnd_yaml_node_t **scalars)
+{
+    const mnd_yaml_node_t *stack[FORMAT_STACK_MAX];
+    const mnd_yaml_node_t *node = NULL;
+    size_t depth = 0;
+    size_t count = 0;
+    size_t i;
+
+    if (mnd_yaml_doc_root(doc) == NULL)
+    {
+        return 0;
+    }
+    stack[depth++] = mnd_yaml_doc_root(doc);
+    while (depth > 0)
+    {
+        node = stack[--depth];
+        if (node->kind == MND_YAML_SCALAR)
+        {
+            if (count < FORMAT_STACK_MAX)
+            {
+                scalars[count++] = node;
+            }
+        }
+        else if (node->kind == MND_YAML_MAPPING)
+        {
+            for (i = 0; (i < node->as.mapping.count) && ((depth + 2) <= FORMAT_STACK_MAX); ++i)
+            {
+                stack[depth++] = node->as.mapping.pairs[i].key;
+                stack[depth++] = node->as.mapping.pairs[i].value;
+            }
+        }
+        else
+        {
+            for (i = 0; (i < node->as.sequence.count) && (depth < FORMAT_STACK_MAX); ++i)
+            {
+                stack[depth++] = node->as.sequence.items[i];
+            }
+        }
+    }
+
+    return count;
+}
+
+/*
+ * 置き換えた範囲の外側が変わらないこと: 元の文書と解析し直した文書で、target と found 以外のスカラーの
+ * 数・順・論理値・スタイルが一致する。一致すれば true
+ */
+static bool format_check_others(const mnd_yaml_doc_t *doc, const mnd_yaml_node_t *target,
+                                const mnd_yaml_doc_t *again, const mnd_yaml_node_t *found)
+{
+    const mnd_yaml_node_t *before[FORMAT_STACK_MAX];
+    const mnd_yaml_node_t *after[FORMAT_STACK_MAX];
+    size_t before_count = format_collect_scalars(doc, before);
+    size_t after_count = format_collect_scalars(again, after);
+    size_t i;
+    bool ok = (before_count == after_count);
+
+    NAOS_CHECK_UINT_EQ(before_count, after_count);
+    for (i = 0; ok && (i < before_count); ++i)
+    {
+        if ((before[i] == target) || (after[i] == found))
+        {
+            NAOS_CHECK_TRUE((before[i] == target) && (after[i] == found));
+            ok = (before[i] == target) && (after[i] == found);
+            continue;
+        }
+        NAOS_CHECK_MEM_EQ(before[i]->as.scalar.value, before[i]->as.scalar.value_len, after[i]->as.scalar.value,
+                          after[i]->as.scalar.value_len);
+        NAOS_CHECK_INT_EQ(before[i]->as.scalar.style, after[i]->as.scalar.style);
+        ok = (before[i]->as.scalar.value_len == after[i]->as.scalar.value_len)
+             && (memcmp(before[i]->as.scalar.value, after[i]->as.scalar.value, before[i]->as.scalar.value_len) == 0)
+             && (before[i]->as.scalar.style == after[i]->as.scalar.style);
+    }
+
+    return ok;
+}
+
+/*
+ * replaced[0..replaced_len) を解析し直し、木の検査を満たし、path の位置のスカラーの論理値が text[0..len) と
+ * 一致し、それ以外のスカラーが元の文書 doc（置き換えたスカラーは target）と同じであることを確かめる。
+ * すべて満たせば true
+ */
+static bool format_check_reparsed(const mnd_yaml_doc_t *doc, const mnd_yaml_node_t *target, const char *replaced,
+                                  size_t replaced_len, const format_path_t *path, const char *text, size_t len)
 {
     mnd_yaml_doc_t *again = format_parse(replaced, replaced_len);
     const mnd_yaml_node_t *found = NULL;
@@ -233,6 +315,7 @@ static bool format_check_reparsed(const char *replaced, size_t replaced_len, con
         {
             NAOS_CHECK_MEM_EQ(text, len, found->as.scalar.value, found->as.scalar.value_len);
             ok = (found->as.scalar.value_len == len) && (memcmp(text, found->as.scalar.value, len) == 0);
+            ok = format_check_others(doc, target, again, found) && ok;
         }
     }
     if (!ok)
@@ -293,7 +376,7 @@ static bool format_roundtrip(const char *yaml, size_t offset, const char *text, 
     }
     if (ok)
     {
-        ok = format_check_reparsed(replaced.data, replaced.len, &path, text, len);
+        ok = format_check_reparsed(doc, scalar, replaced.data, replaced.len, &path, text, len);
     }
     mnd_yaml_doc_free(doc);
     mnd_buf_free(&replaced);
@@ -576,13 +659,145 @@ NAOS_TEST(format_nul_and_invalid_utf8_errors)
     check_format_error("\xed\xa0\x80", 3, "invalid UTF-8 sequence");
 }
 
-/* ブロックスカラーの訳文も往復する（維持の整形はタスク 3.3。ここでは出力のバイト列を固定しない） */
+/* ブロックスカラーの訳文も往復する（維持できない訳文はダブルクオートに切り替わる） */
 NAOS_TEST(format_block_scalar_roundtrips)
 {
     check_format("text: |\n  Hello\n", "|", "Bonjour", NULL);
     check_format("text: |\n  Hello\n", "|", "a: b\n#c\n", NULL);
     check_format("text: >-\n  Hello\nnext: 1\n", ">", "x\ny", NULL);
     check_format("text: | # c\n  Hello\n\nnext: 1\n", "|", "", NULL);
+}
+
+/*
+ * リテラルは各チョンプで、末尾の改行の数が合えば維持する（5.3）: ヘッダを原文のまま、内容の各行を
+ * content_indent 個の空白で始める。空行は空白を付けない。keep では末尾の改行を空行にする
+ */
+NAOS_TEST(format_literal_kept_each_chomp)
+{
+    check_format("k: |\n  v\nn: 1\n", "|", "a\nb\n", "|\n  a\n  b");
+    check_format("k: |\n  v\nn: 1\n", "|", "a\n\nb\n", "|\n  a\n\n  b");
+    check_format("k: |\n  v\nn: 1\n", "|", "\na\n", "|\n\n  a");
+    check_format("k: |\n  v\nn: 1\n", "|", "a\n  b\n\tc\n", "|\n  a\n    b\n  \tc");
+    check_format("k: |\n  v\nn: 1\n", "|", "a: b # c\n- [x]\n", "|\n  a: b # c\n  - [x]");
+    check_format("k: |\n  v\n\n\nn: 1\n", "|", "caf\xc3\xa9\n", "|\n  caf\xc3\xa9");
+    check_format("k: |-\n  v\nn: 1\n", "|", "a\nb", "|-\n  a\n  b");
+    check_format("k: |-\n  v\n\nn: 1\n", "|", "x", "|-\n  x");
+    check_format("k: |+\n  v\nn: 1\n", "|", "a\n", "|+\n  a");
+    check_format("k: |+\n  v\n\nn: 1\n", "|", "a\n\n\n", "|+\n  a\n\n");
+    check_format("k: |+\n  v\n\n\n", "|", "a\nb\n\n", "|+\n  a\n  b\n");
+    /* 内容の行がない元のスカラー（範囲は指示子の直後まで） */
+    check_format("k: |\nn: 1\n", "|", "a\n", "|\n a");
+    check_format("k: |-\n\nn: 1\n", "|", "a", "|-\n a");
+    check_format("k: |+\n\n\nn: 1\n", "|", "a\n\n", "|+\n a\n");
+    /* 最後の内容の行に行末記号がない文書: clip の末尾の改行は 0 個 */
+    check_format("k: |\n  v", "|", "a\nb", "|\n  a\n  b");
+    check_format("k: |+\n  v", "|", "a\n\n", "|+\n  a\n\n");
+    check_format("k: |+\n  v", "|", "a", "|+\n  a");
+}
+
+/*
+ * 維持できない訳文はダブルクオートに切り替える（5.4）: 末尾の改行の数がチョンプと合わない、CR、
+ * 空白だけの行、指示子がないのに最初の空でない行が空白で始まる、タブ以外の制御文字、内容の行がない
+ */
+NAOS_TEST(format_block_scalar_switches_to_double_quoted)
+{
+    check_format("k: |\n  v\nn: 1\n", "|", "a", "\"a\"");
+    check_format("k: |\n  v\nn: 1\n", "|", "a\n\n", "\"a\\n\\n\"");
+    check_format("k: |-\n  v\nn: 1\n", "|", "a\n", "\"a\\n\"");
+    check_format("k: |+\n  v\nn: 1\n", "|", "a", "\"a\"");
+    check_format("k: >\n  v\nn: 1\n", ">", "a", "\"a\"");
+    check_format("k: >-\n  v\nn: 1\n", ">", "a\n", "\"a\\n\"");
+    check_format("k: >+\n  v\nn: 1\n", ">", "a", "\"a\"");
+    check_format("k: |\n  v\nn: 1\n", "|", "a\r\nb\n", "\"a\\r\\nb\\n\"");
+    check_format("k: |\n  v\nn: 1\n", "|", "a\rb\n", "\"a\\rb\\n\"");
+    check_format("k: |\n  v\nn: 1\n", "|", "a\n  \nb\n", "\"a\\n  \\nb\\n\"");
+    check_format("k: |\n  v\nn: 1\n", "|", "a\n\t\nb\n", "\"a\\n\\t\\nb\\n\"");
+    check_format("k: |\n  v\nn: 1\n", "|", " a\n", "\" a\\n\"");
+    check_format("k: |\n  v\nn: 1\n", "|", "\ta\n", "\"\\ta\\n\"");
+    check_format("k: |\n  v\nn: 1\n", "|", "\n\n a\n", "\"\\n\\n a\\n\"");
+    check_format("k: |\n  v\nn: 1\n", "|", "a\x01\n", "\"a\\x01\\n\"");
+    check_format("k: |\n  v\nn: 1\n", "|", "nel\xc2\x85\n", "\"nel\\x85\\n\"");
+    check_format("k: |\n  v\nn: 1\n", "|", "\n", "\"\\n\"");
+    check_format("k: |-\n  v\nn: 1\n", "|", "", "\"\"");
+    check_format("k: |+\n  v\nn: 1\n", "|", "\n\n", "\"\\n\\n\"");
+    /* 最後の内容の行に行末記号がない文書: clip の末尾の改行は 0 個でなければならない */
+    check_format("k: |\n  v", "|", "a\n", "\"a\\n\"");
+    /* 内容の行がなく、ヘッダの行の指示子の後ろに範囲の外の空白やコメントがある */
+    check_format("k: | # c\nn: 1\n", "|", "a\n", "\"a\\n\"");
+    check_format("k: |  \nn: 1\n", "|", "a\n", "\"a\\n\"");
+}
+
+/*
+ * ヘッダの行のコメントは範囲の中にあるため、維持するときはヘッダとともに原文のまま出し、
+ * ダブルクオートに切り替えるときは値の後ろに残す（5.8）
+ */
+NAOS_TEST(format_block_scalar_header_comment)
+{
+    check_format("k: | # c\n  v\nn: 1\n", "|", "a\n", "| # c\n  a");
+    check_format("k: >- \t# c: d\n  v\nn: 1\n", ">", "a\nb", ">- \t# c: d\n  a\n\n  b");
+    check_format("k: | # c\n  v\nn: 1\n", "|", "a", "\"a\" # c");
+    check_format("k: |  \n  v\nn: 1\n", "|", "a\n", "|  \n  a");
+    check_format("k: |  \n  v\nn: 1\n", "|", "a", "\"a\"");
+}
+
+/*
+ * インデント指示子はヘッダとともに維持し、内容の行を content_indent（親のインデント + 指示子）で始める。
+ * 指示子があれば、最初の空でない行が空白で始まってもリテラルを維持できる（5.3）
+ */
+NAOS_TEST(format_block_scalar_indent_indicator_kept)
+{
+    check_format("k: |2\n    v\nn: 1\n", "|", " a\nb\n", "|2\n   a\n  b");
+    check_format("k: |1-\n  v\nn: 1\n", "|", " a", "|1-\n  a");
+    check_format("k: |-1\n v\nn: 1\n", "|", "\n\n  a", "|-1\n\n\n   a");
+    check_format("k: >2+\n  v\n\nn: 1\n", ">", "a\nb\n\n", ">2+\n  a\n\n  b\n");
+    check_format("- |2\n    v\n- w\n", "|", " a\n", "|2\n   a");
+    check_format("a:\n  b: |3\n       v\n  c: 1\n", "|", "  x\n", "|3\n       x");
+    /* 指示子があっても、折り返しでは空白で始まる行を維持できない */
+    check_format("k: >2\n    v\nn: 1\n", ">", " a\n", "\" a\\n\"");
+}
+
+/*
+ * 折り返しは訳文の各行を内容の行とし、訳文の改行 n 個の並びを n 個の空行にする（5.3）。
+ * 先頭の改行は空行にする。空白で始まる行（より深いインデント）を含む訳文は切り替える（5.4）
+ */
+NAOS_TEST(format_folded_blank_lines)
+{
+    check_format("k: >\n  v\nn: 1\n", ">", "a b\n", ">\n  a b");
+    check_format("k: >\n  v\nn: 1\n", ">", "a\nb\n", ">\n  a\n\n  b");
+    check_format("k: >\n  v\nn: 1\n", ">", "a\n\nb\n", ">\n  a\n\n\n  b");
+    check_format("k: >\n  v\nn: 1\n", ">", "a\n\n\nb\nc\n", ">\n  a\n\n\n\n  b\n\n  c");
+    check_format("k: >\n  v\nn: 1\n", ">", "\na\n", ">\n\n  a");
+    check_format("k: >\n  v\nn: 1\n", ">", "\n\na\nb\n", ">\n\n\n  a\n\n  b");
+    check_format("k: >-\n  v\nn: 1\n", ">", "a\nb", ">-\n  a\n\n  b");
+    check_format("k: >+\n  v\n\nn: 1\n", ">", "a\nb\n\n", ">+\n  a\n\n  b\n");
+    check_format("k: >\n  v\nn: 1\n", ">", "a  \n", ">\n  a  ");
+    check_format("k: >\n  v\nn: 1\n", ">", "a\n b\n", "\"a\\n b\\n\"");
+    check_format("k: >\n  v\nn: 1\n", ">", "a\n\tb\n", "\"a\\n\\tb\\n\"");
+    check_format("k: >\n  v\nn: 1\n", ">", " a\n", "\" a\\n\"");
+}
+
+/* CRLF の文書では、複数行の出力の行末記号も CRLF（5.6） */
+NAOS_TEST(format_block_scalar_crlf)
+{
+    check_format("k: |\r\n  v\r\nn: 1\r\n", "|", "a\nb\n", "|\r\n  a\r\n  b");
+    check_format("k: |\r\n  v\r\nn: 1\r\n", "|", "\na\n\nb\n", "|\r\n\r\n  a\r\n\r\n  b");
+    check_format("k: |+\r\n  v\r\n\r\nn: 1\r\n", "|", "a\n\n", "|+\r\n  a\r\n");
+    check_format("k: >\r\n  v\r\nn: 1\r\n", ">", "a\n\nb\n", ">\r\n  a\r\n\r\n\r\n  b");
+    check_format("k: | # c\r\n  v\r\nn: 1\r\n", "|", "a\n", "| # c\r\n  a");
+    check_format("k: | # c\r\n  v\r\nn: 1\r\n", "|", "a", "\"a\" # c");
+    check_format("- >-\r\n  v\r\n- w\r\n", ">", "a\nb", ">-\r\n  a\r\n\r\n  b");
+    /* LF の方が多い文書では LF（文書の行末記号） */
+    check_format("k: |\n  v\r\nn: 1\n", "|", "a\nb\n", "|\n  a\n  b");
+}
+
+/* 入れ子の文脈（マッピングの値、シーケンスの要素、入れ子のシーケンスの中のマッピング） */
+NAOS_TEST(format_block_scalar_nested)
+{
+    check_format("- |\n  v\n- w\n", "|", "a\nb\n", "|\n  a\n  b");
+    check_format("a:\n  b: |-\n    v\n  c: 1\n", "|", "x\ny", "|-\n    x\n    y");
+    check_format("a:\n  - >\n    v\n  - w\n", ">", "x\ny\n", ">\n    x\n\n    y");
+    check_format("a:\n  b:\n    - c: |+\n        v\n\n      d: w\n", "|", "x\n\n", "|+\n        x\n");
+    check_format("- - |\n    v\n  - w\n", "|", "x\n", "|\n    x");
 }
 
 /*
@@ -616,7 +831,31 @@ NAOS_TEST(format_roundtrip_matrix)
         { "k: |\n  v\n", "|" },
         { "k: >-\n  v\nn: 1\n", ">" },
         { "k: v\r\nn: 1\r\n", "v" },
-        { "k: {a: 'v'}\n", "'v'" }
+        { "k: {a: 'v'}\n", "'v'" },
+        { "k: |-\n  v\nn: 1\n", "|" },
+        { "k: |+\n  v\n\nn: 1\n", "|" },
+        { "k: |\n  v\n\n\nn: 1\n", "|" },
+        { "k: >\n  v\n", ">" },
+        { "k: >+\n  v\n\n", ">" },
+        { "k: |2\n   v\nn: 1\n", "|" },
+        { "k: >1-\n v\nn: 1\n", ">" },
+        { "k: | # c\n  v\nn: 1\n", "|" },
+        { "k: >+2 # c\n  v\n\nn: 1\n", ">" },
+        { "k: |\nn: 1\n", "|" },
+        { "k: | # c\nn: 1\n", "|" },
+        { "k: |+\n\n\nn: 1\n", "|" },
+        { "k: |\n  v", "|" },
+        { "k: |+\n  v", "|" },
+        { "k: |\r\n  v\r\nn: 1\r\n", "|" },
+        { "k: >+\r\n  v\r\n\r\n", ">" },
+        { "k: |-2 # c\r\n   v\r\n\r\nn: 1\r\n", "|" },
+        { "- |\n  v\n- w\n", "|" },
+        { "- >-\n  v\n", ">" },
+        { "- - |+\n    v\n\n  - w\n", "|" },
+        { "a:\n  b: |\n    v\n  c: 1\n", "|" },
+        { "a:\n  - |+\n    v\n\n  - w\n", "|" },
+        { "a:\n  b:\n    - c: >2\n        v\n      d: w\n", ">" },
+        { "a:\r\n  - >\r\n    v\r\n  - w\r\n", ">" }
     };
     static const char *const texts[] = {
         "plain", "two words", "a: b", "a #b", "a#b", "a:b", "#x", "-x", "- x", "?x", "x?", ":x",
@@ -626,7 +865,10 @@ NAOS_TEST(format_roundtrip_matrix)
         "{y}", "x]", "}", "caf\xc3\xa9", "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e", "", " ", "`x", "@x", "%x",
         "&a", "*a", "!t", "|", ">", "\x01" "ctl", "del\x7f", "nel\xc2\x85", "\xc2\xa0" "nbsp", "a\r\nb", "\r",
         "x # y: z", "a\\nb", "x\"y'z", "a  b", "%", "a: ", "- ", "?", "<<", "a,b", "a:b:c", "http://x.y/z?a=b#c",
-        "\t", "a\tb\tc", "\xe2\x80\xa8" "sep", "\xef\xbb\xbf" "bom"
+        "\t", "a\tb\tc", "\xe2\x80\xa8" "sep", "\xef\xbb\xbf" "bom",
+        "a\n", "a\nb\n", "a\n\n", "a\n\n\n", "\na\n", "\n\na", "a\n\nb\n", "a\n\n\nb\nc\n", " a\n", "  a",
+        "a\n b\n", "a\n\tb\n", "a\n \nb\n", "a\r\n", "\n\n", "a \n", "- a\n# b\n", "---\n...\n", "a: |\n  b\n",
+        "#\n", "\xe6\x97\xa5\n\xe6\x9c\xac\n"
     };
     size_t c;
     size_t t;
@@ -659,5 +901,12 @@ NAOS_SUITE(format,
     NAOS_ADD_TEST(format_appends_to_out),
     NAOS_ADD_TEST(format_nul_and_invalid_utf8_errors),
     NAOS_ADD_TEST(format_block_scalar_roundtrips),
+    NAOS_ADD_TEST(format_literal_kept_each_chomp),
+    NAOS_ADD_TEST(format_block_scalar_switches_to_double_quoted),
+    NAOS_ADD_TEST(format_block_scalar_header_comment),
+    NAOS_ADD_TEST(format_block_scalar_indent_indicator_kept),
+    NAOS_ADD_TEST(format_folded_blank_lines),
+    NAOS_ADD_TEST(format_block_scalar_crlf),
+    NAOS_ADD_TEST(format_block_scalar_nested),
     NAOS_ADD_TEST(format_roundtrip_matrix)
 )
