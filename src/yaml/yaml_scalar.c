@@ -625,18 +625,292 @@ static bool scalar_parse_quoted(mnd_yaml_parser_t *p, mnd_yaml_cursor_t *at, boo
     return ok;
 }
 
+/* ブロックスカラー（| と >） */
+
+/* ヘッダの内容 */
+typedef struct scalar_block_header
+{
+    mnd_yaml_style_t style;
+    mnd_yaml_chomp_t chomp;
+    unsigned indicator;     /* インデント指示子（0 はなし） */
+    size_t end;             /* 指示子の直後のオフセット（範囲の終わりの候補） */
+} scalar_block_header_t;
+
 /*
- * ブロックスカラー（| と >）の走査と論理値はタスク 2.2 が実装する。それまでは診断を追加せずに false を返す
+ * line の offset（| か >）からヘッダを読む: チョンプ指示子とインデント指示子（1〜9）を任意の順で
+ * 0〜1 個ずつ。後ろは空白と、空白の後ろのコメントだけ。不正なら診断を追加して false
  */
+static bool scalar_block_read_header(mnd_yaml_parser_t *p, const mnd_yaml_line_t *line, size_t offset,
+                                     scalar_block_header_t *h)
+{
+    const char *data = p->data;
+    size_t i = offset + 1;
+    size_t e = line->content.end;
+    bool has_chomp = false;
+    char c;
+
+    h->style = (data[offset] == '|') ? MND_YAML_LITERAL : MND_YAML_FOLDED;
+    h->chomp = MND_YAML_CHOMP_CLIP;
+    h->indicator = 0;
+    while (i < e)
+    {
+        c = data[i];
+        if (((c == '-') || (c == '+')) && !has_chomp)
+        {
+            has_chomp = true;
+            h->chomp = (c == '-') ? MND_YAML_CHOMP_STRIP : MND_YAML_CHOMP_KEEP;
+        }
+        else if ((c >= '1') && (c <= '9') && (h->indicator == 0))
+        {
+            h->indicator = (unsigned)(c - '0');
+        }
+        else
+        {
+            break;
+        }
+        ++i;
+    }
+    h->end = i;
+
+    /*
+     * ヘッダの後ろ: 空白のあとのコメントは行末まで読み飛ばす。単独の CR はどこでもエラー
+     */
+    while (i < e)
+    {
+        c = data[i];
+        if (c == '\r')
+        {
+            return scalar_fail(p, line->line, "carriage return without line feed");
+        }
+        if ((c == '#') && (i > h->end) && scalar_is_white(data[i - 1]))
+        {
+            for (; i < e; ++i)
+            {
+                if (data[i] == '\r')
+                {
+                    return scalar_fail(p, line->line, "carriage return without line feed");
+                }
+            }
+            break;
+        }
+        if (!scalar_is_white(c))
+        {
+            return scalar_fail(p, line->line, "invalid block scalar");
+        }
+        ++i;
+    }
+
+    return true;
+}
+
+/*
+ * 空白だけの行で、インデントの空白の後ろにタブがあるか（行頭の空白のあとに空白以外が残る）
+ */
+static bool scalar_blank_has_tab(const mnd_yaml_line_t *line)
+{
+    return (line->content.start + line->indent) < line->content.end;
+}
+
+/*
+ * 指示子がないときの内容のインデントを決める: 先行の空白だけの行を読み飛ばし、最初の空でない行が
+ * 親より深ければそのインデント。なければ親 + 1 と先行の行の空白の数の大きい方。
+ * 先行の行のインデントのタブ、最初の空でない行より深い先行の行はエラー
+ */
+static bool scalar_block_detect_indent(mnd_yaml_parser_t *p, size_t first, size_t parent_indent,
+                                       size_t header_line, size_t *content_indent)
+{
+    const mnd_yaml_line_t *line = NULL;
+    size_t i = first;
+    size_t max_lead = 0;
+
+    while ((i < p->lines.count) && p->lines.items[i].blank)
+    {
+        line = &p->lines.items[i];
+        if (scalar_blank_has_tab(line))
+        {
+            return scalar_fail(p, line->line, "tab character in indentation");
+        }
+        if (line->indent > max_lead)
+        {
+            max_lead = line->indent;
+        }
+        ++i;
+    }
+    if ((i < p->lines.count) && (p->lines.items[i].indent > parent_indent))
+    {
+        *content_indent = p->lines.items[i].indent;
+        if (max_lead > *content_indent)
+        {
+            return scalar_fail(p, header_line, "invalid block scalar");
+        }
+        return true;
+    }
+    *content_indent = parent_indent + 1;
+    if (max_lead > *content_indent)
+    {
+        *content_indent = max_lead;
+    }
+
+    return true;
+}
+
+/*
+ * 保留した改行を出力する。折り返しで、前後の行がどちらも空白で始まらない行なら、
+ * 改行 1 つ（間の空行なし）を空白に、n 個を n - 1 個の改行にする
+ */
+static bool scalar_block_flush(mnd_buf_t *buf, size_t breaks, bool fold)
+{
+    if (fold && (breaks > 0))
+    {
+        return scalar_append_fold(buf, breaks - 1, false);
+    }
+
+    return scalar_append_repeat(buf, (unsigned char)'\n', breaks);
+}
+
+/*
+ * at（| か >）からブロックスカラーを読む。内容の行は、内容のインデント以上の空でない行と、
+ * 内容のインデントより深い空白だけの行（内容は空白）。空白だけの行は、内容のインデント以下なら空行。
+ * 内容のインデントより浅い空でない行で終わり、カーソルはその行（または範囲の終わり）に進める
+ */
+static bool scalar_build_block(mnd_yaml_parser_t *p, mnd_yaml_cursor_t *at, size_t parent_indent,
+                               mnd_buf_t *value, mnd_yaml_node_t **out)
+{
+    const char *data = p->data;
+    const mnd_yaml_line_t *header_line = &p->lines.items[at->line_index];
+    const mnd_yaml_line_t *line = NULL;
+    const mnd_yaml_line_t *last = NULL;
+    scalar_block_header_t h;
+    size_t first = at->line_index + 1;
+    size_t n = 0;
+    size_t i;
+    size_t k;
+    size_t text;
+    size_t breaks = 0;
+    size_t last_content = 0;
+    size_t end;
+    bool has_content = false;
+    bool prev_more = false;
+    bool more;
+    mnd_yaml_cursor_t next;
+
+    if (!scalar_block_read_header(p, header_line, at->offset, &h))
+    {
+        return false;
+    }
+    if (h.indicator > 0)
+    {
+        n = parent_indent + h.indicator;
+    }
+    else if (!scalar_block_detect_indent(p, first, parent_indent, header_line->line, &n))
+    {
+        return false;
+    }
+
+    for (i = first; i < p->lines.count; ++i)
+    {
+        line = &p->lines.items[i];
+        if (line->blank && (line->indent < n) && scalar_blank_has_tab(line))
+        {
+            return scalar_fail(p, line->line, "tab character in indentation");
+        }
+        if (!line->blank && (line->indent < n))
+        {
+            break;
+        }
+        if (line->blank && ((line->content.start + n) >= line->content.end))
+        {
+            /* 空行: 改行を保留する */
+            if (line->eol_len > 0)
+            {
+                ++breaks;
+            }
+            continue;
+        }
+
+        /* 内容の行: 保留した改行を出力してから、内容のインデントのあとを追加する */
+        text = line->content.start + n;
+        for (k = text; k < line->content.end; ++k)
+        {
+            if (data[k] == '\r')
+            {
+                return scalar_fail(p, line->line, "carriage return without line feed");
+            }
+        }
+        more = scalar_is_white(data[text]);
+        if (!scalar_block_flush(value, breaks,
+                                has_content && (h.style == MND_YAML_FOLDED) && !prev_more && !more)
+            || !mnd_buf_append(value, data + text, line->content.end - text))
+        {
+            mnd_yaml_parser_oom(p);
+            return false;
+        }
+        breaks = (line->eol_len > 0) ? 1 : 0;
+        has_content = true;
+        prev_more = more;
+        last_content = i;
+    }
+
+    /*
+     * チョンプ: strip は末尾の改行を残さず、clip は最後の内容の行の改行だけを残し、
+     * keep は末尾の空行の改行もすべて残す（内容の行がなければ clip も残さない）
+     */
+    if (h.chomp == MND_YAML_CHOMP_CLIP)
+    {
+        breaks = (has_content && (breaks > 0)) ? 1 : 0;
+    }
+    else if (h.chomp == MND_YAML_CHOMP_STRIP)
+    {
+        breaks = 0;
+    }
+    if (!scalar_append_repeat(value, (unsigned char)'\n', breaks))
+    {
+        mnd_yaml_parser_oom(p);
+        return false;
+    }
+
+    /*
+     * 範囲の終わり: 最後の内容の行の終わり。keep では末尾の空行のうち最後の行の終わり。
+     * 内容の行がなければヘッダの指示子の直後（keep で空行があれば最後の空行の終わり）
+     */
+    last = &p->lines.items[i - 1];
+    end = h.end;
+    if (has_content)
+    {
+        end = p->lines.items[last_content].content.end;
+    }
+    if ((h.chomp == MND_YAML_CHOMP_KEEP) && (i > first))
+    {
+        end = last->content.end;
+    }
+
+    /* 消費した最後の行の次の行の先頭（範囲の終わりでは最後の行の行末記号の直後） */
+    next.line_index = i;
+    next.offset = (i < p->lines.count) ? p->lines.items[i].start : (last->content.end + last->eol_len);
+    if (!scalar_finish(p, at, h.style, false, at->offset, end, at->line_index, value, out))
+    {
+        return false;
+    }
+    (*out)->as.scalar.chomp = h.chomp;
+    (*out)->as.scalar.has_indent_indicator = (h.indicator > 0);
+    (*out)->as.scalar.indent_indicator = h.indicator;
+    (*out)->as.scalar.content_indent = n;
+    *at = next;
+
+    return true;
+}
+
 static bool scalar_parse_block(mnd_yaml_parser_t *p, mnd_yaml_cursor_t *at, size_t parent_indent,
                                mnd_yaml_node_t **out)
 {
-    (void)p;
-    (void)at;
-    (void)parent_indent;
-    (void)out;
+    mnd_buf_t value;
+    bool ok;
 
-    return false;
+    mnd_buf_init(&value);
+    ok = scalar_build_block(p, at, parent_indent, &value, out);
+    mnd_buf_free(&value);
+
+    return ok;
 }
 
 bool mnd_yaml_scalar_parse(mnd_yaml_parser_t *p, mnd_yaml_cursor_t *at, size_t parent_indent, bool flow,
@@ -721,8 +995,17 @@ bool mnd_yaml_scalar_parse(mnd_yaml_parser_t *p, mnd_yaml_cursor_t *at, size_t p
 
 bool mnd_yaml_scalar_is_block_header(const mnd_yaml_parser_t *p, mnd_yaml_cursor_t at)
 {
-    (void)p;
-    (void)at;
+    const mnd_yaml_line_t *line = NULL;
 
-    return false;
+    if (at.line_index >= p->lines.count)
+    {
+        return false;
+    }
+    line = &p->lines.items[at.line_index];
+    if ((at.offset < line->content.start) || (at.offset >= line->content.end))
+    {
+        return false;
+    }
+
+    return (p->data[at.offset] == '|') || (p->data[at.offset] == '>');
 }

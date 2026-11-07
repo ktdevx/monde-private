@@ -433,6 +433,263 @@ NAOS_TEST(scalar_out_of_memory)
     NAOS_CHECK_UINT_GE(failures, 1);
 }
 
+/*
+ * ブロックスカラーの期待値。chomp・指示子・内容のインデントと、走査のあとのカーソルの位置
+ * （消費した最後の行の次の行の先頭。範囲の終わりでは範囲の終わり）
+ */
+typedef struct block_expect
+{
+    mnd_yaml_style_t style;
+    mnd_yaml_chomp_t chomp;
+    bool has_indent_indicator;
+    unsigned indent_indicator;
+    size_t content_indent;
+    size_t next_offset;
+} block_expect_t;
+
+static block_expect_t block_expect(mnd_yaml_style_t style, mnd_yaml_chomp_t chomp, unsigned indicator,
+                                   size_t content_indent, size_t next_offset)
+{
+    block_expect_t e;
+
+    e.style = style;
+    e.chomp = chomp;
+    e.has_indent_indicator = (indicator != 0);
+    e.indent_indicator = indicator;
+    e.content_indent = content_indent;
+    e.next_offset = next_offset;
+
+    return e;
+}
+
+/*
+ * text の offset から読んだブロックスカラーの各欄・論理値・範囲（原文 raw）を確かめ、
+ * カーソルが次の行の先頭にあること、診断がないこと、木の検査を満たすことを確かめる
+ */
+static void check_block(const char *text, size_t offset, size_t parent_indent, block_expect_t e, const char *value,
+                        const char *raw)
+{
+    scalar_run_t r;
+    size_t raw_len = strlen(raw);
+    size_t next_index;
+
+    NAOS_REQUIRE_TRUE(scalar_run(&r, text, offset, parent_indent, false));
+    NAOS_CHECK_TRUE(r.ok);
+    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&r.fx.diags));
+    if (r.ok && (r.node != NULL))
+    {
+        NAOS_CHECK_INT_EQ((int)MND_YAML_SCALAR, (int)r.node->kind);
+        NAOS_CHECK_INT_EQ((int)e.style, (int)r.node->as.scalar.style);
+        NAOS_CHECK_FALSE(r.node->as.scalar.flow);
+        NAOS_CHECK_INT_EQ((int)e.chomp, (int)r.node->as.scalar.chomp);
+        NAOS_CHECK_TRUE(r.node->as.scalar.has_indent_indicator == e.has_indent_indicator);
+        NAOS_CHECK_UINT_EQ(e.indent_indicator, r.node->as.scalar.indent_indicator);
+        NAOS_CHECK_UINT_EQ(e.content_indent, r.node->as.scalar.content_indent);
+        NAOS_CHECK_MEM_EQ(value, strlen(value), r.node->as.scalar.value, r.node->as.scalar.value_len);
+        NAOS_CHECK_INT_EQ(0, (int)r.node->as.scalar.value[r.node->as.scalar.value_len]);
+        NAOS_CHECK_UINT_EQ(offset, r.node->span.start);
+        NAOS_CHECK_MEM_EQ(raw, raw_len, text + r.node->span.start, r.node->span.end - r.node->span.start);
+        NAOS_CHECK_UINT_EQ(e.next_offset, r.at.offset);
+        next_index = r.fx.parser.lines.count;
+        if (e.next_offset < strlen(text))
+        {
+            next_index = mnd_yaml_lines_index_of(&r.fx.parser.lines, e.next_offset);
+            NAOS_CHECK_UINT_EQ(r.fx.parser.lines.items[next_index].start, e.next_offset);
+        }
+        NAOS_CHECK_UINT_EQ(next_index, r.at.line_index);
+        mnd_yaml_doc_set_root(r.fx.parser.doc, r.node);
+        NAOS_CHECK_TRUE(mnd_yaml_tree_check_note(r.fx.parser.doc));
+    }
+    else
+    {
+        NAOS_CHECK_TRUE(r.node != NULL);
+    }
+    mnd_yaml_fixture_cleanup(&r.fx);
+}
+
+/* ブロックスカラーのヘッダの判定 */
+NAOS_TEST(scalar_block_header_detection)
+{
+    mnd_yaml_fixture_t fx;
+    mnd_span_t content;
+    const char *text = "a: |\nb: >-\nc: x|\nd:\n";
+
+    content.start = 0;
+    content.end = strlen(text);
+    NAOS_REQUIRE_TRUE(mnd_yaml_fixture_init(&fx, text, strlen(text), content, NULL));
+    NAOS_CHECK_TRUE(mnd_yaml_scalar_is_block_header(&fx.parser, mnd_yaml_fixture_cursor(&fx, 3)));
+    NAOS_CHECK_TRUE(mnd_yaml_scalar_is_block_header(&fx.parser, mnd_yaml_fixture_cursor(&fx, 8)));
+    NAOS_CHECK_FALSE(mnd_yaml_scalar_is_block_header(&fx.parser, mnd_yaml_fixture_cursor(&fx, 14)));
+    NAOS_CHECK_FALSE(mnd_yaml_scalar_is_block_header(&fx.parser, mnd_yaml_fixture_cursor(&fx, 16)));
+    NAOS_CHECK_FALSE(mnd_yaml_scalar_is_block_header(&fx.parser, mnd_yaml_fixture_cursor(&fx, 19)));
+    NAOS_CHECK_FALSE(mnd_yaml_scalar_is_block_header(&fx.parser, mnd_yaml_fixture_cursor(&fx, strlen(text))));
+    mnd_yaml_fixture_cleanup(&fx);
+}
+
+/* チョンプ・インデント指示子・内容のインデントの値と、各チョンプの論理値と範囲の終わり（3.2、3.4、3.8） */
+NAOS_TEST(scalar_block_header_and_chomping)
+{
+    check_block("k: |\n  a\n  b\n\nx: 1\n", 3, 0, block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_CLIP, 0, 2, 14),
+                "a\nb\n", "|\n  a\n  b");
+    check_block("k: |-\n  a\n  b\n\nx: 1\n", 3, 0, block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_STRIP, 0, 2, 15),
+                "a\nb", "|-\n  a\n  b");
+    check_block("k: |+\n  a\n  b\n\n\nx: 1\n", 3, 0, block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_KEEP, 0, 2, 16),
+                "a\nb\n\n\n", "|+\n  a\n  b\n\n");
+    check_block("k: >\n  a\n  b\n\n  c\nx: 1\n", 3, 0, block_expect(MND_YAML_FOLDED, MND_YAML_CHOMP_CLIP, 0, 2, 18),
+                "a b\nc\n", ">\n  a\n  b\n\n  c");
+    check_block("k: >2\n   a\n  b\n", 3, 0, block_expect(MND_YAML_FOLDED, MND_YAML_CHOMP_CLIP, 2, 2, 15),
+                " a\nb\n", ">2\n   a\n  b");
+    check_block("k: |2-\n    a\n  b\n", 3, 0, block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_STRIP, 2, 2, 17),
+                "  a\nb", "|2-\n    a\n  b");
+    /* 指示子は任意の順 */
+    check_block("k: |-2\n    a\n  b\n", 3, 0, block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_STRIP, 2, 2, 17),
+                "  a\nb", "|-2\n    a\n  b");
+    check_block("k: >+1\n a\n\n", 3, 0, block_expect(MND_YAML_FOLDED, MND_YAML_CHOMP_KEEP, 1, 1, 11),
+                "a\n\n", ">+1\n a\n");
+    /* インデント指示子は親のインデントに足す */
+    check_block("  k: |1\n    a\n   b\n", 5, 2, block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_CLIP, 1, 3, 19),
+                " a\nb\n", "|1\n    a\n   b");
+    /* 指示子がなければ最初の空でない行のインデント（親より深いこと） */
+    check_block("- k: |\n      a\n      b\n  x: 1\n", 5, 2,
+                block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_CLIP, 0, 6, 23), "a\nb\n", "|\n      a\n      b");
+}
+
+/* ヘッダの後ろのコメント、空のブロックスカラー、行末記号のない最後の行 */
+NAOS_TEST(scalar_block_header_comment_and_empty)
+{
+    check_block("k: | # c\n  a\n", 3, 0, block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_CLIP, 0, 2, 13), "a\n",
+                "| # c\n  a");
+    check_block("k: |\nx: 1\n", 3, 0, block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_CLIP, 0, 1, 5), "", "|");
+    check_block("k: |-  # c\n", 3, 0, block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_STRIP, 0, 1, 11), "", "|-");
+    check_block("k: >", 3, 0, block_expect(MND_YAML_FOLDED, MND_YAML_CHOMP_CLIP, 0, 1, 4), "", ">");
+    check_block("k: |\n\n\nx: 1\n", 3, 0, block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_CLIP, 0, 1, 7), "", "|");
+    check_block("k: |+\n\n\nx: 1\n", 3, 0, block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_KEEP, 0, 1, 8), "\n\n",
+                "|+\n\n");
+    check_block("k: |\n  a", 3, 0, block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_CLIP, 0, 2, 8), "a", "|\n  a");
+    check_block("k: |+\n  a", 3, 0, block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_KEEP, 0, 2, 9), "a", "|+\n  a");
+    check_block("k: |+\n  a\n\n", 3, 0, block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_KEEP, 0, 2, 11), "a\n\n",
+                "|+\n  a\n");
+    /* 浅いコメントの行で終わり、内容のインデント以上の # は内容 */
+    check_block("k: |\n  a\n  # b\n# c\n", 3, 0, block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_CLIP, 0, 2, 15),
+                "a\n# b\n", "|\n  a\n  # b");
+}
+
+/* リテラルの改行、先行と途中の空行、より深い行、内容のインデントのあとのタブと空白（3.8） */
+NAOS_TEST(scalar_block_literal_value)
+{
+    check_block("k: |\n\n  a\n\n    b\n  c\n", 3, 0, block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_CLIP, 0, 2, 21),
+                "\na\n\n  b\nc\n", "|\n\n  a\n\n    b\n  c");
+    check_block("k: |\n  a\n    \n  b\n", 3, 0, block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_CLIP, 0, 2, 18),
+                "a\n  \nb\n", "|\n  a\n    \n  b");
+    check_block("k: |\n  a\n  \tb\n \n", 3, 0, block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_CLIP, 0, 2, 16),
+                "a\n\tb\n", "|\n  a\n  \tb");
+    /* 指示子があれば、内容のインデントより深い先行の空白だけの行は内容 */
+    check_block("k: |2\n    \n  b\n", 3, 0, block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_CLIP, 2, 2, 15),
+                "  \nb\n", "|2\n    \n  b");
+    /* 内容のインデントより浅い空でない行で終わる */
+    check_block("k: |\n    a\n  b\n", 3, 0, block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_CLIP, 0, 4, 11), "a\n",
+                "|\n    a");
+}
+
+/* 折り返し: 行の境目は空白、空行と、より深い行の前後は改行を残す（3.8。YAML 1.2 の例 8.10） */
+NAOS_TEST(scalar_block_folded_value)
+{
+    check_block(">\n\n folded\n line\n\n next\n line\n   * bullet\n\n   * list\n   * lines\n\n last\n line\n\n"
+                "# Comment\n",
+                0, 0, block_expect(MND_YAML_FOLDED, MND_YAML_CHOMP_CLIP, 0, 1, 78),
+                "\nfolded line\nnext line\n  * bullet\n\n  * list\n  * lines\n\nlast line\n",
+                ">\n\n folded\n line\n\n next\n line\n   * bullet\n\n   * list\n   * lines\n\n last\n line");
+    check_block("k: >-\n  a\n  b\n\n\n  c\n  \td\n  e\n", 3, 0,
+                block_expect(MND_YAML_FOLDED, MND_YAML_CHOMP_STRIP, 0, 2, 29), "a b\n\nc\n\td\ne",
+                ">-\n  a\n  b\n\n\n  c\n  \td\n  e");
+    check_block("k: >\n  a\n\n    b\n\n  c\n", 3, 0, block_expect(MND_YAML_FOLDED, MND_YAML_CHOMP_CLIP, 0, 2, 21),
+                "a\n\n  b\n\nc\n", ">\n  a\n\n    b\n\n  c");
+}
+
+/* CRLF の文書でも論理値の改行は LF で、範囲に最後の行末記号を含めない（3.9） */
+NAOS_TEST(scalar_block_crlf_document)
+{
+    check_block("k: |\r\n  a\r\n  b\r\n\r\nx: 1\r\n", 3, 0,
+                block_expect(MND_YAML_LITERAL, MND_YAML_CHOMP_CLIP, 0, 2, 18), "a\nb\n", "|\r\n  a\r\n  b");
+    check_block("k: >+\r\n  a\r\n  b\r\n\r\nx: 1\r\n", 3, 0,
+                block_expect(MND_YAML_FOLDED, MND_YAML_CHOMP_KEEP, 0, 2, 19), "a b\n\n", ">+\r\n  a\r\n  b\r\n");
+}
+
+/* 不正なヘッダ、深い先行の空白行、空行のインデントのタブ、単独の CR（6.2、6.3） */
+NAOS_TEST(scalar_block_errors)
+{
+    const char *message = "invalid block scalar";
+
+    check_error("k: |x\n  a\n", 3, 0, false, message, 1);
+    check_error("k: |0\n  a\n", 3, 0, false, message, 1);
+    check_error("k: |--\n  a\n", 3, 0, false, message, 1);
+    check_error("k: |+-\n  a\n", 3, 0, false, message, 1);
+    check_error("k: |22\n  a\n", 3, 0, false, message, 1);
+    check_error("k: |10\n  a\n", 3, 0, false, message, 1);
+    check_error("k: |#c\n  a\n", 3, 0, false, message, 1);
+    check_error("k: >1 x\n  a\n", 3, 0, false, message, 1);
+    check_error("k: | -\n  a\n", 3, 0, false, message, 1);
+    check_error("a: 1\nk: >2-+\n", 8, 0, false, message, 2);
+    /* 指示子がないのに、先行の空白だけの行が最初の空でない行より深い */
+    check_error("a: 1\nk: |\n    \n  b\n", 8, 0, false, message, 2);
+    check_error("k: >\n\n   \n  b\n", 3, 0, false, message, 1);
+    check_error("k: |\n  a\n\t\n  b\n", 3, 0, false, "tab character in indentation", 3);
+    check_error("k: |\n \t\n  b\n", 3, 0, false, "tab character in indentation", 2);
+    check_error("k: |\n  a\rb\n", 3, 0, false, "carriage return without line feed", 2);
+    check_error("k: | # a\rb\n  a\n", 3, 0, false, "carriage return without line feed", 1);
+}
+
+/* ブロックスカラーのメモリ不足でも false と out of memory を返し、確保が残らない（6.7） */
+NAOS_TEST(scalar_block_out_of_memory)
+{
+    static char text[4000];
+    mnd_yaml_test_alloc_t ta;
+    mnd_yaml_fixture_t fx;
+    mnd_span_t content;
+    mnd_yaml_cursor_t at;
+    mnd_yaml_node_t *node = NULL;
+    const mnd_diag_t *d = NULL;
+    size_t n;
+    size_t failures = 0;
+    bool ok = false;
+
+    memset(text, 'a', sizeof(text) - 1);
+    text[0] = '>';
+    text[1] = '\n';
+    text[2] = ' ';
+    text[sizeof(text) - 1] = '\0';
+    content.start = 0;
+    content.end = strlen(text);
+    for (n = 1; (n < 100) && !ok; ++n)
+    {
+        mnd_yaml_test_alloc_init(&ta, 0);
+        NAOS_REQUIRE_TRUE(mnd_yaml_fixture_init(&fx, text, strlen(text), content, &ta.allocator));
+        ta.fail_at = ta.calls + n;
+        at = mnd_yaml_fixture_cursor(&fx, 0);
+        node = NULL;
+        ok = mnd_yaml_scalar_parse(&fx.parser, &at, 0, false, &node);
+        if (ok)
+        {
+            NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&fx.diags));
+            NAOS_CHECK_UINT_EQ(sizeof(text) - 4, node->as.scalar.value_len);
+        }
+        else
+        {
+            ++failures;
+            NAOS_CHECK_TRUE(node == NULL);
+            NAOS_CHECK_UINT_EQ(0, at.offset);
+            NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&fx.diags));
+            d = mnd_diag_list_at(&fx.diags, 0);
+            NAOS_CHECK_STR_EQ("out of memory", d->message);
+            NAOS_CHECK_UINT_EQ(0, d->line);
+        }
+        mnd_yaml_fixture_cleanup(&fx);
+        NAOS_CHECK_UINT_EQ(0, mnd_yaml_test_alloc_live(&ta));
+    }
+    NAOS_CHECK_TRUE(ok);
+    NAOS_CHECK_UINT_GE(failures, 1);
+}
+
 NAOS_SUITE(scalar,
 NAOS_ADD_TEST(scalar_scaffold_parser_reports_first_error_only),
     NAOS_ADD_TEST(scalar_fixture_builds_and_cleans_up),
@@ -451,5 +708,13 @@ NAOS_ADD_TEST(scalar_scaffold_parser_reports_first_error_only),
     NAOS_ADD_TEST(scalar_unterminated_quote_errors),
     NAOS_ADD_TEST(scalar_unsupported_and_reserved_indicators),
     NAOS_ADD_TEST(scalar_other_syntax_errors),
-    NAOS_ADD_TEST(scalar_out_of_memory)
+    NAOS_ADD_TEST(scalar_out_of_memory),
+    NAOS_ADD_TEST(scalar_block_header_detection),
+    NAOS_ADD_TEST(scalar_block_header_and_chomping),
+    NAOS_ADD_TEST(scalar_block_header_comment_and_empty),
+    NAOS_ADD_TEST(scalar_block_literal_value),
+    NAOS_ADD_TEST(scalar_block_folded_value),
+    NAOS_ADD_TEST(scalar_block_crlf_document),
+    NAOS_ADD_TEST(scalar_block_errors),
+    NAOS_ADD_TEST(scalar_block_out_of_memory)
 )
