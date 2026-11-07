@@ -138,7 +138,7 @@ tools/
 ### Modified Files
 - `CMakeLists.txt` — `add_subdirectory(src)` の後に `include(MondePackage)` を加える。`install()` の規則は `MondePackage.cmake` 側に置き、ルートの変更を 1 行に留める。
 - `tests/CMakeLists.txt` — `add_subdirectory(docs)` を 1 行加える。
-- `.gitattributes` — `README.md` と `docs/**/*.md`、`docs/examples/*` を `text eol=lf` にし、検査がどの OS でも同じバイト列を読めるようにする（既存の `-text` の行は変えない）。
+- `.gitattributes` — `README.md` と `docs/**/*.md`、`docs/examples/*` を `text eol=lf` にし、検査がどの OS でも同じバイト列を読めるようにする（既存の `-text` の行は変えない）。examples と同じタスクで扱う。
 
 ## System Flows
 
@@ -176,8 +176,8 @@ flowchart TB
     Mode -->|help| H1[対象の md からマーカー直後のコードブロックを抜き出す]
     H1 --> H2[monde サブコマンド --help を起動]
     H2 --> H3[LF に正規化してバイト比較]
-    Mode -->|quickstart| Q1[docs examples を作業先にコピー]
-    Q1 --> Q2[マーカー直後のコードブロックの各行を引数に分けて monde を起動]
+    Mode -->|quickstart| Q1[docs examples の hello md を作業先にコピー]
+    Q1 --> Q2[マーカー直後のコードブロックの各行を引数に分けて monde を起動 init の後は例の po で置き換え]
     Q2 --> Q3[各行の終了コード 0 と 生成物の存在を確かめる]
     Mode -->|links| L1[README と docs の md から相対リンクを集める]
     L1 --> L2[リンク先のファイルの存在を確かめる]
@@ -360,7 +360,7 @@ flowchart TB
 **ファイルの契約**
 - `hello.md`: フロントマター（`title`）、見出し、段落（強調とリンクを含む）、リスト、コードブロックを 1 つずつ含む 20 行程度の英語の文書。LF、BOM なし。
 - `hello.ja.po`: `hello.md` を `extract --front-matter-keys title` した結果に日本語の訳を入れたもの。`Language: ja`。すべてのエントリを翻訳済みにし、fuzzy を含めない。
-- 検査（quickstart）は `extract` → `init` → `translate`（`hello.ja.po` を使う）を実行し、`translate` の出力が `hello.md` と異なること（訳が入ったこと）と、`extract` の出力を `init` した `.po` が `msgstr ""` のみであることを確かめる。
+- README のクイックスタートは `init` の出力名を `hello.ja.po` にし、「翻訳する」段階を `#` のコメント行で示す。検査（quickstart）は `extract` → `init` → `translate` を実行し、`init` の出力が `msgstr ""` のみであることを確かめてから例の `hello.ja.po` で置き換え、`translate` の出力が `hello.md` と異なること（訳が入ったこと）を確かめる。
 
 #### dev/release.md
 | Field | Detail |
@@ -393,7 +393,7 @@ flowchart TB
 - Trigger: `ctest -L docs`。登録するテストは `docs_check.help`（README と `docs/commands.md` のマーカー `help` をすべて照合）、`docs_check.quickstart`（README のマーカー `quickstart`）、`docs_check.links`（`README.md` と `docs/*.md`）。
 - Input / validation: `-DMODE=help|quickstart|links -DMONDE=<path> -DSOURCE_DIR=<repo root> -DFILES=<;区切りの md> -DWORK=<作業先> [-DEXAMPLES=<docs/examples>]`。マーカーの直後（空行を挟まない）に ``` で始まるコードブロックがなければ失敗。
   - `help`: コードブロックの内容と `monde [<subcommand>] --help` の標準出力を、CRLF を LF に正規化してから比べる。終了コードが 0 でなければ失敗。マーカーが 1 つもなければ失敗（マーカーの付け忘れを検出）。
-  - `quickstart`: `EXAMPLES` の内容を `WORK` にコピーし、コードブロックの各行（`#` と空行を除く）を `separate_arguments(UNIX_COMMAND)` で分け、先頭の `monde` を `MONDE` に置き換えて `WORK` で実行する。各行の終了コードが 0 でなければ失敗。すべての行の後に `hello.pot`、`hello.ja.po`（例の `.po` で上書きした後）、`hello.ja.md` が存在し、`hello.ja.md` が `hello.md` と異なることを確かめる。行にパイプやリダイレクトがあれば失敗（検査できない行は書かない約束）。
+  - `quickstart`: `EXAMPLES` の `hello.md` だけを `WORK` にコピーし、コードブロックの各行（`#` と空行を除く）を `separate_arguments(UNIX_COMMAND)` で分け、先頭の `monde` を `MONDE` に置き換えて `WORK` で実行する。各行の終了コードが 0 でなければ失敗。先頭の引数が `init` の行の直後に、その出力 `hello.ja.po` の msgstr がすべて空であることを確かめてから `EXAMPLES` の `hello.ja.po` で置き換える（翻訳者の編集の代わり）。すべての行の後に `hello.pot`、`hello.ja.po`、`hello.ja.md` が存在し、`hello.ja.md` が `hello.md` と異なることを確かめる。行にパイプやリダイレクトがあれば失敗（検査できない行は書かない約束）。
   - `links`: `[text](target)` の `target` のうち `http://`、`https://`、`mailto:`、`#` で始まらないものを集め、`#` 以降を除き、そのファイルからの相対で存在を確かめる。
 - Output / destination: 失敗の一覧を標準エラー出力に出し、1 つでもあれば終了コード 1。
 - Idempotency & recovery: `WORK` は毎回作り直す。
@@ -443,13 +443,13 @@ flowchart TB
 | Requirements | 6.3, 7.3, 8.5〜8.7 |
 
 ##### Batch / Job Contract
-- Trigger: `cmake -DMONDE=<exe> -DVERSION=X.Y.Z -DARCHIVE=<path> -DTARGET=<os>-<arch> [-DRUNNER=<prefix>] -P tools/release/verify_package.cmake`。`RUNNER` は実行ファイルを起動するときの前置きコマンド（macOS x64 では `arch;-x86_64`）。
+- Trigger: `cmake -DMONDE=<exe> -DVERSION=X.Y.Z [-DARCHIVE=<path>] -DTARGET=<os>-<arch> [-DRUNNER=<prefix>] -P tools/release/verify_package.cmake`。`RUNNER` は実行ファイルを起動するときの前置きコマンド（macOS x64 では `arch;-x86_64`）。`ARCHIVE` を省略すると 1 と 2 だけを確かめる（ワークフローは `cpack` の前にこの形で実行し、7.3 の「確認してからアーカイブを作る」を満たす）。
 - Input / validation:
   1. `--version` の標準出力が `monde X.Y.Z\n` と一致（7.3、6.3）。
   2. 動的依存: `linux-*` は `ldd` の出力に `not a dynamic executable` を含む（8.6）。`macos-*` は `otool -L` の出力の依存が `/usr/lib/libSystem.B.dylib` だけ。`windows-*` は確認しない（静的 CRT は構成で保証）。
   3. アーカイブの一覧（`cmake -E tar tf`）が、`monde-X.Y.Z-<target>/` の下の `monde` または `monde.exe`、`LICENSE`、`README.md` の 3 つ（とディレクトリ自身）だけで、`spec.txt` やその他のファイルを含まない（8.3、8.4、8.7）。
   4. TGZ では `cmake -E tar tvf` の権限欄で実行ファイルが実行可能（8.5）。
-- Output / destination: 失敗の一覧を出して終了コード 1。すべて通れば `package <archive> verified` を出す。
+- Output / destination: 失敗の一覧を出して終了コード 1。すべて通れば `package <archive> verified`（`ARCHIVE` 省略時は `executable verified`）を出す。
 
 #### release.yml（`.github/workflows/release.yml`）
 | Field | Detail |
@@ -475,7 +475,7 @@ flowchart TB
   | macos-x64 | macos-latest | `-DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0` | `arch -x86_64` |
   | linux-x64 | ubuntu-latest | `-DCMAKE_EXE_LINKER_FLAGS=-static` | — |
 
-  共通: `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DMONDE_RELEASE_TARGET=<target> <追加引数>` → `cmake --build build --config Release` → `cpack -C Release`（`build` 内）→ `verify_package.cmake` → アーカイブを artifact `package-<target>` として保存。`shell: bash` を全ステップで使う。
+  共通: `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DMONDE_RELEASE_TARGET=<target> <追加引数>` → `cmake --build build --config Release` → `verify_package.cmake`（`ARCHIVE` 省略、`--version` の確認）→ `cpack -C Release`（`build` 内）→ `verify_package.cmake`（アーカイブ付き）→ アーカイブを artifact `package-<target>` として保存。`shell: bash` を全ステップで使う。
 - ジョブ `publish`（7.4〜7.7、8.8、8.9）: `needs: build`、`runs-on: ubuntu-latest`、`permissions: contents: write`。artifact をすべて 1 つのディレクトリに集め、`sha256sum monde-*.zip monde-*.tar.gz > SHA256SUMS` と `sha256sum -c SHA256SUMS` で自己検証。`gh release view <tag>` が失敗したら `gh release create <tag> --title <tag> --notes ""`（7.5）。続けて `gh release upload <tag> monde-* SHA256SUMS --clobber`（7.4、7.6、7.11）。`GH_TOKEN` は `github.token`。
 - Idempotency & recovery: 同じタグでの再実行はアーカイブを同名で置き換える。`check` または `build` の失敗で `publish` は動かない（7.7）。
 - 4 つのアーカイブが揃っていること（`publish` で `ls` の件数が 4）を確かめてから添付する。
