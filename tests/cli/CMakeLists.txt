@@ -63,9 +63,10 @@ endforeach()
 set(MONDE_CLI_DATA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/data")
 set(MONDE_CLI_CASE_WORK_DIR "${CMAKE_CURRENT_BINARY_DIR}/case")
 
-# --version の期待値はバージョンを 1 か所（project の VERSION）から作る
+# --version の期待値はバージョンを 1 か所（project の VERSION）から作る。
+# file(WRITE) は Windows で改行を CRLF にするため、file(CONFIGURE) で LF に固定する
 set(MONDE_CLI_VERSION_FILE "${CMAKE_CURRENT_BINARY_DIR}/version.txt")
-file(WRITE "${MONDE_CLI_VERSION_FILE}" "monde ${PROJECT_VERSION}\n")
+file(CONFIGURE OUTPUT "${MONDE_CLI_VERSION_FILE}" CONTENT "monde @PROJECT_VERSION@\n" @ONLY NEWLINE_STYLE LF)
 
 # monde_cli_case(<name> EXIT <n> [ARGS <arg>...] [STDIN <file>] [STDOUT <file>]
 #                [STDERR_CONTAINS <text>] [ENVIRONMENT <VAR=value>...])

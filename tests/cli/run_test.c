@@ -739,7 +739,8 @@ NAOS_TEST(run_entry_handler_failure_reports_diags_and_returns_1)
 static struct
 {
     int calls;
-    const mnd_cli_env_t *env;
+    bool has_env;
+    const char *version; /* env は呼び出し側の自動変数なので、ハンドラの中で値を写す */
     const char *command;
     size_t positionals;
     bool quiet;
@@ -749,7 +750,8 @@ static struct
 static void record_ctx(const mnd_cli_ctx_t *ctx)
 {
     g_seen.calls++;
-    g_seen.env = ctx->env;
+    g_seen.has_env = (ctx->env != NULL);
+    g_seen.version = (ctx->env != NULL) ? ctx->env->version : NULL;
     g_seen.command = (ctx->result->command != NULL) ? ctx->result->command->name : NULL;
     g_seen.positionals = mnd_args_positional_count(ctx->result);
     g_seen.quiet = ctx->quiet;
@@ -840,11 +842,8 @@ NAOS_TEST(run_entry_failed_handler_prints_all_diags_in_order)
     NAOS_CHECK_UINT_EQ(2, g_seen.positionals);
     NAOS_CHECK_FALSE(g_seen.quiet);
     NAOS_CHECK_FALSE(g_seen.usage_error_initial);
-    NAOS_CHECK_NOT_NULL(g_seen.env);
-    if (g_seen.env != NULL)
-    {
-        NAOS_CHECK_STR_EQ(TEST_CLI_VERSION, g_seen.env->version);
-    }
+    NAOS_CHECK_TRUE(g_seen.has_env);
+    NAOS_CHECK_STR_EQ(TEST_CLI_VERSION, g_seen.version);
     NAOS_CHECK_UINT_EQ(0, result.out.len);
     NAOS_CHECK_STR_EQ("a.md:3: warning: first warning\n"
                       "b.po: error: second error\n"
