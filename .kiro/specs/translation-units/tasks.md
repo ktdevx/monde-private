@@ -81,7 +81,7 @@
   - _Depends: 3.1, 4.3_
   - _Requirements: 5.1, 5.2, 5.3, 5.4_
 
-- [ ] 5.2 (P) `msgfmt --check` による互換性テストを登録する
+- [x] 5.2 (P) `msgfmt --check` による互換性テストを登録する
   - フロントマター、見出し、リスト、引用、画像、複数行の段落、同一 msgid の重複を含む入力 Markdown をテストデータに置き、Naos を使わない小さな実行ファイル（走査 → ヘッダ付きで抽出 → po-format で書き出し）で `.pot` を作る
   - po-merge と同じく `find_program(msgfmt)` で見つかった環境でだけ、`.pot` を `msgfmt --check` に通す CTest テストを登録する（ラベル `tu`）
   - 完了時: msgfmt のある環境で `ctest -L tu` に互換性テストが現れて合格し、ない環境では構成時に登録しない旨のメッセージが出る
@@ -106,3 +106,4 @@
 - 4.1: Splicer は失敗時に `out` を呼び出し時の長さに戻す（`mnd_buf` に切り詰めの API がないため po と同じく `len` と NUL を直接書く）。`mnd_tu_splice_front_matter` は詰め物の確保の失敗では診断なしで false を返し、整形の失敗では上流の診断がある。4.3 の Rebuilder は「診断が増えずに false なら `out of memory` を補う」こと。`mnd_tu_splice_markdown` の false は常にメモリ不足。
 - 4.2: 構造の検査は表の順（全行の空行 → ATX の改行 → 全行のブロックの開始）で判定する。行は `\n` だけで分け、末尾の `\n` や空の訳文は空行として検出する。記号の後ろの「空白」にはタブを含める（CommonMark に合わせた）。`text` に NULL を渡さないこと。
 - 4.3: 構造の検査の警告 `translation line %zu` は 1 起点（`mnd_tu_check_structure` の 0 起点の行番号 + 1）。`mnd_tu_extract` で作ったカタログには msgstr の要素がないので、msgstr = msgid のカタログを作るテストは要素を自分で足す。
+- 5.2: 互換性テストは po の `MONDE_MSGFMT` のキャッシュ変数を再利用し、`msgfmt --check -o <pot>.mo` で検査する（po と同じく `/dev/null` を使わない）。キーパスは CTest の `;` のエスケープを避けるためカンマ区切りでスクリプトに渡す。msgfmt がない経路の確認には `CMAKE_IGNORE_PATH` を使う（`-DMONDE_MSGFMT=...-NOTFOUND` では再検索される）。
