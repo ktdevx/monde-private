@@ -1,7 +1,7 @@
 # Requirements Document
 
 ## Project Description (Input)
-## Problem
+### Problem
 Monde の中核は 2 つの処理である。1 つは、Markdown とフロントマターから翻訳単位（msgid）を抽出すること。もう 1 つは、翻訳ファイルの訳文を原文の正しい位置に差し戻して、翻訳済み Markdown を作ることである。この 2 つの処理は対になっている。抽出の規則と差し戻しの規則が食い違うと、ラウンドトリップが成立せず、書式も壊れる。
 
 ### Current State
