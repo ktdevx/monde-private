@@ -1,16 +1,16 @@
 {
   "feature_name": "yaml-front-matter",
   "created_at": "2026-11-07T02:07:02Z",
-  "updated_at": "2026-11-07T02:29:02Z",
+  "updated_at": "2026-11-07T02:39:53Z",
   "language": "ja",
-  "phase": "requirements-generated",
+  "phase": "design-generated",
   "approvals": {
     "requirements": {
       "generated": true,
-      "approved": false
+      "approved": true
     },
     "design": {
-      "generated": false,
+      "generated": true,
       "approved": false
     },
     "tasks": {
