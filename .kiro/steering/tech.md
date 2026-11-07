@@ -30,6 +30,7 @@ foundation（UTF-8 入出力、改行検出、バッファ、ソース範囲、�
 ## Key Libraries
 
 - **実行時の外部依存はゼロ**。Markdown、YAML、PO、コマンドライン引数のパーサはすべて自前で実装する。C 標準ライブラリと、Windows の場合は Win32 API のみを使う。
+- **実行時の依存と、バイナリに取り込む素材を区別する**。「実行時の外部依存はゼロ」は実行時に必要な共有ライブラリなどの話で、変えない。実行ファイルに取り込む第三者の素材（生成したデータの表、取り込んだソース、静的にリンクするライブラリ）は、許容型のライセンス（MIT、BSD、`Unicode-3.0` など）のものに限り、同じ変更でリポジトリの直下の `THIRD_PARTY_NOTICES`（索引）と `licenses/<ID>.txt`（素材ごとの著作権表示とライセンスの全文）に登録し、取り込んだ先のファイルの先頭のコメントに ID の行 ` * THIRD_PARTY_NOTICES: <ID>` を置く（`ctest -L docs` の `docs_check.notices` が対応を検査する。手順は `docs/dev/release.md`）。現在の素材は Unicode Character Database 15.0.0（`Unicode-3.0`）と WHATWG の `entities.json`（`BSD-3-Clause`）。コピーレフト（GPL、CC-BY-SA など。`spec.txt` は CC-BY-SA 4.0）の素材はテスト専用にとどめ、実行ファイルに取り込まない。
 - **Naos はテスト専用**。pre-1.0 のため、FetchContent でタグ `v0.4.0` に固定して取り込む（`cmake/MondeNaos.cmake` の 1 か所で管理）。`BUILD_TESTING=OFF` では取得しない。
 
 ## Development Standards

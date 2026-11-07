@@ -47,13 +47,17 @@ Select-String -Path SHA256SUMS -Pattern 'windows-x64'
 
 ### 展開して配置する
 
-アーカイブを展開すると、アーカイブと同じ名前のディレクトリ `monde-X.Y.Z-<os>-<arch>` が作られ、その下に次の 3 つのファイルが置かれます。
+アーカイブを展開すると、アーカイブと同じ名前のディレクトリ `monde-X.Y.Z-<os>-<arch>` が作られ、その下に次のファイルが置かれます。
 
 | ファイル | 内容 |
 | --- | --- |
 | `monde`（Windows は `monde.exe`） | 実行ファイル |
-| `LICENSE` | ライセンス（MIT License） |
+| `LICENSE` | Monde のライセンス（MIT License） |
 | `README.md` | Monde の概要 |
+| `THIRD_PARTY_NOTICES` | 実行ファイルに取り込んだ第三者の素材（Unicode Character Database の表など）の一覧。素材ごとの名称、版、出典、ライセンス、ライセンスのファイル |
+| `licenses/<ID>.txt` | 素材ごとの著作権表示とライセンスの全文（`THIRD_PARTY_NOTICES` に挙げた素材ごとに 1 つ。例: `licenses/unicode-ucd.txt`） |
+
+使うのに必要なのは実行ファイルだけです。`LICENSE`、`THIRD_PARTY_NOTICES`、`licenses/` は、実行ファイルを再配布するときに一緒に渡してください。
 
 実行ファイルを、PATH の通ったディレクトリに置きます。
 

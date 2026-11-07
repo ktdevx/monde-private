@@ -34,7 +34,7 @@ Monde は、Markdown 文書から翻訳する文字列を取り出して `.pot` 
 | macOS x64（Intel） | `monde-X.Y.Z-macos-x64.tar.gz` |
 | Linux x64 | `monde-X.Y.Z-linux-x64.tar.gz` |
 
-アーカイブを展開すると、`monde-X.Y.Z-<os>-<arch>` ディレクトリの下に実行ファイル（Windows は `monde.exe`、それ以外は `monde`）、`LICENSE`、`README.md` が置かれます。実行ファイルを PATH の通ったディレクトリに置き、`monde --version` でバージョンが表示されることを確かめてください。各アーカイブの SHA-256 は Release に添付した `SHA256SUMS` で確かめられます。
+アーカイブを展開すると、`monde-X.Y.Z-<os>-<arch>` ディレクトリの下に実行ファイル（Windows は `monde.exe`、それ以外は `monde`）、`LICENSE`、`README.md`、`THIRD_PARTY_NOTICES` と、`licenses/` ディレクトリ（実行ファイルに取り込んだ素材のライセンス）が置かれます。実行ファイルを PATH の通ったディレクトリに置き、`monde --version` でバージョンが表示されることを確かめてください。各アーカイブの SHA-256 は Release に添付した `SHA256SUMS` で確かめられます。
 
 詳しい手順は [インストール](docs/install.md) を参照してください。
 
@@ -119,7 +119,18 @@ Copyright (c) 2026 The Monde Authors
 
 ## サードパーティ
 
-次の資料はテストだけに使います。Monde の製品の実行ファイルと配布物（Release のアーカイブ）には含まれません。
+### 実行ファイルに取り込んでいるもの
+
+`monde` の実行ファイルには、次の第三者の素材から生成した表が組み込まれています。素材ごとの出典、版、ライセンスは [`THIRD_PARTY_NOTICES`](THIRD_PARTY_NOTICES) に、著作権表示とライセンスの全文は [`licenses/`](licenses/) にあります。どちらも配布物（Release のアーカイブ）に含まれます。
+
+| 名称 | 用途 | ライセンス | 配布物 |
+| --- | --- | --- | --- |
+| Unicode Character Database 15.0.0 | Markdown の句読点と空白の判定、リンクのラベルの大文字・小文字の同一視（ケースフォールディング）、`.po` の行の折り返し（行分割の規則、文字幅、結合文字）に使う表 | Unicode License V3（`Unicode-3.0`）。全文は [`licenses/unicode-ucd.txt`](licenses/unicode-ucd.txt) | 含まれる（表示とライセンスの全文も同梱） |
+| WHATWG HTML Living Standard の名前付き文字参照の一覧（`entities.json`） | Markdown の文字参照（`&amp;` など）の解釈に使う表 | ソースコードに取り込んだ部分は BSD 3-Clause License（`BSD-3-Clause`。標準そのものは CC BY 4.0）。全文は [`licenses/whatwg-entities.txt`](licenses/whatwg-entities.txt) | 含まれる（表示とライセンスの全文も同梱） |
+
+### テスト専用で配布物に含まれないもの
+
+次の資料はテストだけに使います。Monde の製品の実行ファイルと配布物（Release のアーカイブ）には含まれず、`THIRD_PARTY_NOTICES` にも載せません。
 
 | 名称 | 用途 | ライセンス | 配布物 |
 | --- | --- | --- | --- |

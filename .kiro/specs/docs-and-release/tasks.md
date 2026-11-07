@@ -151,7 +151,7 @@
   - _Depends: 6.1_
   - _Requirements: 8.3, 8.4, 8.7, 10.1_
 
-- [ ] 6.5 ドキュメントと steering を改める
+- [x] 6.5 ドキュメントと steering を改める
   - README の「サードパーティ」を、取り込んでいるもの（`THIRD_PARTY_NOTICES` と `licenses/` へのリンク）とテスト専用のものの 2 つの表に分ける。`docs/install.md` の展開した後の構成、`docs/dev/release.md` の同梱物、検証のコマンド（`-DNOTICES`）を改め、`docs/dev/release.md` に素材を追加・更新・削除するときの手順を加える
   - steering の tech.md に取り込む素材の規則（実行時の依存はゼロのまま、許容型のライセンスに限る、同じ変更で登録する）を、structure.md に `THIRD_PARTY_NOTICES` と `licenses/` の役割を書く
   - 完了時: `ctest -L docs` が合格し、要件 1.7、10.7 の記述がある

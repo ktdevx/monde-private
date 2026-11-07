@@ -23,12 +23,16 @@
 **Example**: `tests/foundation/` は `src/foundation/` をテストする  
 **Exception**: `src/` に対応するモジュールを持たないテストディレクトリは次の 2 つだけ。
 - `tests/toolchain/`: ビルド構成（警告・VLA のエラー化、MSVC のオプション）そのものを検証する。CTest のラベルは `toolchain`。
-- `tests/docs/`: README と `docs/` 直下の章を、ビルドした `monde` と照合する（`--help` の引用、クイックスタートのコマンド列、相対リンク）。Naos を使わず、`docs_check.cmake` を `cmake -P` で起動する CTest のテスト（`docs_check.<help|quickstart|links>`）。ラベルは `docs`。
+- `tests/docs/`: README と `docs/` 直下の章を、ビルドした `monde` と照合する（`--help` の引用、クイックスタートのコマンド列、相対リンク）。あわせて `THIRD_PARTY_NOTICES`、`licenses/`、`src/` の ID の行の対応を確かめる。Naos を使わず、`docs_check.cmake` を `cmake -P` で起動する CTest のテスト（`docs_check.<help|quickstart|links|notices>`）。ラベルは `docs`。
 
 ### ビルド構成
 **Location**: `CMakeLists.txt`、`cmake/`  
 **Purpose**: コンパイラオプション（`monde_apply_compile_options`）、ターゲット作成関数（`monde_add_module` / `monde_add_module_tests` / `monde_add_executable`）、Naos の取得。オプションやターゲットの作り方はここに集約し、各モジュールの `CMakeLists.txt` では個別に設定しない。  
-**Package**: `cmake/MondePackage.cmake` は配布物の唯一の定義（install の規則と CPack の設定）。アーカイブ `monde-X.Y.Z-<os>-<arch>` に入れるのは実行ファイル、`LICENSE`、`README.md` の 3 つだけで、対象名は `MONDE_RELEASE_TARGET` で上書きできる。バージョン番号を書く場所はルートの `CMakeLists.txt` の `project(monde VERSION ...)` だけ。
+**Package**: `cmake/MondePackage.cmake` は配布物の唯一の定義（install の規則と CPack の設定）。アーカイブ `monde-X.Y.Z-<os>-<arch>` に入れるのは実行ファイル、`LICENSE`、`README.md`、`THIRD_PARTY_NOTICES` と `licenses/`（ディレクトリごと）だけで、対象名は `MONDE_RELEASE_TARGET` で上書きできる。バージョン番号を書く場所はルートの `CMakeLists.txt` の `project(monde VERSION ...)` だけ。
+
+### 取り込んだ素材の表示
+**Location**: `THIRD_PARTY_NOTICES`、`licenses/`（リポジトリの直下）  
+**Purpose**: 実行ファイルに取り込んだ第三者の素材（生成したデータの表、取り込んだソース、静的にリンクするライブラリ）の表示。`THIRD_PARTY_NOTICES` は索引で、素材ごとに空行で区切った `ID`、`Name`、`Version`、`Source`、`License`（SPDX）、`License-File`、`Used-In` の塊を持つ。`licenses/<ID>.txt` は素材ごとに 1 つの、出典、版、著作権表示とライセンスの全文（ライセンスごとではなく素材ごとに分ける）。ソースと配布物で同じファイルを使い、`licenses/` には索引に載せたファイルだけを置く。取り込んだ先のファイル（`Used-In`）は先頭のコメントに ` * THIRD_PARTY_NOTICES: <ID>` の行を持ち、`tests/docs/` の `docs_check.notices` が対応を検査する。テスト専用の素材（`spec.txt`、Naos）は載せない。素材の追加・更新・削除の手順は `docs/dev/release.md`。
 
 ### 受け入れテストのデータ
 **Location**: `tests/data/commonmark/`（markdown-parser が作り、monde-cli も使う）  
@@ -37,7 +41,7 @@
 ### 開発用スクリプト
 **Location**: `tools/`  
 **Purpose**: Unicode のデータからの表の生成など、開発者が手で実行するスクリプト。ビルドとテストからは呼ばず、生成物をリポジトリに含める。  
-**Example**: `tools/gen_po_ucd.py`（UCD から `src/po/po_ucd_tables.c` を生成する）  
+**Example**: `tools/gen_po_ucd.py`（UCD から `src/po/po_ucd_tables.c` を生成する）。第三者の素材から生成する `tools/gen_*.py` は、生成したファイルの先頭のコメントに ID の行 ` * THIRD_PARTY_NOTICES: <ID>` を出力する（素材の ID はスクリプトの `NOTICES_ID`）  
 **Exception**: `tools/release/` はリリースのワークフローと保守者が手元で `cmake -P` で実行する検査スクリプト（`check_version.cmake`: タグとビルド構成のバージョンの一致、`verify_package.cmake`: 実行ファイルと配布アーカイブの検証）。生成物は作らず、ビルドとテスト（CTest）からは呼ばない。
 
 ### ドキュメント
@@ -45,7 +49,7 @@
 **Purpose**: 日本語の利用マニュアルと README。README は概要、インストール、クイックスタート、ビルド手順、ライセンス、サードパーティ表記を持ち、詳細はマニュアルに委ねる。  
 **User chapters**: `docs/` 直下の `.md` が利用者向けの章。`docs/README.md`（目次）、`install.md`（インストール）、`workflow.md`（翻訳フロー）、`commands.md`（コマンドリファレンス）、`limitations.md`（既知の制限）。章の間は相対リンクで結び、`docs/dev/` と `docs/inputs/` へはリンクしない。`commands.md` のヘルプの引用と README のクイックスタートには `<!-- monde-check: ... -->` のマーカーを付け、`tests/docs/` が照合する。  
 **Examples**: `docs/examples/` はクイックスタートの材料（`hello.md` と訳を入れた `hello.ja.po`）。CLI の抽出結果が変わったら `hello.ja.po` を合わせる。  
-**Maintainer docs**: `docs/dev/` は保守者向け。`docs/dev/release.md` はバージョン番号の規則、リリースの手順、失敗時の対処、CLI の仕様が変わったときに同じ変更で直すドキュメントの一覧を持つ。  
+**Maintainer docs**: `docs/dev/` は保守者向け。`docs/dev/release.md` はバージョン番号の規則、リリースの手順、失敗時の対処、CLI の仕様が変わったときに同じ変更で直すドキュメントの一覧、取り込む素材を追加・更新・削除するときの手順を持つ。  
 **Note**: `docs/inputs/` は要件定義用の入力資料（RFP、Q&A）。要件定義以外のフェーズでは参照しない。確定した内容は steering と各 spec の requirements.md に反映されている。
 
 ### CI とリリースのワークフロー

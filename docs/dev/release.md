@@ -1,6 +1,6 @@
 # バージョンとリリースの手順（保守者向け）
 
-この文書は Monde の保守者向けです。バージョン番号の規則の運用、リリースの手順、失敗したときの対処、手元での再現の方法、ドキュメントの更新の約束事をまとめます。利用者向けのマニュアル（`docs/` 直下の章）からはリンクしません。
+この文書は Monde の保守者向けです。バージョン番号の規則の運用、リリースの手順、失敗したときの対処、手元での再現の方法、ドキュメントの更新の約束事、実行ファイルに取り込む素材の表示の手順をまとめます。利用者向けのマニュアル（`docs/` 直下の章）からはリンクしません。
 
 関係するファイルは次のとおりです。
 
@@ -12,7 +12,9 @@
 | [`tools/release/check_version.cmake`](../../tools/release/check_version.cmake) | タグとビルド構成のバージョンの一致を確かめる |
 | [`tools/release/verify_package.cmake`](../../tools/release/verify_package.cmake) | 実行ファイルと配布アーカイブを確かめる |
 | [`cmake/MondePackage.cmake`](../../cmake/MondePackage.cmake) | 配布物の定義（install の規則と CPack の設定、`MONDE_RELEASE_TARGET`） |
-| [`tests/docs/`](../../tests/docs/) | ドキュメントの検査（`ctest -L docs`） |
+| [`THIRD_PARTY_NOTICES`](../../THIRD_PARTY_NOTICES) | 実行ファイルに取り込んだ第三者の素材の索引。配布物に同梱し、`verify_package.cmake` が期待する同梱物をここから組み立てる |
+| [`licenses/`](../../licenses/) | 素材ごとの著作権表示とライセンスの全文（`licenses/<ID>.txt`）。ディレクトリごと配布物に同梱する |
+| [`tests/docs/`](../../tests/docs/) | ドキュメントと素材の表示の検査（`ctest -L docs`） |
 
 ## バージョン番号の規則
 
@@ -150,7 +152,7 @@ cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMA
 cmake --build build-release --config Release
 cmake -DMONDE=build-release/src/monde/monde -DVERSION=X.Y.Z -DTARGET=linux-x64 -P tools/release/verify_package.cmake
 (cd build-release && cpack -C Release)
-cmake -DMONDE=build-release/src/monde/monde -DVERSION=X.Y.Z -DTARGET=linux-x64 -DARCHIVE=build-release/monde-X.Y.Z-linux-x64.tar.gz -P tools/release/verify_package.cmake
+cmake -DMONDE=build-release/src/monde/monde -DVERSION=X.Y.Z -DTARGET=linux-x64 -DARCHIVE=build-release/monde-X.Y.Z-linux-x64.tar.gz -DNOTICES=THIRD_PARTY_NOTICES -P tools/release/verify_package.cmake
 ```
 
 - **構成**: 対象名 `<os>-<arch>` は `cmake/MondePackage.cmake` が `MONDE_RELEASE_TARGET` の既定として決めます。ワークフローは `-DMONDE_RELEASE_TARGET=<対象>` で明示します。アーカイブの名前は `monde-<バージョン>-<MONDE_RELEASE_TARGET>` です。
@@ -158,7 +160,7 @@ cmake -DMONDE=build-release/src/monde/monde -DVERSION=X.Y.Z -DTARGET=linux-x64 -
 - **macOS**: ワークフローと同じく `-DCMAKE_OSX_ARCHITECTURES=arm64`（または `x86_64`）と `-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0` を付け、`TARGET` を `macos-arm64`（または `macos-x64`）にします。Apple シリコンで x64 の実行ファイルを確かめるときは `-DRUNNER=arch;-x86_64` を付けて Rosetta 2 で起動します（シェルでは `"-DRUNNER=arch;-x86_64"` のように引用します）。
 - **Windows**: Visual Studio などの複数構成のジェネレータでは、実行ファイルは `build-release/src/monde/Release/monde.exe` にでき、`TARGET` は `windows-x64`、アーカイブは `.zip` です。
 - **`cpack -C Release`**: 複数構成のジェネレータでは `-C Release` がないと構成が決まらず、パッケージを作れません。単一構成のジェネレータでも付けて差し支えないので、常に付けます。Windows では、Chocolatey の `cpack`（別のプログラム）が PATH 上で先に見つかることがあるため、`cmake` と同じディレクトリの `cpack` を使います。
-- **`verify_package.cmake`**: `ARCHIVE` を省略すると、`--version` の出力（`monde X.Y.Z` の 1 行）と動的依存だけを確かめ、`executable verified` を出します。`ARCHIVE` を指定すると、アーカイブの名前と中身（実行ファイル、`LICENSE`、`README.md` の 3 つ）と実行権限も確かめ、`package <ARCHIVE> verified` を出します。失敗はすべて一覧にして終了コード 1 で終わります。中身を目で確かめるときは `tar tzvf build-release/monde-X.Y.Z-linux-x64.tar.gz` を使います。
+- **`verify_package.cmake`**: `ARCHIVE` を省略すると、`--version` の出力（`monde X.Y.Z` の 1 行）と動的依存だけを確かめ、`executable verified` を出します。`ARCHIVE` を指定するときは、`-DNOTICES=THIRD_PARTY_NOTICES`（リポジトリの `THIRD_PARTY_NOTICES` のパス）も必須です。アーカイブの名前、中身、実行権限も確かめ、`package <ARCHIVE> verified` を出します。中身は、`monde-X.Y.Z-<対象>/` の下の実行ファイル、`LICENSE`、`README.md`、`THIRD_PARTY_NOTICES` と、`NOTICES` の各素材の `License-File`（`licenses/<ID>.txt`）だけでなければならず、過不足があれば失敗します。アーカイブの `THIRD_PARTY_NOTICES` が `NOTICES` とバイト単位で一致することも確かめます。失敗はすべて一覧にして終了コード 1 で終わります。中身を目で確かめるときは `tar tzvf build-release/monde-X.Y.Z-linux-x64.tar.gz` を使います。
 - **`check_version.cmake`**: `cmake -DTAG=vX.Y.Z -DSOURCE_DIR=. -P tools/release/check_version.cmake` で、タグを付ける前に一致を確かめられます（手順の 3 と 5）。
 
 ## ドキュメントの更新の約束事
@@ -172,13 +174,14 @@ cmake --build build --config Release
 ctest --test-dir build -C Release -L docs --output-on-failure
 ```
 
-検査は 3 つです。どれも 1 つの失敗で止まらず、失敗の一覧をまとめて出します。
+検査は 4 つです。どれも 1 つの失敗で止まらず、失敗の一覧をまとめて出します。
 
 | テスト | 対象 | 確かめること |
 | --- | --- | --- |
 | `docs_check.help` | `docs/commands.md` | マーカー `<!-- monde-check: help -->` と `<!-- monde-check: help <サブコマンド> -->` の直後のコードブロックが、`monde --help` と `monde <サブコマンド> --help` の標準出力と一致する |
 | `docs_check.quickstart` | `README.md` | マーカー `<!-- monde-check: quickstart -->` の直後のコマンド列が、`docs/examples/` の例で順に成功する |
 | `docs_check.links` | `README.md` と `docs/*.md` | 相対リンクの先のファイルかディレクトリが存在する |
+| `docs_check.notices` | `THIRD_PARTY_NOTICES`、`licenses/`、`src/` | 索引の書式（各素材が `ID`、`Name`、`Version`、`Source`、`License`、`License-File`、`Used-In` をこの順に持つ）、`License-File` と `Used-In` のファイルの存在、`Used-In` の各ファイルの ID の行、`licenses/` に索引にないファイルがないこと、`src/` の `.c` と `.h` の ID の行が索引にあること（「[取り込む素材を追加・更新・削除するとき](#取り込む素材を追加更新削除するとき)」） |
 
 マーカーの書き方の約束は次のとおりです。
 
@@ -211,4 +214,66 @@ monde の CLI の仕様（サブコマンド、オプション、位置引数、
 - `docs/limitations.md`: 対応範囲が変わったときの既知の制限の記述。
 - `docs/examples/`: クイックスタートで使う `hello.md` と `hello.ja.po`（抽出する文字列が変わったときは `hello.ja.po` の訳を合わせる）。
 
-更新した後は `ctest -L docs` を実行し、3 つの検査がすべて通ることを確かめます。互換性を壊す変更であれば、次のリリースで上げる桁を「[バージョン番号の規則](#バージョン番号の規則)」に従って決めます。
+更新した後は `ctest -L docs` を実行し、4 つの検査がすべて通ることを確かめます。互換性を壊す変更であれば、次のリリースで上げる桁を「[バージョン番号の規則](#バージョン番号の規則)」に従って決めます。
+
+## 取り込む素材を追加・更新・削除するとき
+
+`monde` の実行ファイルに第三者の素材（生成したデータの表、取り込んだソース、静的にリンクするライブラリ）を取り込むときは、その表示を同じ変更（同じ PR）で `THIRD_PARTY_NOTICES` と `licenses/` に加えます。配布物にはこの 2 つが入り、利用者はそこで素材とライセンスを確かめます。テスト専用で配布物に含まれないもの（`tests/data/commonmark/spec.txt`、Naos）は載せません。
+
+### 追加する
+
+1. **ライセンスを確かめる。** 取り込めるのは、許容型のライセンス（MIT、BSD、`Unicode-3.0` など）の素材だけです。コピーレフトのライセンス（GPL、CC-BY-SA など。`spec.txt` は CC-BY-SA 4.0）の素材は、テスト専用にとどめ、実行ファイルに取り込みません。実行時の外部依存（共有ライブラリなど）はゼロのままにします。素材は静的に取り込み、実行時に別のファイルやライブラリを必要としないようにします。
+2. **索引に塊を加える。** リポジトリの直下の `THIRD_PARTY_NOTICES` に、空行で区切って次の 7 行の塊を加えます。キーはこの順にすべて書きます。`#` で始まる行はコメントです。
+
+   ```text
+   ID: <ID>
+   Name: <素材の名称>
+   Version: <版>
+   Source: <出典の URL>
+   License: <SPDX のライセンス識別子>
+   License-File: licenses/<ID>.txt
+   Used-In: <取り込んだ先のファイル>, <取り込んだ先のファイル>
+   ```
+
+   - `ID` は小文字の英数字と `-`（`^[a-z0-9][a-z0-9-]*$`）で、索引の中で一意にします。
+   - `Used-In` はリポジトリのルートからのパスを `, `（カンマと空白 1 つ）で区切って並べます。
+
+3. **ライセンスのファイルを加える。** `licenses/<ID>.txt` を作り、先頭に `Name:`、`Version:`、`Source:`、`SPDX-License-Identifier:`、`Copyright:` の行、空行の後にライセンスの全文を原文のまま置きます（UTF-8、LF）。既存の `licenses/unicode-ucd.txt` が例です。ライセンスの適用に説明が要るとき（標準そのものと、ソースコードに取り込んだ部分でライセンスが異なるなど）は、全文の前に説明を書きます（`licenses/whatwg-entities.txt` が例です）。`licenses/` には索引の `License-File` に載せたファイルだけを置きます（`cmake/MondePackage.cmake` はディレクトリごと配布物に入れます）。
+4. **取り込んだ先のファイルに ID の行を書く。** `Used-In` の各ファイルの先頭のコメントに、次の形の行を 1 行置きます。
+
+   ```c
+   /*
+    * THIRD_PARTY_NOTICES: <ID>
+    */
+   ```
+
+   検査が受け付けるのは、` * ` などのコメントの記号の後に `THIRD_PARTY_NOTICES: <ID>` が続き、ID の後に何もない（行末の空白を除く）行だけです。1 行のコメント `/* THIRD_PARTY_NOTICES: <ID> */` は、ID の後に ` */` が続くため書式の誤りとして失敗します。説明を添えるときは次の行に書きます。生成したファイルでは、生成スクリプトがこの行を出力するようにします（`tools/gen_md_ucd.py`、`tools/gen_po_ucd.py`、`tools/gen_md_entities.py` の `NOTICES_ID` が例です）。手で書き足すと、再生成で消えます。
+5. **検査を実行する。** テストを有効にした構成のビルドディレクトリで `ctest -L docs` を実行し、`docs_check.notices` を含む 4 つの検査が通ることを確かめます。
+
+   ```sh
+   cmake --build build --config Release
+   ctest --test-dir build -C Release -L docs --output-on-failure
+   ```
+
+6. **配布物を確かめる。** 「[手元での再現](#手元での再現)」の手順でアーカイブを作り、`-DNOTICES=THIRD_PARTY_NOTICES` を付けた `verify_package.cmake` で、新しい `licenses/<ID>.txt` がアーカイブに入っていることを確かめます。`cmake/MondePackage.cmake` と `verify_package.cmake` は直しません（同梱物は索引から決まります）。
+
+### 更新する
+
+素材の版を上げたとき（取り込んだ先のファイルを作り直したとき）は、同じ変更で索引の `Version`、`Source`（URL に版を含むとき）と、`licenses/<ID>.txt` の先頭の行を直します。ライセンスの文面や著作権表示の年が変わっていれば、全文も新しい版の原文に置き換えます。取り込んだ先のファイルが増減したときは `Used-In` を合わせます。最後に追加のときの手順 5 と 6 を実行します。
+
+例として、Unicode Character Database を 15.0.0 から新しい版に上げるときは次のようにします。
+
+1. `tools/gen_md_ucd.py` と `tools/gen_po_ucd.py` の `UNICODE_VERSION` と、版を含む説明を新しい版に合わせ、新しい版のデータファイルから `src/markdown/md_unicode_tables.c` と `src/po/po_ucd_tables.c` を生成し直します（再生成のコマンドは各ファイルの先頭にあります）。生成したファイルに ID の行 ` * THIRD_PARTY_NOTICES: unicode-ucd` が残っていることを確かめます。
+2. `THIRD_PARTY_NOTICES` の `unicode-ucd` の塊の `Version` と `Source`（`https://www.unicode.org/Public/<版>/ucd/`）を直します。
+3. `licenses/unicode-ucd.txt` の `Version:`、`Source:`、`Copyright:` の行と、新しい版に付いている `license.txt` の全文に置き換えます。
+4. README の「サードパーティ」の表の版を直し、`ctest`（すべてのテスト）と配布物の確認を実行します。
+
+### 削除する
+
+素材を取り込まなくなったときは、同じ変更で次の 3 つをまとめて消します。どれかが残ると `docs_check.notices` が失敗します。
+
+- `THIRD_PARTY_NOTICES` のその素材の塊
+- `licenses/<ID>.txt`
+- 取り込んでいたファイルの ID の行（ファイルごと消すときはファイル）
+
+README の「サードパーティ」の表からもその行を消します。
