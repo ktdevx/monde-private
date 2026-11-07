@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [ ] 1. 基盤: 配布物の定義とクイックスタートの材料
+- [x] 1. 基盤: 配布物の定義とクイックスタートの材料
 - [x] 1.1 配布物の定義（install の規則と CPack の設定）を 1 か所に置き、手元でアーカイブを作れるようにする
   - 設計の MondePackage のとおり、実行ファイルと LICENSE、README.md だけを install の対象にし、アーカイブ名 `monde-<version>-<os>-<arch>`、最上位ディレクトリ、OS ごとの生成器の既定（Windows は ZIP、それ以外は TGZ）、対象名のキャッシュ変数（未指定時は OS とプロセッサから決め、macOS のアーキテクチャ指定を優先）を定義する。ソースパッケージは作らない
   - ルートのビルド構成には読み込みの 1 行だけを加え、既存のターゲット作成関数やコンパイラオプションは変更しない
@@ -17,7 +17,7 @@
   - _Boundary: examples, .gitattributes_
   - _Requirements: 1.4, 3.3, 9.2_
 
-- [ ] 2. ドキュメント: README と利用マニュアルの各章
+- [x] 2. ドキュメント: README と利用マニュアルの各章
 - [x] 2.1 (P) README を全面的に書き直す
   - 設計の README の「構成（節の順）」の 10 節をこの順に書く。サブコマンドの表、Release の対応表、3 行のビルド手順と `-DBUILD_TESTING=OFF`、初版の対応範囲と次の版、SemVer と 0.x の緩和規則、MIT License と The Monde Authors、サードパーティの表（spec.txt は CC-BY-SA 4.0、Naos v0.4.0 は MIT License、どちらもテスト専用で配布物に含まれない）
   - クイックスタートは 1.2 の例の文書を使う `extract` → `init` → 編集 → `translate` の 4 段階とし、コマンド列のコードブロックの直前にマーカー `<!-- monde-check: quickstart -->` を置く。各行はパイプやリダイレクトを使わず、`-o` で出力先を指定する（`init` の出力は `hello.ja.po`）。編集の段階は `#` で始まるコメント行で「`hello.ja.po` を翻訳する。ここでは `docs/examples/hello.ja.po` の訳を使う」と書き、検査がこの行を無視して例の `.po` で置き換えることを前提にする
@@ -57,7 +57,7 @@
   - _Boundary: limitations.md_
   - _Requirements: 2.3, 2.4, 2.5, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7_
 
-- [ ] 3. ドキュメントの検査を CTest に登録する
+- [x] 3. ドキュメントの検査を CTest に登録する
 - [x] 3.1 ヘルプの引用の検査を作り、`docs` ラベルのテストとして登録する
   - 設計の docs_check の Batch / Job Contract のとおり `cmake -P` のスクリプトを作る。`help` モードは対象の Markdown からマーカー `monde-check: help [<subcommand>]` の直後のコードブロックを抜き出し、ビルドした `monde` の `--help` の標準出力と CRLF を LF に正規化してから比べる。マーカーが 0 件、マーカーの直後にコードブロックがない、終了コードが 0 でない、内容が異なる、のそれぞれを失敗の一覧に加え、最後にまとめて報告する
   - マーカーが 0 件の失敗は、渡されたファイル全体で数えて判定する。`docs_check.help` の対象は `docs/commands.md` だけにする（README には `help` のマーカーがない）
@@ -80,7 +80,7 @@
   - _Depends: 2.1, 2.2, 2.3, 2.4, 2.5_
   - _Requirements: 1.5, 2.2, 2.4, 9.4_
 
-- [ ] 4. リリースの自動化
+- [x] 4. リリースの自動化
 - [x] 4.1 (P) タグとビルド構成のバージョンの一致を確かめるスクリプトを作る
   - 設計の check_version の契約のとおり、タグが `vX.Y.Z` の形式でなければ失敗し、ルートのビルド構成の `project(monde VERSION ...)` から読んだ番号とタグの番号が一致しなければ `tag vX.Y.Z does not match project VERSION A.B.C` を出して失敗、一致すれば `version X.Y.Z` を出して成功する
   - 完了時: `v0.1.0`（成功）、`v0.2.0`（不一致で失敗）、`0.1.0` と `v0.1`（形式の誤りで失敗）の 4 通りで期待どおりの終了コードとメッセージになる
@@ -111,7 +111,7 @@
   - _Depends: 4.3_
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 9.3_
 
-- [ ] 5. 統合の検証: 全体を通して確かめ、ドキュメントと steering を実装に合わせる
+- [x] 5. 統合の検証: 全体を通して確かめ、ドキュメントと steering を実装に合わせる
   - 本環境で、テストを含む構成の `ctest`（`docs` ラベルを含む全テスト）が合格し、`BUILD_TESTING=OFF` の静的リンクの構成から `cpack` した TGZ と `cpack -G ZIP` の ZIP の両方が 4.2 のスクリプトを通ることを確かめる
   - README とマニュアルの内容を要件 1〜6 の各項目と突き合わせ、欠けている項目があれば該当の章を直す
   - steering の structure.md に、`tests/docs/` が `src/` に対応しない 2 つ目の例外であること、`docs/` の利用者向けの章と `docs/examples/`、`docs/dev/release.md`、`tools/release/` の役割、`cmake/MondePackage.cmake` を追記する

@@ -21,11 +21,14 @@
 **Location**: `tests/<module>/`  
 **Purpose**: 対応するモジュールの Naos テスト。`monde_add_module_tests` で CTest に登録する。  
 **Example**: `tests/foundation/` は `src/foundation/` をテストする  
-**Exception**: `tests/toolchain/` は `src/` に対応するモジュールを持たない唯一の例外で、ビルド構成（警告・VLA のエラー化、MSVC のオプション）そのものを検証する。CTest のラベルは `toolchain`。
+**Exception**: `src/` に対応するモジュールを持たないテストディレクトリは次の 2 つだけ。
+- `tests/toolchain/`: ビルド構成（警告・VLA のエラー化、MSVC のオプション）そのものを検証する。CTest のラベルは `toolchain`。
+- `tests/docs/`: README と `docs/` 直下の章を、ビルドした `monde` と照合する（`--help` の引用、クイックスタートのコマンド列、相対リンク）。Naos を使わず、`docs_check.cmake` を `cmake -P` で起動する CTest のテスト（`docs_check.<help|quickstart|links>`）。ラベルは `docs`。
 
 ### ビルド構成
 **Location**: `CMakeLists.txt`、`cmake/`  
-**Purpose**: コンパイラオプション（`monde_apply_compile_options`）、ターゲット作成関数（`monde_add_module` / `monde_add_module_tests` / `monde_add_executable`）、Naos の取得。オプションやターゲットの作り方はここに集約し、各モジュールの `CMakeLists.txt` では個別に設定しない。
+**Purpose**: コンパイラオプション（`monde_apply_compile_options`）、ターゲット作成関数（`monde_add_module` / `monde_add_module_tests` / `monde_add_executable`）、Naos の取得。オプションやターゲットの作り方はここに集約し、各モジュールの `CMakeLists.txt` では個別に設定しない。  
+**Package**: `cmake/MondePackage.cmake` は配布物の唯一の定義（install の規則と CPack の設定）。アーカイブ `monde-X.Y.Z-<os>-<arch>` に入れるのは実行ファイル、`LICENSE`、`README.md` の 3 つだけで、対象名は `MONDE_RELEASE_TARGET` で上書きできる。バージョン番号を書く場所はルートの `CMakeLists.txt` の `project(monde VERSION ...)` だけ。
 
 ### 受け入れテストのデータ
 **Location**: `tests/data/commonmark/`（markdown-parser が作り、monde-cli も使う）  
@@ -34,12 +37,20 @@
 ### 開発用スクリプト
 **Location**: `tools/`  
 **Purpose**: Unicode のデータからの表の生成など、開発者が手で実行するスクリプト。ビルドとテストからは呼ばず、生成物をリポジトリに含める。  
-**Example**: `tools/gen_po_ucd.py`（UCD から `src/po/po_ucd_tables.c` を生成する）
+**Example**: `tools/gen_po_ucd.py`（UCD から `src/po/po_ucd_tables.c` を生成する）  
+**Exception**: `tools/release/` はリリースのワークフローと保守者が手元で `cmake -P` で実行する検査スクリプト（`check_version.cmake`: タグとビルド構成のバージョンの一致、`verify_package.cmake`: 実行ファイルと配布アーカイブの検証）。生成物は作らず、ビルドとテスト（CTest）からは呼ばない。
 
 ### ドキュメント
 **Location**: `docs/`、`README.md`  
-**Purpose**: 日本語の利用マニュアルと README。  
+**Purpose**: 日本語の利用マニュアルと README。README は概要、インストール、クイックスタート、ビルド手順、ライセンス、サードパーティ表記を持ち、詳細はマニュアルに委ねる。  
+**User chapters**: `docs/` 直下の `.md` が利用者向けの章。`docs/README.md`（目次）、`install.md`（インストール）、`workflow.md`（翻訳フロー）、`commands.md`（コマンドリファレンス）、`limitations.md`（既知の制限）。章の間は相対リンクで結び、`docs/dev/` と `docs/inputs/` へはリンクしない。`commands.md` のヘルプの引用と README のクイックスタートには `<!-- monde-check: ... -->` のマーカーを付け、`tests/docs/` が照合する。  
+**Examples**: `docs/examples/` はクイックスタートの材料（`hello.md` と訳を入れた `hello.ja.po`）。CLI の抽出結果が変わったら `hello.ja.po` を合わせる。  
+**Maintainer docs**: `docs/dev/` は保守者向け。`docs/dev/release.md` はバージョン番号の規則、リリースの手順、失敗時の対処、CLI の仕様が変わったときに同じ変更で直すドキュメントの一覧を持つ。  
 **Note**: `docs/inputs/` は要件定義用の入力資料（RFP、Q&A）。要件定義以外のフェーズでは参照しない。確定した内容は steering と各 spec の requirements.md に反映されている。
+
+### CI とリリースのワークフロー
+**Location**: `.github/workflows/`  
+**Purpose**: `ci.yml` は main への push と pull request で動くビルドとテスト。`release.yml` はそれとは別のリリースのワークフローで、`vX.Y.Z` のタグの push または手動起動（入力 `tag`）で動き、`check`（タグとバージョンの一致）→ `build`（4 対象のビルド、`--version` とアーカイブの検証）→ `publish`（`SHA256SUMS` を作り GitHub Releases に添付）の 3 ジョブからなる。リリースの変更で `ci.yml` を変えない。
 
 ### 仕様とプロジェクトメモリ
 **Location**: `.kiro/specs/<feature>/`、`.kiro/steering/`  
