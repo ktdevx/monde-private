@@ -1,1 +1,2 @@
 tests/data/commonmark/spec.txt -text
+tests/cli/data/** -text

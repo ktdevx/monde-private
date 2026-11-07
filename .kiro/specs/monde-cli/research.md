@@ -183,3 +183,32 @@
 - `src/cli_args/args.h`、`src/po/po.h`、`src/po/po_init.h`、`src/po/po_write.h`、`src/po_merge/merge.h`、`src/tu/tu.h`、`src/foundation/file_io.h` — 統合する公開 API
 - `tests/tu/extract_pot_main.c`、`tests/tu/msgfmt_check.cmake` — extract の手順と msgfmt テストの型
 - `tests/markdown/spec_reader.h`、`tests/tu/roundtrip_test.c` — spec.txt の読み込みと変種の生成
+
+## 実装時の確認（/kiro-impl 5.5、2026-11-07）
+
+### 実行ファイルの起動テストの所要時間
+- **計測環境**: Linux（本開発コンテナ）、Release ビルド。Windows・macOS は未計測。
+- **結果**（5.2 の記録と 5.5 の再計測）:
+
+| テスト | 所要時間 |
+| --- | --- |
+| `cli_spec_split`（spec.txt の展開） | 0.04〜0.3 秒 |
+| `cli_roundtrip.original` | 約 7 秒 |
+| `cli_roundtrip.crlf` | 約 7 秒 |
+| 上記 3 件を直列 | 約 13 秒 |
+| `ctest -L '^cli$' -j8`（156 件） | 約 7 秒 |
+| 新しいビルドディレクトリでの 3 行の手順（構成・ビルド・`ctest -j8`、1,396 件） | 約 17 秒（うちテスト約 9 秒） |
+
+- 設計ディスカバリーの見込み（Linux で数秒）より長いのは、1 例ごとに `cmake -P` の中で `execute_process` を 2 回と `compare_files` を行うため。それでも全テストの中で突出してはいない。
+- **結論（設計の Open Questions）**: 当面は `cli_roundtrip.*` を全例のまま（抜き取りなし）とする。Windows の所要時間は CI で確かめ、許容できなければ設計の Performance & Scalability に書いた抜き取り（例えば 50 例ごと）に切り替え、プロセス内の `roundtrip` スイートを全例の正とする。その場合は要件の「要件確認で決めた挙動」に読み替えを追記する。
+
+### 全体の整合の確認
+- 3 行の手順（`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release`、`cmake --build build --config Release`、`ctest --test-dir build -C Release --output-on-failure`）を新しいビルドディレクトリで実行し、既存モジュールを含む 1,396 件がすべて通った（警告なし）。`msgfmt` のある環境のため `cli_msgfmt_check.flow` も登録・実行された。
+- `-DBUILD_TESTING=OFF` では製品のライブラリ（foundation、cli_args、po、yaml、po_merge、markdown、tu、cli）と `monde` だけがビルドされ、`monde --version` は `monde 0.1.0` を出した。
+- `src/cli/` の include は設計の Allowed Dependencies の範囲内（他モジュールの `*_internal.h`、`markdown/`、`yaml/` を含まない）。`tests/cli/` も公開ヘッダ、`cli/cli_internal.h`、`../markdown/spec_reader.h` だけを使う。
+- 設計との差は設計書に反映した: `-` の重複の検査はハンドラ（cmd_update、cmd_translate）が呼ぶ（Run ではない）、`mnd_cli_program` / `mnd_cli_find_handler` / `mnd_cli_run_with` / `mnd_cli_utc_offset_minutes` / `mnd_cli_report_usage_error` の置き場所、`--front-matter-keys` の値の名前 `KEY`、診断の書式（行なし・パスなしの警告、使い方のエラーの接頭辞の除去）、言語コードの ASCII の範囲、init のメモリ不足と使い方のエラーの区別。
+- CI の 5 環境での確認は、この作業では PR を作らないため未実施。
+
+### 要件の文面との差の整理
+- **7.7（警告の表示と出力の順序）**: 診断は Run がハンドラの後にまとめて表示するため、出力を書いた後、統計の行の後に警告が出る。7.7 は「警告を表示し、かつ出力を書き、終了コード 0」を求めるものと読み、表示の順序は定めないと解釈した（設計の Run の項に記載）。
+- **8.2（init の件数）**: 件数は作成した翻訳ファイルのヘッダ以外のエントリ数（`catalog.count - 1`）で、テンプレートに廃止エントリがあればそれも含む。8.2 の「作成した翻訳ファイルのエントリの件数」の字義どおりとし、要件は変えない（設計の cmd_init の項に記載）。

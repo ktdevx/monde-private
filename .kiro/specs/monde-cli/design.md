@@ -140,12 +140,12 @@ src/
 │   ├── CMakeLists.txt           # monde_add_module(cli SOURCES ... DEPENDS cli_args po_merge tu)
 │   ├── cli.h                    # 公開: mnd_cli_env_t、mnd_cli_run、終了コードの定数
 │   ├── cli_run.c                # Run: 引数の解析結果の分岐、ヘルプ・バージョン・使い方の表示、ハンドラの呼び出し、終了コード
-│   ├── cli_commands.h           # Commands: プログラムとサブコマンドの宣言（mnd_args_program_t）、オプション名の定数、ハンドラの型
+│   ├── cli_commands.h           # Commands: mnd_cli_program（宣言の mnd_args_program_t）、mnd_cli_find_handler、オプション名の定数、ハンドラの型（struct mnd_cli_ctx を前方宣言）
 │   ├── cli_commands.c           # 宣言のテーブル本体
-│   ├── cli_internal.h           # ハンドラが共有する文脈の型（mnd_cli_ctx_t）とハンドラ関数の宣言
+│   ├── cli_internal.h           # ハンドラが共有する文脈の型（mnd_cli_ctx_t）、ハンドラ関数の宣言、テスト用の継ぎ目 mnd_cli_run_with
 │   ├── cli_io.h / cli_io.c      # IO: 入力の読み込み（ファイル / -）、出力の書き込み（ファイル / -）、改行コードの決定、BOM
 │   ├── cli_report.h / cli_report.c  # Reporter: 診断の表示、使い方のエラーと案内、統計と情報の書式
-│   ├── cli_time.h / cli_time.c  # Clock: 現在日時と UTC オフセットから PO の日時文字列を作る
+│   ├── cli_time.h / cli_time.c  # Clock: 現在日時と UTC オフセットから PO の日時文字列を作る（オフセットの計算 mnd_cli_utc_offset_minutes も公開）
 │   ├── cli_language.h / cli_language.c  # Language: --language と環境変数からの言語コードの決定と検査
 │   ├── cmd_extract.c            # extract ハンドラ
 │   ├── cmd_init.c               # init ハンドラ
@@ -174,7 +174,7 @@ tests/
     ├── roundtrip.cmake          # cmake -P: 展開した例ごとに monde extract → monde translate を起動して原文と比較、失敗した例の番号を列挙（10.1、10.3〜10.4）
     ├── cli_case.cmake           # cmake -P: 1 ケースの起動テスト（引数、標準入力、期待する標準出力・終了コード・標準エラー出力の部分一致）（10.6）
     ├── gettext_check.cmake      # cmake -P: extract → init → update を monde で実行し、3 つの出力を msgfmt --check にかける（11.1）
-    └── data/                    # 起動テストと msgfmt テストの入力と期待値（sample.md、sample_old.po、期待する .pot / .po / .md）
+    └── data/                    # 起動テストと msgfmt テストの入力と期待値（sample.md、sample.pot、sample_old.po、translate*.md、translate.po、update.expected.po、help.txt、empty.txt）
 ```
 
 ### Modified Files
@@ -183,6 +183,8 @@ tests/
 - `src/CMakeLists.txt` — `add_subdirectory(cli)`、`add_subdirectory(monde)` を追加。
 - `tests/CMakeLists.txt` — `add_subdirectory(cli)` を追加。
 - `.kiro/steering/structure.md` — 予約済みの短縮名に `cli` を追加し、実行ファイルの置き場所（`src/monde/`）を追記。
+- `.kiro/specs/project-foundation/design.md` — `file_io` のストリーム版の追加を追記（Revalidation Triggers のとおり）。
+- `.gitattributes` — `tests/cli/data/** -text` を追加（期待値の改行コードと BOM を変換させない）。
 - `.github/workflows/ci.yml` — 変更なし（gettext は Linux で導入済み。`monde` のビルドとテストは既存の 3 行に含まれる）。
 
 ## System Flows
@@ -235,12 +237,12 @@ sequenceDiagram
 | 1.2, 1.3 | ヘルプの表示先と終了コード | Run, Reporter | `mnd_cli_run`、`mnd_args_format_help` | 共通の流れ |
 | 1.4 | `--version` | Run, main.c | `mnd_cli_env_t.version` | — |
 | 1.5 | 引数なし → 使い方と 2 | Run | `MND_ARGS_NO_COMMAND` の分岐 | — |
-| 1.6 | 引数の誤り → メッセージ + 案内 + 2 | Run, Reporter | `mnd_cli_report_usage_error` | — |
+| 1.6 | 引数の誤り → メッセージ + 案内 + 2 | Run, Reporter | `mnd_cli_report_usage_error`、`mnd_cli_ctx_t.usage_error` | — |
 | 1.7 | 順序によらない解析 | Commands（cli-args に委ねる） | `mnd_args_parse` | — |
 | 1.8 | Windows の UTF-8 引数 | main.c | `mnd_args_argv_get` | — |
 | 2.1, 2.2 | 位置引数と `-o` | Commands | 宣言テーブル | — |
 | 2.3, 2.4 | `-o` 省略・`-` | IO | `mnd_cli_read_input`、`mnd_cli_write_output` | — |
-| 2.5 | `-` の重複 | IO, Run | `mnd_cli_check_stdin_once` | — |
+| 2.5 | `-` の重複 | IO, cmd_update, cmd_translate | `mnd_cli_check_stdin_once`（ハンドラが呼び、`usage_error` で Run に伝える） | — |
 | 2.6〜2.8 | 上書き・同じパス・失敗時に書かない | IO, 各ハンドラ | 共通の流れ | 共通の流れ |
 | 2.9 | 入出力のエラー → 1 | IO, Run | foundation の診断 | — |
 | 2.10 | 結果と統計の分離 | Reporter, IO | `env->out` / `env->err` | — |
@@ -266,7 +268,7 @@ sequenceDiagram
 | Component | Domain/Layer | Intent | Req Coverage | Key Dependencies (P0/P1) | Contracts |
 | --- | --- | --- | --- | --- | --- |
 | main.c | 実行ファイル | argv と標準入出力の準備、`mnd_cli_run` の呼び出し | 1.4, 1.8, 3.8, 12.x | cli_args argv (P0), Run (P0) | Service |
-| Run | cli | 解析結果の分岐、表示、終了コード | 1.2〜1.6, 2.5, 9.5〜9.9 | cli_args (P0), Reporter (P0) | Service |
+| Run | cli | 解析結果の分岐、表示、終了コード | 1.2〜1.6, 9.5〜9.9（2.5 は `usage_error` を 2 に対応付ける） | cli_args (P0), Reporter (P0) | Service |
 | Commands | cli | 宣言テーブルとハンドラの対応 | 1.1, 1.7, 2.1, 2.2, 8.7 | cli_args (P0) | State |
 | IO | cli | 入力の読み込み、出力の書き込み、改行コード、BOM | 2.3〜2.10, 3.1〜3.7 | foundation file_io / eol (P0) | Service |
 | Reporter | cli | 診断・使い方のエラー・統計・情報の書式 | 1.6, 8.x, 9.1〜9.4 | foundation diag (P0) | Service |
@@ -274,8 +276,8 @@ sequenceDiagram
 | Language | cli | 言語コードの決定と検査 | 5.2〜5.7 | — | Service |
 | cmd_extract | cli | `.md` → `.pot` | 4.1〜4.10 | tu (P0), po (P0), IO, Clock, Reporter | Service |
 | cmd_init | cli | `.pot` → `.po` | 5.1, 5.8〜5.10 | po (P0), Language, Clock, IO, Reporter | Service |
-| cmd_update | cli | `.pot` + `.po` → `.po` | 6.1〜6.7 | po (P0), po_merge (P0), IO, Reporter | Service |
-| cmd_translate | cli | `.md` + `.po` → `.md` | 7.1〜7.9 | tu (P0), po (P0), IO, Reporter | Service |
+| cmd_update | cli | `.pot` + `.po` → `.po` | 2.5, 6.1〜6.7 | po (P0), po_merge (P0), IO, Reporter | Service |
+| cmd_translate | cli | `.md` + `.po` → `.md` | 2.5, 7.1〜7.9 | tu (P0), po (P0), IO, Reporter | Service |
 | foundation stream I/O | foundation | `FILE *` からの読み込みと書き込み | 2.4, 3.1, 3.8 | — | Service |
 | テスト基盤 | tests/cli | プロセス内テスト、起動テスト、ラウンドトリップ、msgfmt | 10.x, 11.x | Naos, CMake, spec_reader | Batch |
 
@@ -286,7 +288,7 @@ sequenceDiagram
 | Field | Detail |
 | --- | --- |
 | Intent | `mnd_cli_run` の提供。引数の解析結果を分岐し、ハンドラを呼び、終了コードを返す |
-| Requirements | 1.2〜1.6, 2.5, 2.9, 9.4〜9.9 |
+| Requirements | 1.2〜1.6, 2.9, 9.4〜9.9 |
 
 **Responsibilities & Constraints**
 - `mnd_args_parse` の `mnd_args_status_t` を次のとおり扱う。
@@ -296,12 +298,15 @@ sequenceDiagram
 | `MND_ARGS_HELP` | `mnd_args_format_help` の文面を `out` に書く | 0 |
 | `MND_ARGS_VERSION` | `mnd_args_format_version` の文面を `out` に書く | 0 |
 | `MND_ARGS_NO_COMMAND` | 全体のヘルプを `err` に書く | 2 |
-| `MND_ARGS_USAGE_ERROR` | 診断を `monde: error: <message>` の形で `err` に書き、`mnd_args_format_usage_hint` の案内を続ける | 2 |
+| `MND_ARGS_USAGE_ERROR` | 診断を `monde: error: <message>` の形で `err` に書き（cli-args の文面の先頭の `<program>[ <command>]: ` は除く）、`mnd_args_format_usage_hint` の案内を続ける | 2 |
 | `MND_ARGS_DECL_ERROR`、`MND_ARGS_OUT_OF_MEMORY` | 診断を `err` に書く（内部エラー） | 1 |
 | `MND_ARGS_OK` | `command->name` に対応するハンドラを呼ぶ | ハンドラの結果 |
 
 - ハンドラに渡す文脈 `mnd_cli_ctx_t`（`cli_internal.h`）は、`env`、解析結果 `mnd_args_result_t`、診断の一覧 `mnd_diag_list_t`、`quiet` を持つ。
-- ハンドラの戻り値は `bool`（成功 / 失敗）。Run は戻り値にかかわらず診断を `Reporter` で表示し、成功なら 0、失敗なら 1 を返す。
+- ハンドラの戻り値は `bool`（成功 / 失敗）。Run は戻り値にかかわらず診断を `Reporter` で表示し、成功なら 0、失敗なら 1 を返す。ハンドラが true を返してもエラーの診断があれば 1。
+- ハンドラが `usage_error` を立てて失敗した場合（`-` の重複、言語コード）は、診断を通常の形で表示して 2 を返す。案内の行は出さない。
+- 診断の表示はハンドラの後に行うため、`err` には統計の行が診断（警告を含む）の行より先に出る（7.7 の「警告を表示したうえで出力を書き」は、警告の表示と出力の書き込みの両方を行うことと読み、表示の順序は定めない）。
+- `mnd_cli_run` は `mnd_cli_run_with(env, argc, argv, mnd_cli_find_handler)` を呼ぶ。`mnd_cli_run_with`（`cli_internal.h`）はハンドラを差し替えてテストするための継ぎ目。
 - `mnd_args_result_t` と診断の一覧の解放は Run が行う。
 
 **Contracts**: Service [x]
@@ -352,14 +357,15 @@ int mnd_cli_run(const mnd_cli_env_t *env, int argc, char *const *argv);
 
 | サブコマンド | 位置引数（min = max） | オプション |
 | --- | --- | --- |
-| `extract` | `INPUT`（1） | `-o/--output FILE`、`-q/--quiet`、`--front-matter-keys KEYS`（リスト）、`--project-id-version NAME`、`--msgid-bugs-address ADDRESS`、`--no-wrap` |
+| `extract` | `INPUT`（1） | `-o/--output FILE`、`-q/--quiet`、`--front-matter-keys KEY`（リスト）、`--project-id-version NAME`、`--msgid-bugs-address ADDRESS`、`--no-wrap` |
 | `init` | `TEMPLATE`（1） | `-o/--output FILE`、`-q/--quiet`、`-l/--language CODE`、`--no-wrap` |
 | `update` | `TEMPLATE PO`（2） | `-o/--output FILE`、`-q/--quiet`、`--no-fuzzy-matching`、`--no-wrap` |
-| `translate` | `INPUT PO`（2） | `-o/--output FILE`、`-q/--quiet`、`--front-matter-keys KEYS`（リスト）、`--use-fuzzy` |
+| `translate` | `INPUT PO`（2） | `-o/--output FILE`、`-q/--quiet`、`--front-matter-keys KEY`（リスト）、`--use-fuzzy` |
 
 - プログラム名 `monde`、説明 `Translate Markdown documents through gettext .pot/.po files.`、バージョンは `env->version` を実行時に埋める（宣言は `static const` のテーブルを複製して `version` だけ差し替える）。
 - `--output` は必須にしない（省略で標準出力、2.3）。`--language` も必須にしない（環境変数の既定値、5.3）。
-- ハンドラの型: `typedef bool (*mnd_cli_handler_fn)(mnd_cli_ctx_t *ctx);`。`mnd_cli_find_handler(const char *name)` で引く。
+- リストの値の名前は `KEY`（ヘルプは `<KEY>[,<KEY>...]`、4.5・7.4 の書き方に合わせる）。既定値（`PACKAGE VERSION`、環境変数の言語）はヘルプの文面にだけ書き、`default_value` は NULL にする（ハンドラが省略を判別できるように）。
+- ハンドラの型: `typedef bool (*mnd_cli_handler_fn)(struct mnd_cli_ctx *ctx);`（`cli_commands.h` は `cli_internal.h` を include せず前方宣言する）。`mnd_cli_find_handler(const char *name)` で引く。宣言は `mnd_cli_program(version)` が返す。
 
 **Contracts**: State [x]
 
@@ -416,6 +422,10 @@ bool mnd_cli_check_stdin_once(const mnd_args_result_t *result, mnd_diag_list_t *
 /* 診断を順にすべて書く。dropped なら最後に "monde: error: some diagnostics were dropped (out of memory)" */
 void mnd_cli_report_diags(FILE *err, const mnd_diag_list_t *diags);
 
+/* 使い方のエラー。診断を "monde: error: <message>" で書き、mnd_args_format_usage_hint の案内を続ける */
+void mnd_cli_report_usage_error(FILE *err, const mnd_args_program_t *program,
+                                const mnd_args_command_t *command, const mnd_diag_list_t *diags);
+
 /* 統計。quiet なら何も書かない */
 void mnd_cli_report_extract(FILE *err, bool quiet, size_t messages);
 void mnd_cli_report_init(FILE *err, bool quiet, size_t messages, const char *language);
@@ -429,9 +439,9 @@ void mnd_cli_report_translate(FILE *err, bool quiet, const mnd_tu_stats_t *stats
 | 種類 | 書式 |
 | --- | --- |
 | 診断（パスと行あり） | `<path>:<line>: error: <message>` / `<path>:<line>: warning: <message>` |
-| 診断（行なし） | `<path>: error: <message>` |
-| 診断（パスなし） | `monde: error: <message>` |
-| 使い方のエラー | `monde: error: <message>` の次の行に `Run 'monde <subcommand> --help' for usage.`（cli-args の案内） |
+| 診断（行なし） | `<path>: error: <message>` / `<path>: warning: <message>` |
+| 診断（パスなし） | `monde: error: <message>` / `monde: warning: <message>` |
+| 使い方のエラー | `monde: error: <message>` の次の行に `Run 'monde <subcommand> --help' for usage.`（cli-args の案内）。パスと行は使わず、cli-args の文面の先頭の `<program>[ <command>]: ` を除く |
 | extract の統計 | `extract: <N> messages` |
 | init の統計 | `init: <N> messages, language <code>` |
 | init の言語の出どころ | `init: using language '<code>' from <VARIABLE>`（`--language` のときは出さない） |
@@ -441,6 +451,7 @@ void mnd_cli_report_translate(FILE *err, bool quiet, const mnd_tu_stats_t *stats
 
 - 翻訳率は `translated ÷ total` を 0.1% 単位に四捨五入する（整数演算: `(translated * 1000 + total / 2) / total` を `%zu.%zu%%` で表示）。fuzzy は採用の有無にかかわらず翻訳済みに数えない（8.5）。
 - `--quiet` は統計と情報だけを抑止し、診断は抑止しない（8.7）。
+- `mnd_cli_report_init*` の `language` / `variable` には NULL を渡さない。
 
 **Contracts**: Service [x]
 
@@ -457,6 +468,7 @@ void mnd_cli_report_translate(FILE *err, bool quiet, const mnd_tu_stats_t *stats
 bool mnd_cli_format_now(const mnd_cli_env_t *env, char out[MND_PO_DATE_SIZE], mnd_diag_list_t *diags);
 ```
 - オフセットは `localtime` と `gmtime` の結果の差（年月日時分を通算の分に直した差）で求め、`mnd_po_date_format` に渡す。DST は `localtime` の結果に含まれる。
+- 差の計算は `long mnd_cli_utc_offset_minutes(const struct tm *local_time, const struct tm *utc_time)` として `cli_time.h` に公開し、日付・年の境界を単体テストで確かめる。
 
 **Contracts**: Service [x]
 
@@ -478,13 +490,15 @@ typedef struct mnd_cli_language
 /*
  * explicit が NULL でなければそれを使う。NULL なら LC_ALL → LC_MESSAGES → LANG の順に env->getenv で引き、
  * 空・"C"・"POSIX"（"." / "@" 以降を除いた後で判定）は未設定として次を見る。
- * 値は "." / "@" 以降を除く。決まらなければ使い方のエラー（--language を求める）、
- * 値が空か空白・制御文字を含めば使い方のエラー（値と出どころを示す）。どちらも診断を追加して false
+ * 環境変数の値は "." / "@" 以降を除く（--language の値は除かない）。最初に値が決まった変数が不正なら、次の変数を見ずにエラー。
+ * 決まらなければ使い方のエラー（--language を求める）、値が空か ASCII の 0x21〜0x7E 以外を含めば使い方のエラー
+ * （値と出どころを示す。--language にも適用）。どちらも診断を追加して false。メモリ不足でも false
  */
 bool mnd_cli_resolve_language(const mnd_cli_env_t *env, const char *explicit,
                               mnd_cli_language_t *out, mnd_diag_list_t *diags);
 ```
 - 使い方のエラーは Run の終了コード 2 に対応付けるため、ハンドラは失敗の種類を `mnd_cli_ctx_t.usage_error = true` で Run に伝える（Run はこのフラグが立っていれば 1 ではなく 2 を返す）。
+- `false` はメモリ不足も含むため、cmd_init は呼び出し中に診断が捨てられた（`dropped`）か最後の診断が `out of memory`（cli_language.c と同じ文面）の場合だけメモリ不足（1）とし、それ以外を使い方のエラー（2）とする。
 
 **Contracts**: Service [x]
 
@@ -517,6 +531,7 @@ bool mnd_cli_resolve_language(const mnd_cli_env_t *env, const char *explicit,
 3. `mnd_cli_format_now` → `mnd_po_init(catalog, code, now)`（5.1、5.8）。
 4. `mnd_po_write({ no_wrap, eol = choose_eol(.pot) })` → `mnd_cli_write_output(add_bom = false)`。
 5. 環境変数から決めたときは `mnd_cli_report_init_language_source`（5.6）、`mnd_cli_report_init(count - header, code)`（8.2）。
+- 件数は `catalog.count - 1`。テンプレートに廃止エントリがあれば、作成した翻訳ファイルにも残るため数に含む（8.2 の「作成した翻訳ファイルのエントリの件数」の字義どおり）。
 
 #### cmd_update（`cmd_update.c`）
 
@@ -545,7 +560,7 @@ bool mnd_cli_resolve_language(const mnd_cli_env_t *env, const char *explicit,
 3. `mnd_tu_scan(content, { path = INPUT, front_matter_keys })`（7.4）。
 4. `mnd_tu_translate(doc, catalog, { use_fuzzy = --use-fuzzy, eol = choose_eol(.md), catalog_path = PO }, out, stats)`（7.1〜7.3、7.5〜7.7、7.9）。
 5. `mnd_cli_write_output(-o, add_bom = input.had_bom)`（3.6）、`mnd_cli_report_translate(stats)`（8.4〜8.6）。
-- 警告だけなら成功として扱う（7.7）。
+- 警告だけなら成功として扱う（7.7）。警告は Run がハンドラの後に表示するため、統計の行の後に出る（Run の項を参照）。
 
 #### foundation stream I/O（`src/foundation/file_io.h` / `file_io.c`）
 
@@ -607,9 +622,9 @@ bool mnd_file_write_stream(FILE *fp, const char *name, const char *data, size_t 
 - IO: `-o` 省略で `out` に書く、`-` で `in` から読む、`-` の重複で 2、入力が存在しないとき出力が作られず 1、`update` で出力先 = 既存 `.po` のときに内容が引き継がれる、LF / CRLF / 混在 / 改行なしの入力に対する出力の改行コード、`translate` の BOM の保持と `.pot` / `.po` の BOM なし（2.3〜2.9、3.3〜3.7）。
 - Reporter: 診断の 3 形式と順序、`dropped`、各統計の書式、翻訳率の丸め（`2/3` → `66.7%`、`0/0` → `no translatable messages`）、`--quiet` が統計だけを抑止（8.x、9.1〜9.4）。
 - Clock: 固定の `now` と環境の時刻で、`+0900`、`-0500`、`+0000`、`+0530`、日付境界をまたぐオフセットの文字列（4.2、5.8）。
-- Language: `--language` 優先、`LC_ALL` → `LC_MESSAGES` → `LANG`、`ja_JP.UTF-8@euro` → `ja_JP`、`C` / `POSIX` / `C.UTF-8` / 空は未設定、どれもなければ 2、空白を含む値は 2（5.2〜5.7）。
+- Language: `--language` 優先、`LC_ALL` → `LC_MESSAGES` → `LANG`、`ja_JP.UTF-8@euro` → `ja_JP`、`C` / `POSIX` / `C.UTF-8` / 空は未設定、どれもなければ 2、空白・制御文字・ASCII 以外（0x21〜0x7E の外）を含む値は 2（5.2〜5.7）。
 - 各ハンドラ: 上記の File Structure Plan のスイートに列挙したとおり。期待値は上流の部品のテストと重複させず、CLI が渡す値（ヘッダの項目、`#:` のファイル名、`use_fuzzy`、`fuzzy_matching`、`no_wrap`、`eol`）が結果に現れることを確かめる。
-- foundation: `mnd_file_read_stream` / `mnd_file_write_stream` の BOM、空、不正な UTF-8、`fflush` の失敗（閉じたストリームへの書き込み）。
+- foundation: `mnd_file_read_stream` / `mnd_file_write_stream` の BOM、空、不正な UTF-8、書き込みの失敗（`"rb"` で開いたストリームへの書き込み。閉じたストリームへの `fwrite` は未定義動作のため使わない）。
 
 ### Integration / Acceptance Tests
 - `cli_tests.roundtrip.*`: spec.txt の 652 例 × { original, CRLF } × { 空のカタログ, msgstr = msgid } をプロセス内で `extract` → `translate` し、入力とバイト単位で比較。失敗した例の番号と変種をメモに出す（10.1〜10.4）。
@@ -627,8 +642,10 @@ bool mnd_file_write_stream(FILE *fp, const char *name, const char *data, size_t 
 
 ## Performance & Scalability
 - 性能目標はない（steering）。入力は全体をメモリに読む（1 ファイル単位の前提）。
-- 実行ファイルの起動テストは Linux で数秒、Windows で数十秒の見込み。許容できなければ `cli_roundtrip.*` を抜き取り（例えば 50 例ごと）に減らし、プロセス内の `roundtrip` スイートを全例の正とする（Open Questions）。
+- 実行ファイルの起動テストは Linux（Release）で `cli_roundtrip.original` / `.crlf` 各約 7 秒（実測、research.md）、Windows で数十秒の見込み。許容できなければ `cli_roundtrip.*` を抜き取り（例えば 50 例ごと）に減らし、プロセス内の `roundtrip` スイートを全例の正とする（Open Questions）。
 
 ## Open Questions / Risks
 - Windows の CI での `cli_roundtrip.*` の所要時間。実測して長ければ上記のとおり抜き取りに変える（要件 10.1 の「実行ファイルで」は抜き取り + プロセス内の全例で満たすと読み替え、要件の「要件確認で決めた挙動」に追記する）。
+  - **結論（5.5）**: Linux（Release）の実測は `cli_spec_split` 0.04 秒、`cli_roundtrip.original` / `.crlf` 各約 7 秒（直列で約 13 秒、`-j8` で約 7 秒）。当面は全例のまま（抜き取りなし）とする。Windows は未計測で、CI で所要時間を確かめ、長すぎれば上記の抜き取りに切り替える。
 - `getenv` の値が Windows で ANSI の場合、非 ASCII の言語コードは検査で弾かれる（空白・制御文字ではないので通る可能性がある）。言語コードは ASCII に限る検査を追加するかは実装時に判断し、テストで固定する。
+  - **結論（2.5）**: 言語コードは ASCII の 0x21〜0x7E に限る（`--language` の明示の値にも適用）。範囲外を含めば使い方のエラー（2）。`language_test.c` で固定した。

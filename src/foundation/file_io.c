@@ -86,28 +86,14 @@ static bool mnd_file_read_fail(mnd_buf_t *content, bool *had_bom)
     return false;
 }
 
-bool mnd_file_read(const char *path, mnd_buf_t *content, bool *had_bom,
-                   mnd_diag_list_t *diags)
+bool mnd_file_read_stream(FILE *fp, const char *name, mnd_buf_t *content, bool *had_bom,
+                          mnd_diag_list_t *diags)
 {
     char chunk[MND_FILE_IO_CHUNK_SIZE];
     bool first = true;
     bool bom = false;
     size_t invalid_offset = 0;
     size_t line = 0;
-    const char *open_reason;
-    FILE *fp;
-
-    errno = 0;
-    fp = mnd_file_open(path, "rb", &open_reason);
-    if (fp == NULL)
-    {
-        int err = errno;
-
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, path, 0,
-                     "cannot open file for reading: %s",
-                     (open_reason != NULL) ? open_reason : mnd_file_io_reason(err));
-        return mnd_file_read_fail(content, had_bom);
-    }
 
     mnd_buf_clear(content);
     for (;;)
@@ -121,8 +107,7 @@ bool mnd_file_read(const char *path, mnd_buf_t *content, bool *had_bom,
         {
             int err = errno;
 
-            fclose(fp);
-            mnd_diag_add(diags, MND_SEVERITY_ERROR, path, 0,
+            mnd_diag_add(diags, MND_SEVERITY_ERROR, name, 0,
                          "cannot read file: %s", mnd_file_io_reason(err));
             return mnd_file_read_fail(content, had_bom);
         }
@@ -141,8 +126,7 @@ bool mnd_file_read(const char *path, mnd_buf_t *content, bool *had_bom,
 
         if (!mnd_buf_append(content, chunk + skip, n - skip))
         {
-            fclose(fp);
-            mnd_diag_add(diags, MND_SEVERITY_ERROR, path, 0,
+            mnd_diag_add(diags, MND_SEVERITY_ERROR, name, 0,
                          "out of memory while reading file");
             return mnd_file_read_fail(content, had_bom);
         }
@@ -152,13 +136,12 @@ bool mnd_file_read(const char *path, mnd_buf_t *content, bool *had_bom,
             break;
         }
     }
-    fclose(fp);
 
     if (!mnd_utf8_validate(content->data, content->len, &invalid_offset))
     {
         /* invalid_offset <= len なので行番号は必ず求まる */
         (void)mnd_source_line_of(content->data, content->len, invalid_offset, &line);
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, path, line,
+        mnd_diag_add(diags, MND_SEVERITY_ERROR, name, line,
                      "invalid UTF-8 byte sequence at byte offset %zu", invalid_offset);
         return mnd_file_read_fail(content, had_bom);
     }
@@ -168,24 +151,11 @@ bool mnd_file_read(const char *path, mnd_buf_t *content, bool *had_bom,
     return true;
 }
 
-bool mnd_file_write(const char *path, const char *data, size_t len, bool add_bom,
-                    mnd_diag_list_t *diags)
+bool mnd_file_write_stream(FILE *fp, const char *name, const char *data, size_t len, bool add_bom,
+                           mnd_diag_list_t *diags)
 {
     bool ok = true;
     int err = 0;
-    const char *open_reason;
-    FILE *fp;
-
-    errno = 0;
-    fp = mnd_file_open(path, "wb", &open_reason);
-    if (fp == NULL)
-    {
-        err = errno;
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, path, 0,
-                     "cannot open file for writing: %s",
-                     (open_reason != NULL) ? open_reason : mnd_file_io_reason(err));
-        return false;
-    }
 
     errno = 0;
     if (add_bom
@@ -201,16 +171,78 @@ bool mnd_file_write(const char *path, const char *data, size_t len, bool add_bom
         err = errno;
     }
 
-    /* 書き込みに失敗しても閉じる。バッファされた内容の書き出しの失敗は close で分かる */
+    /* バッファされた内容の書き出しの失敗は fflush で分かる */
+    if (ok)
+    {
+        errno = 0;
+        if (fflush(fp) != 0)
+        {
+            ok = false;
+            err = errno;
+        }
+    }
+
+    if (!ok)
+    {
+        mnd_diag_add(diags, MND_SEVERITY_ERROR, name, 0,
+                     "cannot write file: %s", mnd_file_io_reason(err));
+    }
+
+    return ok;
+}
+
+bool mnd_file_read(const char *path, mnd_buf_t *content, bool *had_bom,
+                   mnd_diag_list_t *diags)
+{
+    const char *open_reason;
+    FILE *fp;
+    bool ok;
+
+    errno = 0;
+    fp = mnd_file_open(path, "rb", &open_reason);
+    if (fp == NULL)
+    {
+        int err = errno;
+
+        mnd_diag_add(diags, MND_SEVERITY_ERROR, path, 0,
+                     "cannot open file for reading: %s",
+                     (open_reason != NULL) ? open_reason : mnd_file_io_reason(err));
+        return mnd_file_read_fail(content, had_bom);
+    }
+
+    ok = mnd_file_read_stream(fp, path, content, had_bom, diags);
+    fclose(fp);
+
+    return ok;
+}
+
+bool mnd_file_write(const char *path, const char *data, size_t len, bool add_bom,
+                    mnd_diag_list_t *diags)
+{
+    bool ok;
+    int err;
+    const char *open_reason;
+    FILE *fp;
+
+    errno = 0;
+    fp = mnd_file_open(path, "wb", &open_reason);
+    if (fp == NULL)
+    {
+        err = errno;
+        mnd_diag_add(diags, MND_SEVERITY_ERROR, path, 0,
+                     "cannot open file for writing: %s",
+                     (open_reason != NULL) ? open_reason : mnd_file_io_reason(err));
+        return false;
+    }
+
+    ok = mnd_file_write_stream(fp, path, data, len, add_bom, diags);
+
+    /* 書き込みに失敗しても閉じる。診断はストリーム版が付けた 1 つだけにする */
     errno = 0;
     if ((fclose(fp) != 0) && ok)
     {
         ok = false;
         err = errno;
-    }
-
-    if (!ok)
-    {
         mnd_diag_add(diags, MND_SEVERITY_ERROR, path, 0,
                      "cannot write file: %s", mnd_file_io_reason(err));
     }

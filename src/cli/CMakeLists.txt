@@ -1,0 +1,19 @@
+monde_add_module(cli
+  SOURCES
+    cli_run.c
+    cli_commands.c
+    cli_io.c
+    cli_report.c
+    cli_time.c
+    cli_language.c
+    cmd_extract.c
+    cmd_init.c
+    cmd_update.c
+    cmd_translate.c
+  DEPENDS
+    cli_args
+    po_merge
+    tu
+    po
+    foundation
+)

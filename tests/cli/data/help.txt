@@ -1,0 +1,16 @@
+Usage: monde <command> [<options>] [<arguments>]
+
+Translate Markdown documents through gettext .pot/.po files.
+
+Commands:
+  extract    Create a translation template (.pot) from a Markdown file
+  init       Create a new translation file (.po) from a template
+  update     Merge a new template into an existing translation file
+  translate  Create a translated Markdown file from a translation file
+  help       Show help for a command
+
+Options:
+  -h, --help     Show this help
+      --version  Show version information
+
+Run 'monde <command> --help' for help on a command.

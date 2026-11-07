@@ -1,0 +1,37 @@
+# Japanese translation of the sample project.
+msgid ""
+msgstr ""
+"Project-Id-Version: sample 0.9\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-01-15 09:00+0900\n"
+"PO-Revision-Date: 2026-01-20 18:30+0900\n"
+"Last-Translator: Sample Translator <translator@example.com>\n"
+"Language-Team: Japanese\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: sample.md:2 sample.md:7
+msgid "Getting Started"
+msgstr "はじめに"
+
+#: sample.md:9
+msgid "This guide explains how to install the sample."
+msgstr "このガイドでは、サンプルのインストール方法を説明します。"
+
+#: sample.md:11
+msgid "Installation"
+msgstr "インストール"
+
+#: sample.md:13
+msgid "Download the archive and extract it."
+msgstr "アーカイブをダウンロードして展開します。"
+
+#: sample.md:15
+msgid "Open a terminal."
+msgstr "端末を開きます。"
+
+#: sample.md:17
+msgid "Requirements"
+msgstr "必要なもの"
