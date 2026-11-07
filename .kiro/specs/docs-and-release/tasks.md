@@ -144,7 +144,7 @@
   - _Depends: 6.1, 6.2_
   - _Requirements: 10.5_
 
-- [ ] 6.4 配布物と検証に素材の表示を加える
+- [x] 6.4 配布物と検証に素材の表示を加える
   - `MondePackage.cmake` の install に `THIRD_PARTY_NOTICES` と `licenses/` を加える。`verify_package.cmake` に `NOTICES` を加え、期待する一覧を索引から組み立てる。`release.yml` のアーカイブの検証に `-DNOTICES=THIRD_PARTY_NOTICES` を渡す
   - 完了時: 静的リンクのビルドの TGZ と ZIP が新しい検証を通り、`licenses/` のファイルが 1 つ欠けたアーカイブと余分なファイルを含むアーカイブはどちらも失敗する。`release.yml` は actionlint を通る
   - _Boundary: MondePackage, verify_package, release.yml_

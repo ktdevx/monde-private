@@ -464,6 +464,7 @@ flowchart TB
   2. 動的依存: `linux-*` は `ldd` の出力に `not a dynamic executable` を含む（8.6）。`macos-*` は `otool -L` の出力の依存が `/usr/lib/libSystem.B.dylib` だけ。`windows-*` は確認しない（静的 CRT は構成で保証）。
   3. アーカイブの一覧（`cmake -E tar tf`）が、`monde-X.Y.Z-<target>/` の下の `monde` または `monde.exe`、`LICENSE`、`README.md`、`THIRD_PARTY_NOTICES` と、`NOTICES` の各素材の `License-File`（`licenses/<ID>.txt`）（とディレクトリ自身）だけで、`spec.txt` やその他のファイルを含まない（8.3、8.4、8.7、10.1。改訂で、期待する一覧を `NOTICES` から組み立てる）。
   4. TGZ では `cmake -E tar tvf` の権限欄で実行ファイルが実行可能（8.5）。
+  5. アーカイブの中の `THIRD_PARTY_NOTICES` が `NOTICES` とバイト単位で一致する（10.1。改訂で追加）。
 - Output / destination: 失敗の一覧を出して終了コード 1。すべて通れば `package <archive> verified`（`ARCHIVE` 省略時は `executable verified`）を出す。
 
 #### release.yml（`.github/workflows/release.yml`）

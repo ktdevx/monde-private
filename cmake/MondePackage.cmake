@@ -1,14 +1,18 @@
 include_guard(GLOBAL)
 
 # 配布物の定義（install の規則と CPack の設定）。配布物の構成の変更はこのファイルだけで行う。
-# アーカイブには実行ファイル monde、LICENSE、README.md の 3 つだけを入れる。
+# アーカイブには実行ファイル monde、LICENSE、README.md、THIRD_PARTY_NOTICES と、licenses/ の下の
+# 素材ごとのライセンスのファイルだけを入れる。素材を追加しても本ファイルを直さずに済むよう、licenses/ は
+# ディレクトリごと入れる（licenses/ には THIRD_PARTY_NOTICES に載せたファイルだけを置く）。
 # テスト、spec.txt、ヘッダ、静的ライブラリは install の対象にしない。
 install(TARGETS monde RUNTIME DESTINATION .)
 install(FILES
   "${PROJECT_SOURCE_DIR}/LICENSE"
   "${PROJECT_SOURCE_DIR}/README.md"
+  "${PROJECT_SOURCE_DIR}/THIRD_PARTY_NOTICES"
   DESTINATION .
 )
+install(DIRECTORY "${PROJECT_SOURCE_DIR}/licenses/" DESTINATION licenses)
 
 # 対象名 <os>-<arch> の既定を CMAKE_SYSTEM_NAME と CMAKE_SYSTEM_PROCESSOR から作る。
 # CMAKE_OSX_ARCHITECTURES が 1 つだけ指定されていれば、そのアーキテクチャを優先する。
@@ -40,7 +44,7 @@ unset(_monde_os)
 unset(_monde_arch)
 unset(_monde_osx_arch_count)
 
-# アーカイブの名前は monde-<version>-<os>-<arch>。展開すると同名のディレクトリの下に 3 つのファイルが置かれる
+# アーカイブの名前は monde-<version>-<os>-<arch>。展開すると同名のディレクトリの下に上の install の内容が置かれる
 set(CPACK_PACKAGE_NAME "monde")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_FILE_NAME "monde-${PROJECT_VERSION}-${MONDE_RELEASE_TARGET}")

@@ -1,6 +1,7 @@
 # ビルドした実行ファイルと配布アーカイブが配布物の要件を満たすことを確かめる（6.3、7.3、8.5〜8.7。cmake -P で実行する）。
-#   cmake -DMONDE=<実行ファイル> -DVERSION=X.Y.Z [-DARCHIVE=<アーカイブ>] -DTARGET=<os>-<arch>
-#         [-DRUNNER=<前置きコマンドのリスト>] -P tools/release/verify_package.cmake
+#   cmake -DMONDE=<実行ファイル> -DVERSION=X.Y.Z [-DARCHIVE=<アーカイブ> -DNOTICES=<THIRD_PARTY_NOTICES>]
+#         -DTARGET=<os>-<arch> [-DRUNNER=<前置きコマンドのリスト>] -P tools/release/verify_package.cmake
+# ARCHIVE を指定するときは NOTICES（リポジトリの THIRD_PARTY_NOTICES のパス）も必須。
 # RUNNER は実行ファイルを起動するときの前置きコマンド（macOS x64 では arch;-x86_64）。
 # 確かめる項目:
 #   1. [RUNNER...] MONDE --version の終了コードが 0 で、標準出力が monde X.Y.Z の 1 行と一致する（CRLF は LF とみなす）。
@@ -8,14 +9,17 @@
 #      macos-* は otool -L の依存が /usr/lib/libSystem.B.dylib だけ。windows-* は確認しない（静的 CRT は構成で保証する）。
 #   3. ARCHIVE を指定したとき、ファイル名が monde-X.Y.Z-<TARGET>.zip または .tar.gz で、
 #      一覧（cmake -E tar tf）が monde-X.Y.Z-<TARGET>/ の下の実行ファイル（windows-* は monde.exe、ほかは monde）、
-#      LICENSE、README.md の 3 つ（と最上位ディレクトリ自身）だけである。
+#      LICENSE、README.md、THIRD_PARTY_NOTICES と、NOTICES の各素材の License-File（licenses/<ID>.txt）
+#      だけである（ディレクトリのエントリは最上位ディレクトリ自身と licenses/ だけを許す）。
+#      期待する一覧は NOTICES のコメントでない License-File: <パス> の行から組み立てる（1 つもなければ失敗）。
 #   4. .tar.gz では cmake -E tar tvf の権限欄で実行ファイルに所有者の実行権限がある。
+#   5. アーカイブの THIRD_PARTY_NOTICES が NOTICES とバイト単位で一致する（一時ディレクトリに展開して比べる）。
 # ARCHIVE を省略すると 1 と 2 だけを確かめる（ワークフローは cpack の前にこの形で実行する）。
 # 失敗はすべて集めて一覧にし、終了コード 1 で終わる（メッセージは標準エラー）。
 # すべて通れば標準出力に package <ARCHIVE> verified（ARCHIVE 省略時は executable verified）の 1 行を出す。
 cmake_minimum_required(VERSION 3.21)
 
-set(usage "cmake -DMONDE=<exe> -DVERSION=X.Y.Z [-DARCHIVE=<path>] -DTARGET=<os>-<arch> [-DRUNNER=<prefix>] -P verify_package.cmake")
+set(usage "cmake -DMONDE=<exe> -DVERSION=X.Y.Z [-DARCHIVE=<path> -DNOTICES=<THIRD_PARTY_NOTICES>] -DTARGET=<os>-<arch> [-DRUNNER=<prefix>] -P verify_package.cmake")
 foreach(required IN ITEMS MONDE VERSION TARGET)
   if(NOT DEFINED ${required} OR "${${required}}" STREQUAL "")
     message(FATAL_ERROR "${required} is required: ${usage}")
@@ -28,6 +32,9 @@ if("${TARGET}" MATCHES "^(windows|macos|linux)-[A-Za-z0-9_]+$")
   set(target_os "${CMAKE_MATCH_1}")
 else()
   message(FATAL_ERROR "TARGET ${TARGET} is not of the form <os>-<arch> with os windows, macos or linux")
+endif()
+if(DEFINED ARCHIVE AND NOT ARCHIVE STREQUAL "" AND (NOT DEFINED NOTICES OR NOTICES STREQUAL ""))
+  message(FATAL_ERROR "NOTICES is required when ARCHIVE is given (path to THIRD_PARTY_NOTICES): ${usage}")
 endif()
 
 set(failures "")
@@ -120,9 +127,42 @@ else()
   endif()
 endif()
 
-# 3、4. アーカイブ
+# 3〜5. アーカイブ
 if(DEFINED ARCHIVE AND NOT ARCHIVE STREQUAL "")
   set(top "monde-${VERSION}-${TARGET}")
+
+  # 索引から License-File のパスを集める（# で始まる行は無視し、CRLF は LF とみなす）
+  get_filename_component(notices_path "${NOTICES}" ABSOLUTE)
+  set(license_files "")
+  set(notices_ok FALSE)
+  if(NOT EXISTS "${notices_path}" OR IS_DIRECTORY "${notices_path}")
+    add_failure("notices index ${NOTICES} not found")
+  else()
+    file(READ "${notices_path}" notices_text)
+    string(REPLACE "\r\n" "\n" notices_text "${notices_text}")
+    string(REPLACE ";" "\\;" notices_text "${notices_text}")
+    string(REPLACE "\n" ";" notices_lines "${notices_text}")
+    foreach(line IN LISTS notices_lines)
+      if(line MATCHES "^#")
+        continue()
+      endif()
+      if(line MATCHES "^License-File:[ \t]*([^ \t].*)$")
+        string(STRIP "${CMAKE_MATCH_1}" license_file)
+        if(license_file MATCHES "^/|^[A-Za-z]:|(^|/)\\.\\.(/|$)|\\\\")
+          add_failure("${NOTICES}: License-File ${license_file} is not a relative path inside the archive")
+        else()
+          list(APPEND license_files "${license_file}")
+        endif()
+      endif()
+    endforeach()
+    list(REMOVE_DUPLICATES license_files)
+    if(license_files STREQUAL "")
+      add_failure("${NOTICES} lists no License-File (expected at least one licenses/<ID>.txt)")
+    else()
+      set(notices_ok TRUE)
+    endif()
+  endif()
+
   get_filename_component(archive_path "${ARCHIVE}" ABSOLUTE)
   get_filename_component(archive_name "${ARCHIVE}" NAME)
   if(archive_name MATCHES "\\.tar\\.gz$")
@@ -150,7 +190,17 @@ if(DEFINED ARCHIVE AND NOT ARCHIVE STREQUAL "")
     if(NOT list_rc STREQUAL "0")
       add_failure("cmake -E tar tf ${ARCHIVE} exited with ${list_rc} (stderr: ${list_err})")
     else()
-      set(required_entries "${top}/${exe_name}" "${top}/LICENSE" "${top}/README.md")
+      set(required_entries "${top}/${exe_name}" "${top}/LICENSE" "${top}/README.md" "${top}/THIRD_PARTY_NOTICES")
+      # License-File の親ディレクトリ（licenses/ など）はディレクトリのエントリとして許す
+      set(allowed_dirs "${top}")
+      foreach(license_file IN LISTS license_files)
+        list(APPEND required_entries "${top}/${license_file}")
+        get_filename_component(license_dir "${license_file}" DIRECTORY)
+        while(NOT license_dir STREQUAL "")
+          list(APPEND allowed_dirs "${top}/${license_dir}")
+          get_filename_component(license_dir "${license_dir}" DIRECTORY)
+        endwhile()
+      endforeach()
       set(found_entries "")
       string(REPLACE "\r\n" "\n" list_out "${list_out}")
       string(REPLACE ";" "\\;" list_out "${list_out}")
@@ -161,7 +211,8 @@ if(DEFINED ARCHIVE AND NOT ARCHIVE STREQUAL "")
         endif()
         string(REGEX REPLACE "^\\./" "" normalized "${entry}")
         string(REGEX REPLACE "/+$" "" normalized "${normalized}")
-        if(normalized STREQUAL "${top}")
+        list(FIND allowed_dirs "${normalized}" dir_index)
+        if(NOT dir_index EQUAL -1)
           continue()
         endif()
         list(FIND required_entries "${normalized}" required_index)
@@ -209,6 +260,33 @@ if(DEFINED ARCHIVE AND NOT ARCHIVE STREQUAL "")
             endif()
           endif()
         endif()
+      endif()
+
+      # 5. 同梱した THIRD_PARTY_NOTICES が NOTICES と一致すること（一時ディレクトリに展開して比べ、後で消す）
+      list(FIND found_entries "${top}/THIRD_PARTY_NOTICES" notices_entry_index)
+      if(notices_ok AND NOT notices_entry_index EQUAL -1)
+        string(RANDOM LENGTH 12 extract_suffix)
+        set(extract_dir "${CMAKE_CURRENT_BINARY_DIR}/verify_package_${extract_suffix}")
+        file(REMOVE_RECURSE "${extract_dir}")
+        file(MAKE_DIRECTORY "${extract_dir}")
+        execute_process(
+          COMMAND "${CMAKE_COMMAND}" -E tar xf "${archive_path}" -- "${top}/THIRD_PARTY_NOTICES"
+          WORKING_DIRECTORY "${extract_dir}"
+          RESULT_VARIABLE extract_rc
+          OUTPUT_VARIABLE extract_out
+          ERROR_VARIABLE extract_err
+        )
+        set(extracted_notices "${extract_dir}/${top}/THIRD_PARTY_NOTICES")
+        if(NOT extract_rc STREQUAL "0" OR NOT EXISTS "${extracted_notices}")
+          add_failure("cannot extract ${top}/THIRD_PARTY_NOTICES from ${ARCHIVE} (exit ${extract_rc}, stderr: ${extract_err})")
+        else()
+          file(SHA256 "${extracted_notices}" archived_hash)
+          file(SHA256 "${notices_path}" expected_hash)
+          if(NOT archived_hash STREQUAL expected_hash)
+            add_failure("${top}/THIRD_PARTY_NOTICES in ${ARCHIVE} differs from ${NOTICES}")
+          endif()
+        endif()
+        file(REMOVE_RECURSE "${extract_dir}")
       endif()
     endif()
   endif()

@@ -155,6 +155,7 @@ jobs:
           fi
           echo "archive=$archive" >> "$GITHUB_OUTPUT"
 
+      # 期待する同梱物は、チェックアウトしたタグの THIRD_PARTY_NOTICES（リポジトリの直下）の License-File から組み立てる
       - name: Verify package
         env:
           MONDE: ${{ steps.exe.outputs.path }}
@@ -162,7 +163,8 @@ jobs:
         run: |
           runner_args=()
           if [[ -n "$RUNNER" ]]; then runner_args=("-DRUNNER=$RUNNER"); fi
-          cmake "-DMONDE=$MONDE" "-DVERSION=$VERSION" "-DTARGET=$TARGET" "-DARCHIVE=$ARCHIVE" "${runner_args[@]}" \
+          cmake "-DMONDE=$MONDE" "-DVERSION=$VERSION" "-DTARGET=$TARGET" "-DARCHIVE=$ARCHIVE" \
+            -DNOTICES=THIRD_PARTY_NOTICES "${runner_args[@]}" \
             -P tools/release/verify_package.cmake
 
       - uses: actions/upload-artifact@v4
