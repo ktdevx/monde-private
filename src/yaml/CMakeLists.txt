@@ -1,0 +1,13 @@
+monde_add_module(yaml
+  SOURCES
+    yaml_node.c
+    yaml_front_matter.c
+    yaml_lines.c
+    yaml_scalar.c
+    yaml_flow.c
+    yaml_parse.c
+    yaml_path.c
+    yaml_format.c
+  DEPENDS
+    foundation
+)

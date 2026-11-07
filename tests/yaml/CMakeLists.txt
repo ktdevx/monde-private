@@ -1,0 +1,17 @@
+monde_add_module_tests(yaml
+  SOURCES
+    main.c
+    test_alloc.c
+    tree_check.c
+    parser_fixture.c
+    front_matter_test.c
+    lines_test.c
+    scalar_test.c
+    block_test.c
+    flow_test.c
+    model_test.c
+    path_test.c
+    format_test.c
+    error_test.c
+    roundtrip_test.c
+)

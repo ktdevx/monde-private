@@ -50,7 +50,7 @@
   - 関数: `mnd_<短縮名>_<動作>`（例: `mnd_buf_append`、`mnd_diag_list_at`）。型名の `_t` は関数名に含めない（`mnd_buf_t_append` としない）。
   - 型: `typedef` で定義し、型名の末尾に `_t` を付ける。構造体・列挙のタグ名は `_t` を除いた同じ名前にする（例: `typedef struct mnd_buf { ... } mnd_buf_t;`、`typedef enum mnd_severity { ... } mnd_severity_t;`）。
   - マクロ・列挙値: `MND_<短縮名>_`（例: `MND_BUF_INIT`、`MND_SEVERITY_ERROR`）。`_T` は含めない。
-  - 短縮名は各モジュールの設計で決め、既存のものと重複させない。foundation が予約済み: `buf`、`diag`、`severity`、`utf8`、`eol`、`span`、`slice`、`source`、`file`、`wide`（ほかにマクロ `MND_PRINTF_LIKE` も foundation が使用している）。cli_args が予約済み: `args`、po-format が予約済み: `po`、po-merge が予約済み: `merge`、markdown が予約済み: `md`
+  - 短縮名は各モジュールの設計で決め、既存のものと重複させない。foundation が予約済み: `buf`、`diag`、`severity`、`utf8`、`eol`、`span`、`slice`、`source`、`file`、`wide`（ほかにマクロ `MND_PRINTF_LIKE` も foundation が使用している）。cli_args が予約済み: `args`、po-format が予約済み: `po`、po-merge が予約済み: `merge`、markdown が予約済み: `md`、yaml-front-matter が予約済み: `yaml`
 - **ヘッダガード**: `MONDE_<MODULE>_<FILE>_H`（例: `MONDE_FOUNDATION_BUF_H`）。
 - **モジュール内部の関数**: `static` にしてファイル外に公開しない。
 
