@@ -319,6 +319,323 @@ NAOS_TEST(front_matter_scan_empty_front_matter)
     mnd_tu_doc_free(doc);
 }
 
+/*
+ * text をキーパス keys[0..key_count) とパス "test.md" で走査する。走査は成功し、
+ * 診断はちょうど 1 つの警告で、そのメッセージが message、行番号が line であることを検査する
+ */
+static mnd_tu_doc_t *scan_with_one_warning(const char *text, const char *const *keys, size_t key_count,
+                                           const char *message, size_t line)
+{
+    mnd_tu_options_t options = MND_TU_OPTIONS_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    mnd_tu_doc_t *doc = NULL;
+
+    options.path = "test.md";
+    options.front_matter_keys = keys;
+    options.front_matter_key_count = key_count;
+    NAOS_CHECK_TRUE(mnd_tu_scan(text, strlen(text), &options, &doc, &diags));
+    NAOS_CHECK_UINT_EQ(1, mnd_diag_list_count(&diags));
+    if (mnd_diag_list_count(&diags) == 1)
+    {
+        const mnd_diag_t *diag = mnd_diag_list_at(&diags, 0);
+
+        NAOS_CHECK_TRUE(diag->severity == MND_SEVERITY_WARNING);
+        NAOS_CHECK_STR_EQ(message, diag->message);
+        NAOS_CHECK_TRUE(diag->path != NULL);
+        if (diag->path != NULL)
+        {
+            NAOS_CHECK_STR_EQ("test.md", diag->path);
+        }
+        NAOS_CHECK_UINT_EQ(line, diag->line);
+    }
+    mnd_diag_list_free(&diags);
+    return doc;
+}
+
+/* 複数のキーパスの結果は、キーパスの指定の順ではなく原文の順に並び、本文より前に来る（1.8） */
+NAOS_TEST(front_matter_collect_multiple_keys_in_source_order)
+{
+    static const char text[] =
+        "---\n"
+        "title: Hello\n"
+        "description: World\n"
+        "---\n"
+        "Body.\n";
+    static const char *const keys[] = { "description", "title" };
+    static const test_segment_expect_t expected[] = {
+        { MND_TU_ORIGIN_FRONT_MATTER, 2, 11, 16, "Hello", "front matter: title" },
+        { MND_TU_ORIGIN_FRONT_MATTER, 3, 30, 35, "World", "front matter: description" },
+        { MND_TU_ORIGIN_MARKDOWN, 5, 40, 45, "Body.", "paragraph" }
+    };
+    mnd_tu_doc_t *doc = NULL;
+
+    TEST_SCAN(text, keys, 2, doc);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    TEST_CHECK_SEGMENTS(doc, expected, 3);
+    if (mnd_tu_doc_segment_count(doc) == 3)
+    {
+        /* 内部セグメントはスカラーのノードを指す */
+        NAOS_CHECK_TRUE(doc->segs[0].scalar != NULL);
+        NAOS_CHECK_TRUE(doc->segs[0].node == NULL);
+        NAOS_CHECK_TRUE(doc->segs[2].scalar == NULL);
+    }
+    mnd_tu_doc_free(doc);
+}
+
+/* ネストしたキー（1.8） */
+NAOS_TEST(front_matter_collect_nested_key)
+{
+    static const char text[] =
+        "---\n"
+        "seo:\n"
+        "  title: SEO\n"
+        "---\n";
+    static const char *const keys[] = { "seo.title" };
+    static const test_segment_expect_t expected[] = {
+        { MND_TU_ORIGIN_FRONT_MATTER, 3, 18, 21, "SEO", "front matter: seo.title" }
+    };
+    mnd_tu_doc_t *doc = NULL;
+
+    TEST_SCAN(text, keys, 1, doc);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    TEST_CHECK_SEGMENTS(doc, expected, 1);
+    mnd_tu_doc_free(doc);
+}
+
+/* 列は全要素に展開し、キーパスをまたいで原文の順に並べる（1.8） */
+NAOS_TEST(front_matter_collect_sequence_expansion)
+{
+    static const char text[] =
+        "---\n"
+        "tags: [a, b]\n"
+        "authors:\n"
+        "  - name: Alice\n"
+        "  - name: Bob\n"
+        "---\n";
+    static const char *const keys[] = { "authors.name", "tags" };
+    static const test_segment_expect_t expected[] = {
+        { MND_TU_ORIGIN_FRONT_MATTER, 2, 11, 12, "a", "front matter: tags" },
+        { MND_TU_ORIGIN_FRONT_MATTER, 2, 14, 15, "b", "front matter: tags" },
+        { MND_TU_ORIGIN_FRONT_MATTER, 4, 36, 41, "Alice", "front matter: authors.name" },
+        { MND_TU_ORIGIN_FRONT_MATTER, 5, 52, 55, "Bob", "front matter: authors.name" }
+    };
+    mnd_tu_doc_t *doc = NULL;
+
+    TEST_SCAN(text, keys, 2, doc);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    TEST_CHECK_SEGMENTS(doc, expected, 4);
+    mnd_tu_doc_free(doc);
+}
+
+/* 該当なしは診断なしで無視する（1.10） */
+NAOS_TEST(front_matter_collect_no_match_is_silent)
+{
+    static const char text[] =
+        "---\n"
+        "title: Hello\n"
+        "---\n"
+        "Body.\n";
+    static const char *const keys[] = { "missing", "title.x", "title" };
+    static const test_segment_expect_t expected[] = {
+        { MND_TU_ORIGIN_FRONT_MATTER, 2, 11, 16, "Hello", "front matter: title" },
+        { MND_TU_ORIGIN_MARKDOWN, 4, 21, 26, "Body.", "paragraph" }
+    };
+    mnd_tu_doc_t *doc = NULL;
+
+    TEST_SCAN(text, keys, 3, doc);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    TEST_CHECK_SEGMENTS(doc, expected, 2);
+    mnd_tu_doc_free(doc);
+}
+
+/* マッピングへの一致は警告 1 件で飛ばし、走査は成功する（1.11、7.7） */
+NAOS_TEST(front_matter_collect_mapping_match_warns)
+{
+    static const char text[] =
+        "---\n"
+        "seo:\n"
+        "  title: SEO\n"
+        "---\n"
+        "Body.\n";
+    static const char *const keys[] = { "seo", "seo.title" };
+    static const test_segment_expect_t expected[] = {
+        { MND_TU_ORIGIN_FRONT_MATTER, 3, 18, 21, "SEO", "front matter: seo.title" },
+        { MND_TU_ORIGIN_MARKDOWN, 5, 26, 31, "Body.", "paragraph" }
+    };
+    mnd_tu_doc_t *doc;
+
+    doc = scan_with_one_warning(text, keys, 2, "front matter key \"seo\" is not a scalar", 3);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    TEST_CHECK_SEGMENTS(doc, expected, 2);
+    mnd_tu_doc_free(doc);
+}
+
+/* 空の値と空白だけの値は診断なしで飛ばす（1.12、2.8） */
+NAOS_TEST(front_matter_collect_skips_empty_and_blank_values)
+{
+    static const char text[] =
+        "---\n"
+        "a: \"\"\n"
+        "b: \" \\t \"\n"
+        "c: \"\\n \\n\"\n"
+        "d: \"\\n\\n\"\n"
+        "e: ''\n"
+        "f: |\n"
+        "\n"
+        "g: ok\n"
+        "---\n";
+    static const char *const keys[] = { "a", "b", "c", "d", "e", "f", "g" };
+    static const test_segment_expect_t expected[] = {
+        { MND_TU_ORIGIN_FRONT_MATTER, 9, 56, 58, "ok", "front matter: g" }
+    };
+    mnd_tu_doc_t *doc = NULL;
+
+    TEST_SCAN(text, keys, 7, doc);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    TEST_CHECK_SEGMENTS(doc, expected, 1);
+    mnd_tu_doc_free(doc);
+}
+
+/* `|` の値: 先頭の空行と末尾の改行を msgid から除き、その数を記録する（2.6、2.7、2.8） */
+NAOS_TEST(front_matter_collect_literal_newline_counts)
+{
+    static const char text[] =
+        "---\n"
+        "clip: |\n"
+        "\n"
+        "\n"
+        "  line one\n"
+        "  line two\n"
+        "keep: |+\n"
+        "  kept\n"
+        "\n"
+        "\n"
+        "strip: |-\n"
+        "  stripped\n"
+        "---\n";
+    static const char *const keys[] = { "clip", "keep", "strip" };
+    const mnd_tu_segment_t *seg;
+    mnd_tu_doc_t *doc = NULL;
+
+    TEST_SCAN(text, keys, 3, doc);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    NAOS_REQUIRE_UINT_EQ(3, mnd_tu_doc_segment_count(doc));
+
+    seg = mnd_tu_doc_segment(doc, 0);
+    NAOS_CHECK_STR_EQ("line one\nline two", mnd_buf_cstr(&seg->msgid));
+    NAOS_CHECK_UINT_EQ(2, seg->lead_newlines);
+    NAOS_CHECK_UINT_EQ(1, seg->trail_newlines);
+    NAOS_CHECK_UINT_EQ(2, seg->line);
+    NAOS_CHECK_TRUE(seg->origin == MND_TU_ORIGIN_FRONT_MATTER);
+    NAOS_CHECK_STR_EQ("front matter: clip", mnd_buf_cstr(&seg->kind));
+    NAOS_CHECK_TRUE(seg->span.start == doc->segs[0].scalar->span.start);
+    NAOS_CHECK_TRUE(seg->span.end == doc->segs[0].scalar->span.end);
+
+    seg = mnd_tu_doc_segment(doc, 1);
+    NAOS_CHECK_STR_EQ("kept", mnd_buf_cstr(&seg->msgid));
+    NAOS_CHECK_UINT_EQ(0, seg->lead_newlines);
+    NAOS_CHECK_UINT_EQ(3, seg->trail_newlines);
+
+    seg = mnd_tu_doc_segment(doc, 2);
+    NAOS_CHECK_STR_EQ("stripped", mnd_buf_cstr(&seg->msgid));
+    NAOS_CHECK_UINT_EQ(0, seg->lead_newlines);
+    NAOS_CHECK_UINT_EQ(0, seg->trail_newlines);
+    mnd_tu_doc_free(doc);
+}
+
+/* `>` の折り返し、引用符、エスケープを解決した論理値を msgid にする（2.6） */
+NAOS_TEST(front_matter_collect_resolves_styles_and_escapes)
+{
+    static const char text[] =
+        "---\n"
+        "folded: >\n"
+        "  one\n"
+        "  two\n"
+        "\n"
+        "  three\n"
+        "single: 'it''s \\n'\n"
+        "double: \"tab\\there \\u00e9 \\\"q\\\"\"\n"
+        "---\n";
+    static const char *const keys[] = { "folded", "single", "double" };
+    const mnd_tu_segment_t *seg;
+    mnd_tu_doc_t *doc = NULL;
+
+    TEST_SCAN(text, keys, 3, doc);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    NAOS_REQUIRE_UINT_EQ(3, mnd_tu_doc_segment_count(doc));
+
+    seg = mnd_tu_doc_segment(doc, 0);
+    NAOS_CHECK_STR_EQ("one two\nthree", mnd_buf_cstr(&seg->msgid));
+    NAOS_CHECK_UINT_EQ(0, seg->lead_newlines);
+    NAOS_CHECK_UINT_EQ(1, seg->trail_newlines);
+
+    seg = mnd_tu_doc_segment(doc, 1);
+    NAOS_CHECK_STR_EQ("it's \\n", mnd_buf_cstr(&seg->msgid));
+    NAOS_CHECK_UINT_EQ(0, seg->trail_newlines);
+
+    seg = mnd_tu_doc_segment(doc, 2);
+    NAOS_CHECK_STR_EQ("tab\there \xc3\xa9 \"q\"", mnd_buf_cstr(&seg->msgid));
+    mnd_tu_doc_free(doc);
+}
+
+/* 同じキーパスを重複して指定しても、同じスカラーは 1 つのセグメントにする */
+NAOS_TEST(front_matter_collect_duplicate_key_path_once)
+{
+    static const char text[] =
+        "---\n"
+        "title: Hello\n"
+        "tags: [x]\n"
+        "---\n";
+    static const char *const keys[] = { "tags", "title", "tags", "title" };
+    static const test_segment_expect_t expected[] = {
+        { MND_TU_ORIGIN_FRONT_MATTER, 2, 11, 16, "Hello", "front matter: title" },
+        { MND_TU_ORIGIN_FRONT_MATTER, 3, 24, 25, "x", "front matter: tags" }
+    };
+    mnd_tu_doc_t *doc = NULL;
+
+    TEST_SCAN(text, keys, 4, doc);
+    NAOS_REQUIRE_NOT_NULL(doc);
+    TEST_CHECK_SEGMENTS(doc, expected, 2);
+    mnd_tu_doc_free(doc);
+}
+
+/* 不正なキーパスは上流のエラー（invalid key path）で失敗し、*out は NULL（7.3） */
+NAOS_TEST(front_matter_collect_invalid_key_path_fails)
+{
+    static const char text[] =
+        "---\n"
+        "title: Hello\n"
+        "---\n"
+        "Body.\n";
+    static const char *const keys[] = { "title", "a..b" };
+    mnd_tu_options_t options = MND_TU_OPTIONS_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    mnd_tu_doc_t *doc = (mnd_tu_doc_t *)&diags;  /* NULL に戻ることを確かめるための仮の値 */
+    size_t i;
+    size_t errors = 0;
+
+    options.path = "test.md";
+    options.front_matter_keys = keys;
+    options.front_matter_key_count = 2;
+    NAOS_CHECK_FALSE(mnd_tu_scan(text, strlen(text), &options, &doc, &diags));
+    NAOS_CHECK_TRUE(doc == NULL);
+    for (i = 0; i < mnd_diag_list_count(&diags); i++)
+    {
+        const mnd_diag_t *diag = mnd_diag_list_at(&diags, i);
+
+        if (diag->severity == MND_SEVERITY_ERROR)
+        {
+            errors++;
+            /* 上流の診断をそのまま通し、out of memory を補わない */
+            NAOS_CHECK_STR_EQ("invalid key path \"a..b\"", diag->message);
+        }
+    }
+    NAOS_CHECK_UINT_EQ(1, errors);
+    NAOS_CHECK_UINT_EQ(1, mnd_diag_list_count(&diags));
+    mnd_tu_doc_free(doc);
+    mnd_diag_list_free(&diags);
+}
+
 /* セグメントの追加: 配列を伸ばし、追加した内部セグメントを初期化して返す */
 NAOS_TEST(front_matter_push_segment_grows_and_initializes)
 {
@@ -371,5 +688,15 @@ NAOS_SUITE(front_matter,
     NAOS_ADD_TEST(front_matter_scan_invalid_utf8_with_keys_fails),
     NAOS_ADD_TEST(front_matter_scan_empty_document),
     NAOS_ADD_TEST(front_matter_scan_empty_front_matter),
+    NAOS_ADD_TEST(front_matter_collect_multiple_keys_in_source_order),
+    NAOS_ADD_TEST(front_matter_collect_nested_key),
+    NAOS_ADD_TEST(front_matter_collect_sequence_expansion),
+    NAOS_ADD_TEST(front_matter_collect_no_match_is_silent),
+    NAOS_ADD_TEST(front_matter_collect_mapping_match_warns),
+    NAOS_ADD_TEST(front_matter_collect_skips_empty_and_blank_values),
+    NAOS_ADD_TEST(front_matter_collect_literal_newline_counts),
+    NAOS_ADD_TEST(front_matter_collect_resolves_styles_and_escapes),
+    NAOS_ADD_TEST(front_matter_collect_duplicate_key_path_once),
+    NAOS_ADD_TEST(front_matter_collect_invalid_key_path_fails),
     NAOS_ADD_TEST(front_matter_push_segment_grows_and_initializes)
 )
