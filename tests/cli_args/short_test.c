@@ -64,7 +64,7 @@ static void run_free(short_run_t *run)
 static void check_ok(const short_run_t *run)
 {
     NAOS_CHECK_INT_EQ(MND_ARGS_OK, run->status);
-    NAOS_CHECK_PTR_EQ(test_tool_build, run->result.command);
+    NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&run->result));
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run->diags));
 }
 
@@ -74,7 +74,7 @@ static void check_usage_error(const short_run_t *run, const char *expected)
     const mnd_diag_t *d;
 
     NAOS_CHECK_INT_EQ(MND_ARGS_USAGE_ERROR, run->status);
-    NAOS_CHECK_PTR_EQ(test_tool_build, run->result.command);
+    NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&run->result));
     NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&run->diags));
     d = mnd_diag_list_at(&run->diags, 0);
     NAOS_CHECK_INT_EQ(MND_SEVERITY_ERROR, d->severity);
@@ -345,7 +345,7 @@ NAOS_TEST(h_in_bundle_requests_help)
 
     run_parse(&run, 3, tokens);
     NAOS_CHECK_INT_EQ(MND_ARGS_HELP, run.status);
-    NAOS_CHECK_PTR_EQ(test_tool_build, run.result.command);
+    NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&run.result));
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run.diags));
     run_free(&run);
 }
@@ -357,7 +357,7 @@ NAOS_TEST(single_h_requests_help)
 
     run_parse(&run, 4, tokens);
     NAOS_CHECK_INT_EQ(MND_ARGS_HELP, run.status);
-    NAOS_CHECK_PTR_EQ(test_tool_build, run.result.command);
+    NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&run.result));
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run.diags));
     run_free(&run);
 }

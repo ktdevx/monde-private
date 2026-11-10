@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "cli_args/args_help.h"
+#include "cli_args/args_internal.h"
 #include "foundation/buf.h"
 #include "test_decl.h"
 
@@ -71,15 +72,33 @@ static const char expected_cat_help[] =
     "Options:\n"
     "  -h, --help  Show this help\n";
 
+/*
+ * test_tool_program の経路を result に作る。command が NULL ならルートコマンドだけ、
+ * そうでなければルートコマンドと command の 2 段
+ */
+static void make_path(mnd_args_result_t *result, const mnd_args_command_t *command)
+{
+    mnd_args_result_init(result);
+    result->program = &test_tool_program;
+    NAOS_REQUIRE_TRUE(mnd_args_result_push(result, test_tool_program.root));
+    if (command != NULL)
+    {
+        NAOS_REQUIRE_TRUE(mnd_args_result_push(result, command));
+    }
+}
+
 static void check_help(const mnd_args_command_t *command, const char *expected)
 {
+    mnd_args_result_t result;
     mnd_buf_t buf = MND_BUF_INIT;
 
-    NAOS_REQUIRE_TRUE(mnd_args_format_help(&test_tool_program, command, &buf));
+    make_path(&result, command);
+    NAOS_REQUIRE_TRUE(mnd_args_format_help(&result, &buf));
     NAOS_CHECK_STR_EQ(expected, mnd_buf_cstr(&buf));
     NAOS_CHECK_MEM_EQ(expected, strlen(expected), mnd_buf_cstr(&buf), buf.len);
 
     mnd_buf_free(&buf);
+    mnd_args_result_free(&result);
 }
 
 NAOS_TEST(global_help_matches_expected_text)
@@ -115,45 +134,55 @@ NAOS_TEST(version_is_program_and_version_line)
 
 NAOS_TEST(usage_hint_without_command)
 {
+    mnd_args_result_t result;
     mnd_buf_t buf = MND_BUF_INIT;
 
-    NAOS_REQUIRE_TRUE(mnd_args_format_usage_hint(&test_tool_program, NULL, &buf));
+    make_path(&result, NULL);
+    NAOS_REQUIRE_TRUE(mnd_args_format_usage_hint(&result, &buf));
     NAOS_CHECK_STR_EQ("Run 'tool --help' for usage.\n", mnd_buf_cstr(&buf));
 
     mnd_buf_free(&buf);
+    mnd_args_result_free(&result);
 }
 
 NAOS_TEST(usage_hint_with_command)
 {
+    mnd_args_result_t result;
     mnd_buf_t buf = MND_BUF_INIT;
 
-    NAOS_REQUIRE_TRUE(mnd_args_format_usage_hint(&test_tool_program, test_tool_build, &buf));
+    make_path(&result, test_tool_build);
+    NAOS_REQUIRE_TRUE(mnd_args_format_usage_hint(&result, &buf));
     NAOS_CHECK_STR_EQ("Run 'tool build --help' for usage.\n", mnd_buf_cstr(&buf));
 
     mnd_buf_free(&buf);
+    mnd_args_result_free(&result);
 }
 
 NAOS_TEST(generating_twice_gives_identical_text)
 {
+    const mnd_args_command_t *root = test_tool_program.root;
+    mnd_args_result_t result;
     mnd_buf_t first = MND_BUF_INIT;
     mnd_buf_t second = MND_BUF_INIT;
     size_t i;
 
-    for (i = 0; i <= test_tool_program.command_count; i++)
+    for (i = 0; i <= root->command_count; i++)
     {
         const mnd_args_command_t *command = NULL;
 
-        if (i < test_tool_program.command_count)
+        if (i < root->command_count)
         {
-            command = &test_tool_program.commands[i];
+            command = &root->commands[i];
         }
+        make_path(&result, command);
         mnd_buf_clear(&first);
         mnd_buf_clear(&second);
-        NAOS_REQUIRE_TRUE(mnd_args_format_help(&test_tool_program, command, &first));
-        NAOS_REQUIRE_TRUE(mnd_args_format_help(&test_tool_program, command, &second));
+        NAOS_REQUIRE_TRUE(mnd_args_format_help(&result, &first));
+        NAOS_REQUIRE_TRUE(mnd_args_format_help(&result, &second));
         NAOS_CHECK_UINT_GT(first.len, 0);
         NAOS_CHECK_UINT_EQ(first.len, second.len);
         NAOS_CHECK_STR_EQ(mnd_buf_cstr(&first), mnd_buf_cstr(&second));
+        mnd_args_result_free(&result);
     }
 
     mnd_buf_free(&first);
@@ -162,13 +191,17 @@ NAOS_TEST(generating_twice_gives_identical_text)
 
 NAOS_TEST(output_is_appended_to_existing_content)
 {
+    mnd_args_result_t copy;
+    mnd_args_result_t cat;
     mnd_buf_t buf = MND_BUF_INIT;
     const char *text;
 
+    make_path(&copy, test_tool_copy);
+    make_path(&cat, test_tool_cat);
     NAOS_REQUIRE_TRUE(mnd_buf_append_str(&buf, "prefix:"));
     NAOS_REQUIRE_TRUE(mnd_args_format_version(&test_tool_program, &buf));
-    NAOS_REQUIRE_TRUE(mnd_args_format_usage_hint(&test_tool_program, test_tool_copy, &buf));
-    NAOS_REQUIRE_TRUE(mnd_args_format_help(&test_tool_program, test_tool_cat, &buf));
+    NAOS_REQUIRE_TRUE(mnd_args_format_usage_hint(&copy, &buf));
+    NAOS_REQUIRE_TRUE(mnd_args_format_help(&cat, &buf));
 
     text = mnd_buf_cstr(&buf);
     NAOS_REQUIRE_UINT_EQ(strlen("prefix:tool 1.2.3\nRun 'tool copy --help' for usage.\n")
@@ -180,24 +213,30 @@ NAOS_TEST(output_is_appended_to_existing_content)
                       text + strlen("prefix:tool 1.2.3\nRun 'tool copy --help' for usage.\n"));
 
     mnd_buf_free(&buf);
+    mnd_args_result_free(&copy);
+    mnd_args_result_free(&cat);
 }
 
 NAOS_TEST(output_uses_lf_only_and_no_trailing_spaces)
 {
+    const mnd_args_command_t *root = test_tool_program.root;
+    mnd_args_result_t result;
     mnd_buf_t buf = MND_BUF_INIT;
     size_t i;
     size_t k;
 
-    for (i = 0; i <= test_tool_program.command_count; i++)
+    for (i = 0; i <= root->command_count; i++)
     {
         const mnd_args_command_t *command = NULL;
 
-        if (i < test_tool_program.command_count)
+        if (i < root->command_count)
         {
-            command = &test_tool_program.commands[i];
+            command = &root->commands[i];
         }
+        make_path(&result, command);
         mnd_buf_clear(&buf);
-        NAOS_REQUIRE_TRUE(mnd_args_format_help(&test_tool_program, command, &buf));
+        NAOS_REQUIRE_TRUE(mnd_args_format_help(&result, &buf));
+        mnd_args_result_free(&result);
         NAOS_REQUIRE_UINT_GT(buf.len, 0);
         NAOS_CHECK_INT_EQ('\n', buf.data[buf.len - 1]);
         for (k = 0; k < buf.len; k++)

@@ -17,6 +17,7 @@
  *   run:  --name/-n <VALUE>（値）、--force/-f（フラグ）、--tags/-t <TAG>（リスト、既定値 "x,y"）。
  *         位置引数 INPUT（1 個ちょうど）
  *   list: オプションなし（options は NULL）。位置引数 ITEM（0 個以上、上限なし）
+ * run と list はルートコマンド root（オプションと位置引数なし）の子コマンド
  */
 typedef struct decl_fixture
 {
@@ -24,6 +25,7 @@ typedef struct decl_fixture
     mnd_args_positional_t run_positionals[2];
     mnd_args_positional_t list_positionals[1];
     mnd_args_command_t commands[2];
+    mnd_args_command_t root;
     mnd_args_program_t program;
 } decl_fixture_t;
 
@@ -74,11 +76,61 @@ static void fixture_init(decl_fixture_t *f)
     f->commands[1].min_positionals = 0;
     f->commands[1].max_positionals = MND_ARGS_UNLIMITED;
 
+    f->root.commands = f->commands;
+    f->root.command_count = 2;
+
     f->program.name = "prog";
-    f->program.description = NULL;
     f->program.version = "0.1";
-    f->program.commands = f->commands;
-    f->program.command_count = 2;
+    f->program.root = &f->root;
+}
+
+/* test_tool_program のルートコマンドと command の 2 段の経路を作る */
+static void begin_path(mnd_args_result_t *result, const mnd_args_command_t *command)
+{
+    mnd_args_result_init(result);
+    result->program = &test_tool_program;
+    NAOS_REQUIRE_TRUE(mnd_args_result_push(result, test_tool_program.root));
+    NAOS_REQUIRE_TRUE(mnd_args_result_push(result, command));
+}
+
+static size_t found_index(bool found, mnd_args_ref_t ref)
+{
+    if (!found)
+    {
+        return DECL_TEST_NOT_FOUND;
+    }
+
+    /* ルートコマンドはオプションを持たないので、見つかるのは段 1 だけ */
+    NAOS_CHECK_UINT_EQ(1, ref.level);
+    return ref.index;
+}
+
+/*
+ * 2 段の経路で有効なオプションを名前で探す。
+ * 見つかれば command の options の添字、なければ DECL_TEST_NOT_FOUND を返す
+ */
+static size_t find_long_index(const mnd_args_command_t *command, const char *name, size_t name_len)
+{
+    mnd_args_result_t result;
+    mnd_args_ref_t ref = { 0, 0 };
+    size_t index;
+
+    begin_path(&result, command);
+    index = found_index(mnd_args_find_long(&result, name, name_len, &ref), ref);
+    mnd_args_result_free(&result);
+    return index;
+}
+
+static size_t find_short_index(const mnd_args_command_t *command, char short_name)
+{
+    mnd_args_result_t result;
+    mnd_args_ref_t ref = { 0, 0 };
+    size_t index;
+
+    begin_path(&result, command);
+    index = found_index(mnd_args_find_short(&result, short_name, &ref), ref);
+    mnd_args_result_free(&result);
+    return index;
 }
 
 /* 宣言の検査が失敗し、期待するメッセージの診断がちょうど 1 件だけ追加されることを確かめる */
@@ -133,8 +185,8 @@ NAOS_TEST(program_without_commands_is_valid)
     decl_fixture_t f;
 
     fixture_init(&f);
-    f.program.commands = NULL;
-    f.program.command_count = 0;
+    f.root.commands = NULL;
+    f.root.command_count = 0;
     check_valid(&f.program);
 }
 
@@ -642,22 +694,22 @@ NAOS_TEST(names_with_percent_are_not_format_strings)
 
 NAOS_TEST(find_command_matches_exact_bytes)
 {
-    NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_find_command(&test_tool_program, "build", 5));
-    NAOS_CHECK_PTR_EQ(test_tool_copy, mnd_args_find_command(&test_tool_program, "copy", 4));
-    NAOS_CHECK_PTR_EQ(test_tool_cat, mnd_args_find_command(&test_tool_program, "cat", 3));
+    NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_find_child(test_tool_program.root, "build", 5));
+    NAOS_CHECK_PTR_EQ(test_tool_copy, mnd_args_find_child(test_tool_program.root, "copy", 4));
+    NAOS_CHECK_PTR_EQ(test_tool_cat, mnd_args_find_child(test_tool_program.root, "cat", 3));
     /* name_len で区切った先頭部分だけを照合する */
-    NAOS_CHECK_PTR_EQ(test_tool_cat, mnd_args_find_command(&test_tool_program, "catalog", 3));
+    NAOS_CHECK_PTR_EQ(test_tool_cat, mnd_args_find_child(test_tool_program.root, "catalog", 3));
 }
 
 NAOS_TEST(find_command_is_case_sensitive_and_exact)
 {
-    NAOS_CHECK_NULL(mnd_args_find_command(&test_tool_program, "Build", 5));
-    NAOS_CHECK_NULL(mnd_args_find_command(&test_tool_program, "BUILD", 5));
-    NAOS_CHECK_NULL(mnd_args_find_command(&test_tool_program, "bui", 3));
-    NAOS_CHECK_NULL(mnd_args_find_command(&test_tool_program, "builds", 6));
-    NAOS_CHECK_NULL(mnd_args_find_command(&test_tool_program, "bulid", 5));
-    NAOS_CHECK_NULL(mnd_args_find_command(&test_tool_program, "help", 4));
-    NAOS_CHECK_NULL(mnd_args_find_command(&test_tool_program, "", 0));
+    NAOS_CHECK_NULL(mnd_args_find_child(test_tool_program.root, "Build", 5));
+    NAOS_CHECK_NULL(mnd_args_find_child(test_tool_program.root, "BUILD", 5));
+    NAOS_CHECK_NULL(mnd_args_find_child(test_tool_program.root, "bui", 3));
+    NAOS_CHECK_NULL(mnd_args_find_child(test_tool_program.root, "builds", 6));
+    NAOS_CHECK_NULL(mnd_args_find_child(test_tool_program.root, "bulid", 5));
+    NAOS_CHECK_NULL(mnd_args_find_child(test_tool_program.root, "help", 4));
+    NAOS_CHECK_NULL(mnd_args_find_child(test_tool_program.root, "", 0));
 }
 
 NAOS_TEST(find_command_in_program_without_commands)
@@ -665,52 +717,52 @@ NAOS_TEST(find_command_in_program_without_commands)
     decl_fixture_t f;
 
     fixture_init(&f);
-    f.program.commands = NULL;
-    f.program.command_count = 0;
-    NAOS_CHECK_NULL(mnd_args_find_command(&f.program, "run", 3));
+    f.root.commands = NULL;
+    f.root.command_count = 0;
+    NAOS_CHECK_NULL(mnd_args_find_child(f.program.root, "run", 3));
 }
 
 NAOS_TEST(find_long_matches_exact_bytes)
 {
-    NAOS_CHECK_UINT_EQ(0, mnd_args_find_long(test_tool_build, "output", 6));
-    NAOS_CHECK_UINT_EQ(1, mnd_args_find_long(test_tool_build, "keys", 4));
-    NAOS_CHECK_UINT_EQ(2, mnd_args_find_long(test_tool_build, "level", 5));
-    NAOS_CHECK_UINT_EQ(3, mnd_args_find_long(test_tool_build, "verbose", 7));
-    NAOS_CHECK_UINT_EQ(4, mnd_args_find_long(test_tool_build, "quiet", 5));
+    NAOS_CHECK_UINT_EQ(0, find_long_index(test_tool_build, "output", 6));
+    NAOS_CHECK_UINT_EQ(1, find_long_index(test_tool_build, "keys", 4));
+    NAOS_CHECK_UINT_EQ(2, find_long_index(test_tool_build, "level", 5));
+    NAOS_CHECK_UINT_EQ(3, find_long_index(test_tool_build, "verbose", 7));
+    NAOS_CHECK_UINT_EQ(4, find_long_index(test_tool_build, "quiet", 5));
     /* "--output=x" の '=' より前の部分 */
-    NAOS_CHECK_UINT_EQ(0, mnd_args_find_long(test_tool_build, "output=x", 6));
+    NAOS_CHECK_UINT_EQ(0, find_long_index(test_tool_build, "output=x", 6));
 }
 
 NAOS_TEST(find_long_is_case_sensitive_and_rejects_prefix)
 {
-    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, mnd_args_find_long(test_tool_build, "out", 3));
-    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, mnd_args_find_long(test_tool_build, "Output", 6));
-    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, mnd_args_find_long(test_tool_build, "outputs", 7));
-    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, mnd_args_find_long(test_tool_build, "help", 4));
-    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, mnd_args_find_long(test_tool_build, "", 0));
+    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, find_long_index(test_tool_build, "out", 3));
+    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, find_long_index(test_tool_build, "Output", 6));
+    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, find_long_index(test_tool_build, "outputs", 7));
+    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, find_long_index(test_tool_build, "help", 4));
+    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, find_long_index(test_tool_build, "", 0));
 }
 
 NAOS_TEST(find_long_in_command_without_options)
 {
-    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, mnd_args_find_long(test_tool_copy, "output", 6));
+    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, find_long_index(test_tool_copy, "output", 6));
 }
 
 NAOS_TEST(find_short_matches_exact_byte)
 {
-    NAOS_CHECK_UINT_EQ(0, mnd_args_find_short(test_tool_build, 'o'));
-    NAOS_CHECK_UINT_EQ(1, mnd_args_find_short(test_tool_build, 'k'));
-    NAOS_CHECK_UINT_EQ(3, mnd_args_find_short(test_tool_build, 'v'));
-    NAOS_CHECK_UINT_EQ(4, mnd_args_find_short(test_tool_build, 'q'));
+    NAOS_CHECK_UINT_EQ(0, find_short_index(test_tool_build, 'o'));
+    NAOS_CHECK_UINT_EQ(1, find_short_index(test_tool_build, 'k'));
+    NAOS_CHECK_UINT_EQ(3, find_short_index(test_tool_build, 'v'));
+    NAOS_CHECK_UINT_EQ(4, find_short_index(test_tool_build, 'q'));
 }
 
 NAOS_TEST(find_short_is_case_sensitive)
 {
-    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, mnd_args_find_short(test_tool_build, 'O'));
-    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, mnd_args_find_short(test_tool_build, 'x'));
-    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, mnd_args_find_short(test_tool_build, 'h'));
+    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, find_short_index(test_tool_build, 'O'));
+    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, find_short_index(test_tool_build, 'x'));
+    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, find_short_index(test_tool_build, 'h'));
     /* 短い名前を持たないオプション（--level）に '\0' で一致しない */
-    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, mnd_args_find_short(test_tool_build, '\0'));
-    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, mnd_args_find_short(test_tool_cat, 'o'));
+    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, find_short_index(test_tool_build, '\0'));
+    NAOS_CHECK_UINT_EQ(DECL_TEST_NOT_FOUND, find_short_index(test_tool_cat, 'o'));
 }
 
 /* 値の表示名と位置引数の名前 */

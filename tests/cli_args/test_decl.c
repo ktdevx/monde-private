@@ -4,11 +4,14 @@
 #include <stddef.h>
 
 static const mnd_args_option_t test_tool_build_options[] = {
-    { "output", 'o', MND_ARGS_VALUE, "FILE", "Write the result to FILE", true, NULL },
-    { "keys", 'k', MND_ARGS_LIST, "KEY", "Keys to include", false, "a,b" },
-    { "level", '\0', MND_ARGS_VALUE, "N", "Processing level", false, "1" },
-    { "verbose", 'v', MND_ARGS_FLAG, NULL, "Print more details", false, NULL },
-    { "quiet", 'q', MND_ARGS_FLAG, NULL, "Print only errors", false, NULL }
+    { .long_name = "output", .short_name = 'o', .kind = MND_ARGS_VALUE, .value_name = "FILE",
+      .help = "Write the result to FILE", .required = true },
+    { .long_name = "keys", .short_name = 'k', .kind = MND_ARGS_LIST, .value_name = "KEY",
+      .help = "Keys to include", .default_value = "a,b" },
+    { .long_name = "level", .kind = MND_ARGS_VALUE, .value_name = "N", .help = "Processing level",
+      .default_value = "1" },
+    { .long_name = "verbose", .short_name = 'v', .kind = MND_ARGS_FLAG, .help = "Print more details" },
+    { .long_name = "quiet", .short_name = 'q', .kind = MND_ARGS_FLAG, .help = "Print only errors" }
 };
 
 static const mnd_args_positional_t test_tool_build_positionals[] = {
@@ -28,46 +31,44 @@ static const mnd_args_positional_t test_tool_cat_positionals[] = {
 
 static const mnd_args_command_t test_tool_commands[] = {
     {
-        "build",
-        "Build an output from a source",
-        "Build an output file from SOURCE.",
-        test_tool_build_options,
-        TEST_TOOL_COUNT_OF(test_tool_build_options),
-        test_tool_build_positionals,
-        TEST_TOOL_COUNT_OF(test_tool_build_positionals),
-        1,
-        1
+        .name = "build",
+        .summary = "Build an output from a source",
+        .description = "Build an output file from SOURCE.",
+        .options = test_tool_build_options,
+        .option_count = TEST_TOOL_COUNT_OF(test_tool_build_options),
+        .positionals = test_tool_build_positionals,
+        .positional_count = TEST_TOOL_COUNT_OF(test_tool_build_positionals),
+        .min_positionals = 1,
+        .max_positionals = 1
     },
     {
-        "copy",
-        "Copy a file",
-        NULL,
-        NULL,
-        0,
-        test_tool_copy_positionals,
-        TEST_TOOL_COUNT_OF(test_tool_copy_positionals),
-        2,
-        2
+        .name = "copy",
+        .summary = "Copy a file",
+        .positionals = test_tool_copy_positionals,
+        .positional_count = TEST_TOOL_COUNT_OF(test_tool_copy_positionals),
+        .min_positionals = 2,
+        .max_positionals = 2
     },
     {
-        "cat",
-        "Print files",
-        NULL,
-        NULL,
-        0,
-        test_tool_cat_positionals,
-        TEST_TOOL_COUNT_OF(test_tool_cat_positionals),
-        0,
-        MND_ARGS_UNLIMITED
+        .name = "cat",
+        .summary = "Print files",
+        .positionals = test_tool_cat_positionals,
+        .positional_count = TEST_TOOL_COUNT_OF(test_tool_cat_positionals),
+        .min_positionals = 0,
+        .max_positionals = MND_ARGS_UNLIMITED
     }
 };
 
+static const mnd_args_command_t test_tool_root = {
+    .description = "A sample tool for testing.",
+    .commands = test_tool_commands,
+    .command_count = TEST_TOOL_COUNT_OF(test_tool_commands)
+};
+
 const mnd_args_program_t test_tool_program = {
-    "tool",
-    "A sample tool for testing.",
-    "1.2.3",
-    test_tool_commands,
-    TEST_TOOL_COUNT_OF(test_tool_commands)
+    .name = "tool",
+    .version = "1.2.3",
+    .root = &test_tool_root
 };
 
 const mnd_args_command_t *const test_tool_build = &test_tool_commands[0];

@@ -64,7 +64,7 @@ static void run_free(positional_run_t *run)
 static void check_ok(const positional_run_t *run, const mnd_args_command_t *command)
 {
     NAOS_CHECK_INT_EQ(MND_ARGS_OK, run->status);
-    NAOS_CHECK_PTR_EQ(command, run->result.command);
+    NAOS_CHECK_PTR_EQ(command, mnd_args_command(&run->result));
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run->diags));
 }
 
@@ -75,7 +75,7 @@ static void check_usage_error(const positional_run_t *run, const mnd_args_comman
     const mnd_diag_t *d;
 
     NAOS_CHECK_INT_EQ(MND_ARGS_USAGE_ERROR, run->status);
-    NAOS_CHECK_PTR_EQ(command, run->result.command);
+    NAOS_CHECK_PTR_EQ(command, mnd_args_command(&run->result));
     NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&run->diags));
     d = mnd_diag_list_at(&run->diags, 0);
     NAOS_CHECK_INT_EQ(MND_SEVERITY_ERROR, d->severity);

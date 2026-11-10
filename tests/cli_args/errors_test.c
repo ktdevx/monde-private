@@ -78,7 +78,7 @@ static void check_build_usage_error(const errors_run_t *run, const char *expecte
     const mnd_diag_t *d;
 
     NAOS_CHECK_INT_EQ(MND_ARGS_USAGE_ERROR, run->status);
-    NAOS_CHECK_PTR_EQ(test_tool_build, run->result.command);
+    NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&run->result));
     NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&run->diags));
     d = mnd_diag_list_at(&run->diags, 0);
     NAOS_CHECK_INT_EQ(MND_SEVERITY_ERROR, d->severity);
@@ -91,7 +91,7 @@ static void check_build_usage_error(const errors_run_t *run, const char *expecte
 static void check_build_help(const errors_run_t *run)
 {
     NAOS_CHECK_INT_EQ(MND_ARGS_HELP, run->status);
-    NAOS_CHECK_PTR_EQ(test_tool_build, run->result.command);
+    NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&run->result));
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run->diags));
 }
 
@@ -229,7 +229,7 @@ NAOS_TEST(help_wins_over_missing_positional)
 
     run_parse(&run, 3, tokens);
     NAOS_CHECK_INT_EQ(MND_ARGS_HELP, run.status);
-    NAOS_CHECK_PTR_EQ(test_tool_copy, run.result.command);
+    NAOS_CHECK_PTR_EQ(test_tool_copy, mnd_args_command(&run.result));
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run.diags));
     run_free(&run);
 }
@@ -241,7 +241,7 @@ NAOS_TEST(help_wins_over_extra_positional)
 
     run_parse(&run, 6, tokens);
     NAOS_CHECK_INT_EQ(MND_ARGS_HELP, run.status);
-    NAOS_CHECK_PTR_EQ(test_tool_copy, run.result.command);
+    NAOS_CHECK_PTR_EQ(test_tool_copy, mnd_args_command(&run.result));
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run.diags));
     run_free(&run);
 }
@@ -317,7 +317,7 @@ NAOS_TEST(dash_h_consumed_as_value_is_not_help)
 
     run_parse(&run, 5, tokens);
     NAOS_CHECK_INT_EQ(MND_ARGS_OK, run.status);
-    NAOS_CHECK_PTR_EQ(test_tool_build, run.result.command);
+    NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&run.result));
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run.diags));
     NAOS_CHECK_PTR_EQ(run.argv[3], mnd_args_value(&run.result, "output"));
     NAOS_CHECK_STR_EQ("-h", mnd_args_value(&run.result, "output"));
@@ -330,11 +330,18 @@ NAOS_TEST(dash_h_consumed_as_value_is_not_help)
 
 /* 宣言の誤りを含むプログラム（"help" という名前のサブコマンド） */
 static const mnd_args_command_t errors_bad_commands[] = {
-    { "help", "Reserved name", NULL, NULL, 0, NULL, 0, 0, 0 }
+    { .name = "help", .summary = "Reserved name" }
+};
+
+static const mnd_args_command_t errors_bad_root = {
+    .commands = errors_bad_commands,
+    .command_count = 1
 };
 
 static const mnd_args_program_t errors_bad_program = {
-    "bad", NULL, "0.0.1", errors_bad_commands, 1
+    .name = "bad",
+    .version = "0.0.1",
+    .root = &errors_bad_root
 };
 
 NAOS_TEST(each_status_is_distinct)
@@ -397,7 +404,7 @@ NAOS_TEST(each_status_is_distinct)
 
 /*
  * monde-cli の典型的な使い方: 解析が使い方のエラーを返したら、結果に残った
- * サブコマンドで使い方の案内を生成する。サブコマンドがなければ全体のヘルプを出す（7.3、11.1〜11.3）
+ * 経路で使い方の案内を生成する。経路がルートコマンドだけなら全体のヘルプを出す（7.3、11.1〜11.3）
  */
 NAOS_TEST(usage_error_then_hint_for_selected_command)
 {
@@ -409,16 +416,17 @@ NAOS_TEST(usage_error_then_hint_for_selected_command)
 
     run_parse(&run, 4, usage_error);
     check_build_usage_error(&run, "tool build: unknown option '--bad'");
-    NAOS_REQUIRE_TRUE(mnd_args_format_usage_hint(&test_tool_program, run.result.command, &buf));
+    NAOS_REQUIRE_TRUE(mnd_args_format_usage_hint(&run.result, &buf));
     NAOS_CHECK_STR_EQ("Run 'tool build --help' for usage.\n", mnd_buf_cstr(&buf));
     mnd_buf_free(&buf);
     run_free(&run);
 
     run_parse(&run, 1, no_command);
     NAOS_CHECK_INT_EQ(MND_ARGS_NO_COMMAND, run.status);
-    NAOS_CHECK_NULL(run.result.command);
+    NAOS_CHECK_UINT_EQ(1, mnd_args_depth(&run.result));
+    NAOS_CHECK_PTR_EQ(test_tool_program.root, mnd_args_command(&run.result));
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run.diags));
-    NAOS_REQUIRE_TRUE(mnd_args_format_help(&test_tool_program, run.result.command, &buf));
+    NAOS_REQUIRE_TRUE(mnd_args_format_help(&run.result, &buf));
     NAOS_CHECK_INT_EQ(0, strncmp(mnd_buf_cstr(&buf), global_help_head, strlen(global_help_head)));
     mnd_buf_free(&buf);
     run_free(&run);

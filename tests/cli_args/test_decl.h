@@ -4,7 +4,8 @@
 #include "cli_args/args.h"
 
 /*
- * テスト専用の架空のプログラム "tool"（バージョン 1.2.3）の宣言。
+ * テスト専用の架空のプログラム "tool"（バージョン 1.2.3）の宣言。ルートコマンドは
+ * オプションと位置引数を持たず、次の 3 つの末端コマンドを子コマンドとして持つ（1 段）。
  *   build: --output/-o <FILE>（値、必須）、--keys/-k <KEY>（リスト、既定値 "a,b"）、
  *          --level <N>（値、既定値 "1"）、--verbose/-v（フラグ）、--quiet/-q（フラグ）。
  *          位置引数 SOURCE（1 個ちょうど）
@@ -13,7 +14,7 @@
  */
 extern const mnd_args_program_t test_tool_program;
 
-/* test_tool_program の各サブコマンド（宣言の順） */
+/* test_tool_program のルートコマンドの各子コマンド（宣言の順） */
 extern const mnd_args_command_t *const test_tool_build;
 extern const mnd_args_command_t *const test_tool_copy;
 extern const mnd_args_command_t *const test_tool_cat;

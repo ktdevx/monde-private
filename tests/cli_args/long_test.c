@@ -64,7 +64,7 @@ static void run_free(long_run_t *run)
 static void check_ok(const long_run_t *run)
 {
     NAOS_CHECK_INT_EQ(MND_ARGS_OK, run->status);
-    NAOS_CHECK_PTR_EQ(test_tool_build, run->result.command);
+    NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&run->result));
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run->diags));
 }
 
@@ -74,7 +74,7 @@ static void check_usage_error(const long_run_t *run, const char *expected)
     const mnd_diag_t *d;
 
     NAOS_CHECK_INT_EQ(MND_ARGS_USAGE_ERROR, run->status);
-    NAOS_CHECK_PTR_EQ(test_tool_build, run->result.command);
+    NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&run->result));
     NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&run->diags));
     d = mnd_diag_list_at(&run->diags, 0);
     NAOS_CHECK_INT_EQ(MND_SEVERITY_ERROR, d->severity);
@@ -297,7 +297,7 @@ NAOS_TEST(option_of_other_command_is_unknown)
 
     run_parse(&run, 5, tokens);
     NAOS_CHECK_INT_EQ(MND_ARGS_USAGE_ERROR, run.status);
-    NAOS_CHECK_PTR_EQ(test_tool_cat, run.result.command);
+    NAOS_CHECK_PTR_EQ(test_tool_cat, mnd_args_command(&run.result));
     NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&run.diags));
     NAOS_CHECK_STR_EQ("tool cat: unknown option '--output'",
                       mnd_diag_list_at(&run.diags, 0)->message);
@@ -313,7 +313,7 @@ NAOS_TEST(help_after_command_requests_command_help)
 
     run_parse(&run, 3, tokens);
     NAOS_CHECK_INT_EQ(MND_ARGS_HELP, run.status);
-    NAOS_CHECK_PTR_EQ(test_tool_build, run.result.command);
+    NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&run.result));
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run.diags));
     run_free(&run);
 }
@@ -325,7 +325,7 @@ NAOS_TEST(help_after_options_requests_command_help)
 
     run_parse(&run, 6, tokens);
     NAOS_CHECK_INT_EQ(MND_ARGS_HELP, run.status);
-    NAOS_CHECK_PTR_EQ(test_tool_build, run.result.command);
+    NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&run.result));
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run.diags));
     run_free(&run);
 }

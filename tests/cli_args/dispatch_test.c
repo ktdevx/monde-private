@@ -83,12 +83,38 @@ static void check_usage_error(const dispatch_run_t *run, const char *expected)
     NAOS_CHECK_STR_EQ(expected, d->message);
 }
 
-/* 診断なしで status になり、command が選択されていることを確かめる */
+/*
+ * 経路を確かめる。command が NULL ならルートコマンドだけの 1 段、
+ * そうでなければルートコマンドと command の 2 段（2.8）
+ */
+static void check_path(const mnd_args_result_t *result, const mnd_args_command_t *command)
+{
+    if (command == NULL)
+    {
+        NAOS_CHECK_UINT_EQ(1, mnd_args_depth(result));
+        NAOS_CHECK_PTR_EQ(test_tool_program.root, mnd_args_command(result));
+    }
+    else
+    {
+        NAOS_CHECK_UINT_EQ(2, mnd_args_depth(result));
+        NAOS_CHECK_PTR_EQ(command, mnd_args_command(result));
+    }
+    NAOS_CHECK_PTR_EQ(test_tool_program.root, mnd_args_command_at(result, 0));
+}
+
+/* 選択中のコマンド（最後の段）の値の配列 */
+static const mnd_args_value_t *selected_values(const mnd_args_result_t *result)
+{
+    NAOS_REQUIRE_UINT_GT(result->level_count, 0);
+    return result->levels[result->level_count - 1].values;
+}
+
+/* 診断なしで status になり、経路が check_path のとおりであることを確かめる */
 static void check_status(const dispatch_run_t *run, mnd_args_status_t status,
                          const mnd_args_command_t *command)
 {
     NAOS_CHECK_INT_EQ(status, run->status);
-    NAOS_CHECK_PTR_EQ(command, run->result.command);
+    check_path(&run->result, command);
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run->diags));
 }
 
@@ -140,7 +166,7 @@ NAOS_TEST(misspelled_command_is_unknown)
     run_init(&run);
     run_parse(&run, 3, tokens);
     check_usage_error(&run, "tool: unknown command 'bulid'");
-    NAOS_CHECK_NULL(run.result.command);
+    check_path(&run.result, NULL);
     run_free(&run);
 }
 
@@ -152,7 +178,7 @@ NAOS_TEST(command_name_is_case_sensitive)
     run_init(&run);
     run_parse(&run, 2, tokens);
     check_usage_error(&run, "tool: unknown command 'Build'");
-    NAOS_CHECK_NULL(run.result.command);
+    check_path(&run.result, NULL);
     run_free(&run);
 }
 
@@ -175,7 +201,7 @@ NAOS_TEST(single_dash_is_unknown_command)
     run_init(&run);
     run_parse(&run, 2, tokens);
     check_usage_error(&run, "tool: unknown command '-'");
-    NAOS_CHECK_NULL(run.result.command);
+    check_path(&run.result, NULL);
     run_free(&run);
 }
 
@@ -189,7 +215,7 @@ NAOS_TEST(option_before_command_is_unknown)
     run_init(&run);
     run_parse(&run, 3, tokens);
     check_usage_error(&run, "tool: unknown option '--verbose'");
-    NAOS_CHECK_NULL(run.result.command);
+    check_path(&run.result, NULL);
     run_free(&run);
 }
 
@@ -236,7 +262,7 @@ NAOS_TEST(argc_zero_is_no_command)
 
     NAOS_CHECK_INT_EQ(MND_ARGS_NO_COMMAND, mnd_args_parse(&test_tool_program, 0, argv, &result, &diags));
     NAOS_CHECK_INT_EQ(MND_ARGS_NO_COMMAND, result.status);
-    NAOS_CHECK_NULL(result.command);
+    check_path(&result, NULL);
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
     mnd_args_result_free(&result);
     mnd_diag_list_free(&diags);
@@ -285,7 +311,7 @@ NAOS_TEST(help_word_with_command_is_command_help)
     run_init(&run);
     run_parse(&run, 3, tokens);
     check_status(&run, MND_ARGS_HELP, test_tool_copy);
-    NAOS_CHECK_NULL(run.result.values);
+    NAOS_CHECK_NULL(selected_values(&run.result));
     NAOS_CHECK_UINT_EQ(0, mnd_args_positional_count(&run.result));
     run_free(&run);
 }
@@ -298,7 +324,7 @@ NAOS_TEST(help_word_with_unknown_command)
     run_init(&run);
     run_parse(&run, 3, tokens);
     check_usage_error(&run, "tool: unknown command 'nope'");
-    NAOS_CHECK_NULL(run.result.command);
+    check_path(&run.result, NULL);
     run_free(&run);
 }
 
@@ -310,7 +336,7 @@ NAOS_TEST(help_word_with_two_arguments)
     run_init(&run);
     run_parse(&run, 4, tokens);
     check_usage_error(&run, "tool: too many arguments for 'help'");
-    NAOS_CHECK_NULL(run.result.command);
+    check_path(&run.result, NULL);
     run_free(&run);
 }
 
@@ -339,11 +365,18 @@ NAOS_TEST(version_ignores_later_tokens)
 /* 宣言の誤り（1.6）: 引数列を読まずに返す */
 
 static const mnd_args_command_t dispatch_bad_commands[] = {
-    {"help", "Show help", NULL, NULL, 0, NULL, 0, 0, 0}
+    { .name = "help", .summary = "Show help" }
+};
+
+static const mnd_args_command_t dispatch_bad_root = {
+    .commands = dispatch_bad_commands,
+    .command_count = 1
 };
 
 static const mnd_args_program_t dispatch_bad_program = {
-    "bad", NULL, "0.1", dispatch_bad_commands, 1
+    .name = "bad",
+    .version = "0.1",
+    .root = &dispatch_bad_root
 };
 
 NAOS_TEST(invalid_declaration_is_decl_error_without_reading_argv)
@@ -357,7 +390,8 @@ NAOS_TEST(invalid_declaration_is_decl_error_without_reading_argv)
     NAOS_CHECK_INT_EQ(MND_ARGS_DECL_ERROR,
                       mnd_args_parse(&dispatch_bad_program, 3, argv, &result, &diags));
     NAOS_CHECK_INT_EQ(MND_ARGS_DECL_ERROR, result.status);
-    NAOS_CHECK_NULL(result.command);
+    NAOS_CHECK_NULL(mnd_args_command(&result));
+    NAOS_CHECK_UINT_EQ(0, mnd_args_depth(&result));
     NAOS_REQUIRE_UINT_GT(mnd_diag_list_count(&diags), 0);
     for (i = 0; i < mnd_diag_list_count(&diags); i++)
     {
@@ -397,13 +431,13 @@ NAOS_TEST(result_is_reset_between_parses)
 
     /* build は値の領域を確保する */
     run_parse(&run, 3, first);
-    NAOS_CHECK_PTR_EQ(test_tool_build, run.result.command);
-    NAOS_CHECK_NOT_NULL(run.result.values);
+    check_path(&run.result, test_tool_build);
+    NAOS_CHECK_NOT_NULL(selected_values(&run.result));
     mnd_diag_list_free(&run.diags);
 
     run_parse(&run, 5, second);
     check_status(&run, MND_ARGS_OK, test_tool_cat);
-    NAOS_CHECK_NULL(run.result.values);
+    NAOS_CHECK_NULL(selected_values(&run.result));
     NAOS_CHECK_UINT_EQ(3, mnd_args_positional_count(&run.result));
 
     /* 前回の位置引数は残らない */
@@ -414,7 +448,7 @@ NAOS_TEST(result_is_reset_between_parses)
 
     run_parse(&run, 2, fourth);
     check_status(&run, MND_ARGS_HELP, NULL);
-    NAOS_CHECK_NULL(run.result.values);
+    NAOS_CHECK_NULL(selected_values(&run.result));
     NAOS_CHECK_UINT_EQ(0, mnd_args_positional_count(&run.result));
 
     run_free(&run);
