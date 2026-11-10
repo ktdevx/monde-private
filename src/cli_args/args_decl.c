@@ -1,6 +1,6 @@
 #include "cli_args/args_internal.h"
 
-/* DeclCheck: 宣言の妥当性の検査と、サブコマンド・オプションの検索 */
+/* DeclCheck: 宣言の妥当性の検査と、子コマンド・有効なオプションの検索と列挙 */
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -71,10 +71,11 @@ static bool has_empty_item(const char *list)
     return item_len == 0;
 }
 
-static void check_command_name(const mnd_args_program_t *program, size_t index,
-                                    mnd_diag_list_t *diags, bool *ok)
+/* parent の index 番目の子コマンド名を検査する。誤りの文面はこの時点では改訂前のまま */
+static void check_command_name(const mnd_args_command_t *parent, size_t index,
+                               mnd_diag_list_t *diags, bool *ok)
 {
-    const char *name = program->commands[index].name;
+    const char *name = parent->commands[index].name;
     size_t j;
 
     if (is_empty(name) || (name[0] == '-'))
@@ -95,7 +96,7 @@ static void check_command_name(const mnd_args_program_t *program, size_t index,
 
     for (j = 0; j < index; ++j)
     {
-        if (names_equal(program->commands[j].name, name))
+        if (names_equal(parent->commands[j].name, name))
         {
             mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
                          DECL_PREFIX "duplicate command '%s'", name);
@@ -105,11 +106,11 @@ static void check_command_name(const mnd_args_program_t *program, size_t index,
     }
 }
 
-static void check_option(const mnd_args_command_t *command, size_t index,
+/* cmd はメッセージ上のコマンドの名前（ルートコマンドではプログラム名） */
+static void check_option(const mnd_args_command_t *command, const char *cmd, size_t index,
                          mnd_diag_list_t *diags, bool *ok)
 {
     const mnd_args_option_t *option = &command->options[index];
-    const char *cmd = shown(command->name);
     const char *name = option->long_name;
     size_t j;
 
@@ -198,9 +199,9 @@ static void check_option(const mnd_args_command_t *command, size_t index,
     }
 }
 
-static void check_positionals(const mnd_args_command_t *command, mnd_diag_list_t *diags, bool *ok)
+static void check_positionals(const mnd_args_command_t *command, const char *cmd,
+                              mnd_diag_list_t *diags, bool *ok)
 {
-    const char *cmd = shown(command->name);
     bool names_match;
 
     if (command->min_positionals > command->max_positionals)
@@ -227,11 +228,25 @@ static void check_positionals(const mnd_args_command_t *command, mnd_diag_list_t
     }
 }
 
+/* 1 つのコマンドのオプションと位置引数を検査する */
+static void check_command(const mnd_args_command_t *command, const char *cmd,
+                          mnd_diag_list_t *diags, bool *ok)
+{
+    size_t k;
+
+    for (k = 0; k < command->option_count; ++k)
+    {
+        check_option(command, cmd, k, diags, ok);
+    }
+
+    check_positionals(command, cmd, diags, ok);
+}
+
 bool mnd_args_decl_check(const mnd_args_program_t *program, mnd_diag_list_t *diags)
 {
+    const mnd_args_command_t *root = program->root;
     bool ok = true;
     size_t i;
-    size_t k;
 
     if (is_empty(program->name) || is_empty(program->version))
     {
@@ -240,72 +255,186 @@ bool mnd_args_decl_check(const mnd_args_program_t *program, mnd_diag_list_t *dia
         ok = false;
     }
 
-    for (i = 0; i < program->command_count; ++i)
+    if (root == NULL)
     {
-        const mnd_args_command_t *command = &program->commands[i];
+        mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0, DECL_PREFIX "root command is required");
+        return false;
+    }
 
-        check_command_name(program, i, diags, &ok);
+    /* ルートコマンド自身にも同じ規則を適用する。子を持たないルートコマンドも妥当な宣言である（1.4） */
+    check_command(root, shown(program->name), diags, &ok);
 
-        for (k = 0; k < command->option_count; ++k)
-        {
-            check_option(command, k, diags, &ok);
-        }
+    for (i = 0; i < root->command_count; ++i)
+    {
+        const mnd_args_command_t *command = &root->commands[i];
 
-        check_positionals(command, diags, &ok);
+        check_command_name(root, i, diags, &ok);
+        check_command(command, shown(command->name), diags, &ok);
     }
 
     return ok;
 }
 
-const mnd_args_command_t *mnd_args_find_command(const mnd_args_program_t *program,
-                                                const char *name, size_t name_len)
+const mnd_args_command_t *mnd_args_find_child(const mnd_args_command_t *parent,
+                                              const char *name, size_t name_len)
 {
     size_t i;
 
-    for (i = 0; i < program->command_count; ++i)
+    for (i = 0; i < parent->command_count; ++i)
     {
-        if (name_matches(program->commands[i].name, name, name_len))
+        if (name_matches(parent->commands[i].name, name, name_len))
         {
-            return &program->commands[i];
+            return &parent->commands[i];
         }
     }
 
     return NULL;
 }
 
-size_t mnd_args_find_long(const mnd_args_command_t *command, const char *name, size_t name_len)
-{
-    size_t i;
+/*
+ * 有効なオプションのうち、順序で skip 個を飛ばした次の 1 つを探す。match が NULL でなければ、
+ * match が true を返す最初の 1 つを探す（skip は 0 で呼ぶ）。
+ * 順序は、最後の段のすべてのオプション、続いて親から祖先へ向かって引き継ぐオプション（12.1、12.2）
+ */
+typedef bool (*mnd_args_option_match_t)(const mnd_args_option_t *option, const void *key);
 
-    for (i = 0; i < command->option_count; ++i)
+static bool find_effective(const mnd_args_result_t *result, size_t skip,
+                           mnd_args_option_match_t match, const void *key, mnd_args_ref_t *ref)
+{
+    size_t level;
+
+    if (result->level_count == 0)
     {
-        if (name_matches(command->options[i].long_name, name, name_len))
+        return false;
+    }
+
+    level = result->level_count;
+    while (level > 0)
+    {
+        const mnd_args_command_t *command;
+        bool last;
+        size_t i;
+
+        --level;
+        command = result->levels[level].command;
+        last = (level + 1 == result->level_count);
+
+        for (i = 0; i < command->option_count; ++i)
         {
-            return i;
+            const mnd_args_option_t *option = &command->options[i];
+
+            if (!last && !option->inherited)
+            {
+                continue;
+            }
+
+            if ((match != NULL) && !match(option, key))
+            {
+                continue;
+            }
+
+            if (skip > 0)
+            {
+                --skip;
+                continue;
+            }
+
+            ref->level = level;
+            ref->index = i;
+            return true;
         }
     }
 
-    return (size_t)-1;
+    return false;
 }
 
-size_t mnd_args_find_short(const mnd_args_command_t *command, char short_name)
+/* 長い名前の照合に使う、name_len バイトの名前 */
+typedef struct mnd_args_name_key
 {
-    size_t i;
+    const char *name;
+    size_t len;
+} mnd_args_name_key_t;
 
+static bool match_long(const mnd_args_option_t *option, const void *key)
+{
+    const mnd_args_name_key_t *name = (const mnd_args_name_key_t *)key;
+
+    return name_matches(option->long_name, name->name, name->len);
+}
+
+static bool match_short(const mnd_args_option_t *option, const void *key)
+{
+    return option->short_name == *(const char *)key;
+}
+
+bool mnd_args_find_long(const mnd_args_result_t *result, const char *name, size_t name_len,
+                        mnd_args_ref_t *ref)
+{
+    mnd_args_name_key_t key;
+
+    key.name = name;
+    key.len = name_len;
+
+    return find_effective(result, 0, match_long, &key, ref);
+}
+
+bool mnd_args_find_short(const mnd_args_result_t *result, char short_name, mnd_args_ref_t *ref)
+{
     if (short_name == '\0')
     {
-        return (size_t)-1;
+        return false;
     }
 
-    for (i = 0; i < command->option_count; ++i)
+    return find_effective(result, 0, match_short, &short_name, ref);
+}
+
+size_t mnd_args_effective_count(const mnd_args_result_t *result)
+{
+    size_t count = 0;
+    size_t level;
+    size_t i;
+
+    if (result->level_count == 0)
     {
-        if (command->options[i].short_name == short_name)
+        return 0;
+    }
+
+    for (level = 0; level < result->level_count; ++level)
+    {
+        const mnd_args_command_t *command = result->levels[level].command;
+
+        if (level + 1 == result->level_count)
         {
-            return i;
+            count += command->option_count;
+            continue;
+        }
+
+        for (i = 0; i < command->option_count; ++i)
+        {
+            if (command->options[i].inherited)
+            {
+                ++count;
+            }
         }
     }
 
-    return (size_t)-1;
+    return count;
+}
+
+mnd_args_ref_t mnd_args_effective_at(const mnd_args_result_t *result, size_t i)
+{
+    mnd_args_ref_t ref;
+
+    ref.level = 0;
+    ref.index = 0;
+    (void)find_effective(result, i, NULL, NULL, &ref);
+
+    return ref;
+}
+
+const mnd_args_option_t *mnd_args_option_at(const mnd_args_result_t *result, mnd_args_ref_t ref)
+{
+    return &result->levels[ref.level].command->options[ref.index];
 }
 
 const char *mnd_args_value_name(const mnd_args_option_t *option)
