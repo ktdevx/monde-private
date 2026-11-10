@@ -126,3 +126,194 @@
 - [CommandLineToArgvW (Microsoft Learn)](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-commandlinetoargvw) — Windows での引数の分割
 - [WideCharToMultiByte (Microsoft Learn)](https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-widechartomultibyte) — `WC_ERR_INVALID_CHARS`
 - [Parsing C command-line arguments (Microsoft Learn)](https://learn.microsoft.com/en-us/cpp/c-language/parsing-c-command-line-arguments) — CRT の分割規則
+
+---
+
+# ギャップ分析: サブコマンドのない形式への対応（2026-11-10）
+
+改訂後の `requirements.md`（Requirement 1〜13）と、既存の実装（`src/cli_args/`、`src/cli/`、`tests/cli_args/`、`tests/cli/`、`tests/docs/`）との差分を調べた。要件は未承認の状態で分析している。
+
+## Summary
+
+- 既存の実装は「プログラム → サブコマンド 1 段」を型・解析・結果・ヘルプ・エラー文面のすべてで前提にしている。変更は公開 API 全体に及ぶが、部品の分割（宣言の検査、解析、結果、ヘルプ、argv の取得）はそのまま使える。
+- 末端コマンドの中の解析（長短のオプション、リスト値、位置引数、`--`、回復走査）は、ほぼ変更なしで再利用できる。差分は「コマンドの選択」「有効なオプションの解決」「経路をまたぐ結果の保持」「ヘルプの一本化」に集中する。
+- **要件どうしの衝突を 3 件見つけた**（後述）。いずれも Requirement 13（`monde` の挙動を変えない）と、Requirement 8・9 の新しい規則との間にある。設計の前に要件で決める必要がある。
+- `monde` が引き継ぐオプションを使うと Requirement 13 に反する。monde-cli は今回、共通オプションを各サブコマンドに重複して宣言したままにする必要がある。
+- 規模は M（3〜7 日）、リスクは Medium。作業量の多くはテスト（`tests/cli_args/` の 196 件）の宣言の書き換えである。
+
+## Current State
+
+### 資産と構成
+
+| 部品 | ファイル | 行数 | 役割 |
+| --- | --- | --- | --- |
+| 公開 API | `src/cli_args/args.h` | 116 | 宣言の型、状態、結果、取得関数、`mnd_args_parse` |
+| DeclCheck | `args_decl.c` | 334 | 宣言の検査と、サブコマンド・オプションの検索 |
+| Parser | `args_parse.c` | 572 | 入口の振り分け、サブコマンド選択後の走査、回復走査、検査 |
+| ResultStore | `args_result.c` | 378 | 値の保持と取得 |
+| HelpFormatter | `args_help.c` / `.h` | 389 | 全体のヘルプ、サブコマンドのヘルプ、バージョン、案内 |
+| argv の取得 | `args_argv.c` / `.h` | 184 | Windows での UTF-8 化 |
+| テスト | `tests/cli_args/*.c` | 3,800 | 196 件。架空のプログラム `tool`（`test_decl.c`）を使う |
+
+利用側は monde-cli だけである。
+
+- `src/cli/cli_commands.c`: 宣言のテーブル（位置による初期化子）と、サブコマンド名からハンドラを引く表。
+- `src/cli/cli_run.c`: 状態ごとの振り分け。`result->command->name` でハンドラを引く。
+- `src/cli/cli_report.c`: 診断の接頭辞 `<program> <command>: ` を取り除き、案内の行を付ける。
+- `src/cli/cmd_*.c`、`cli_io.c`: `mnd_args_flag` などで値を取得する（選択されたコマンドだけを見る）。
+- `tests/cli/run_test.c`: `program.commands[]` と `option_count` を直接たどって宣言を検証する。
+- `tests/docs/docs_check.cmake`: README と `docs/commands.md` に引用した `monde --help`、`monde <sub> --help` の出力をバイト単位で比べる。
+
+### サブコマンド 1 段の前提が埋め込まれている箇所
+
+| 箇所 | 現状 |
+| --- | --- |
+| `mnd_args_program_t` | `commands[]` だけを持つ。プログラム直下のオプションと位置引数を表せない |
+| `mnd_args_command_t` | 子コマンドを持てない。オプションに「引き継ぐ」の属性がない |
+| `mnd_args_parse` の入口 | `argv[1]` だけを見て `--help` / `-h` / `--version` / `help` / サブコマンド名に振り分ける。サブコマンドの前のオプションはすべて未知のオプションになる |
+| `select_command` | 走査の開始位置が `scan.next = 2` に固定されている |
+| `mnd_args_scan_t` | コマンドを 1 つだけ持つ。オプションの検索は `mnd_args_find_long(command, ...)` で、そのコマンドの表だけを見る |
+| `mnd_args_result_t` | `values` は `command->option_count` 個。取得関数は選択されたコマンドの表を `long_name` で引く |
+| `MND_ARGS_NO_COMMAND` | 引数列が空のときだけ返す。`result->command` は NULL |
+| `dispatch_help` | `help` の後は 1 語まで（`argc > 3` は `too many arguments for 'help'`） |
+| `report_pending` | 接頭辞が `"%s %s: "`（プログラム名とサブコマンド名）に固定されている |
+| `mnd_args_format_help` | `command == NULL` が全体のヘルプを表す。全体用とサブコマンド用で別の関数と別の書式を持つ |
+| `mnd_args_format_usage_hint` | `Run '<program> --help'` と `Run '<program> <command> --help'` の 2 通りだけ |
+| `mnd_args_decl_check` | プログラム → コマンド → オプションの 2 重ループ。重複の検査は 1 つのコマンドの中だけ |
+
+### そのまま使える部分
+
+- 末端コマンドの中の走査（`scan_long`、`scan_short`、`scan_positional`、`scan_tokens`、`scan_record_value`）。オプションの検索を「有効なオプション」に差し替えれば、規則は変わらない（Requirement 3〜6）。
+- 回復走査（`recover_help`）と、誤りを保留してから診断にする仕組み（Requirement 7.4、8.3）。
+- リスト値の分割と既定値の適用（`mnd_args_result_append_list`、`mnd_args_result_apply_defaults`）。
+- ヘルプの行の整形（`append_option_row`、`append_text_row`、`append_positional_usage`、列の揃え方）。
+- `args_argv.c`（Requirement 10）。変更は不要である。
+- 規約: 宣言は呼び出し側が持つ `static const` のデータ、診断は foundation の `mnd_diag_list_t`、出力は `mnd_buf_t`。
+
+## Requirement-to-Asset Map
+
+| Requirement | 既存の資産 | ギャップ |
+| --- | --- | --- |
+| 1 宣言 | `args.h` の型、`args_decl.c` | **Missing**: ルートコマンド、子コマンドの入れ子、引き継ぐ属性。**Missing**: 祖先との名前の重複、子を持つコマンドの位置引数、子の名前 `help` の検査。**Constraint**: 宣言が位置による初期化子で書かれていて、型の変更で利用側とテストの全テーブルが壊れる |
+| 2 コマンドの選択 | `mnd_args_parse`、`select_command` | **Missing**: ルートからの逐次の選択、任意の深さ、子を持つコマンドでの `--`、末端のルート。**Missing**: 結果に経路を持たせる手段 |
+| 3、4 オプション | `scan_long`、`scan_short` | 規則は充足。**Missing**: 有効なオプション（自分の表 + 祖先の引き継ぐオプション）の解決。子の選択前（子を持つコマンドの走査中）にもオプションを解析する経路がない |
+| 5 値 | `args_result.c` | 5.1〜5.6 は充足。**Missing**: 5.7（経路上のどのコマンドのオプションも取得できること） |
+| 6 位置引数 | `scan_positional`、`post_check` | 充足。6.6（末端のルートで引数なし）は入口の `argc <= 1` の分岐が妨げる |
+| 7 エラー | `report_pending`、`mnd_args_format_usage_hint` | **Missing**: 経路を含む接頭辞と案内。7.1 は経路上のコマンドの必須オプションへ広げる必要がある |
+| 8 ヘルプとバージョン | 入口の分岐、`dispatch_help`、`recover_help` | **Missing**: どのコマンドでも効く `help <経路>`、子の選択前の `--help`。**衝突あり**（8.3、8.9。後述） |
+| 9 文面 | `format_global_help`、`format_command_help` | **Missing**: 一本化した書式、引き継いだオプションの表示、経路を含む使い方の行。**衝突あり**（9.1。後述） |
+| 10 argv | `args_argv.c` | 充足。変更なし |
+| 11 テスト | `tests/cli_args/` | **Missing**: サブコマンドなしと 2 段以上の構成のテスト用の宣言。既存の 196 件は宣言の書き換えが必要 |
+| 12 引き継ぐオプション | なし | **Missing**: すべて新規 |
+| 13 monde-cli の追従 | `src/cli/`、`tests/cli/`、`tests/docs/` | 宣言と取得の書き換え。**Constraint**: ヘルプの文面はバイト単位で `docs/` と比べられている |
+
+## 要件どうしの衝突（設計の前に決めること）
+
+既存の `monde` の挙動を調べた結果、新しい規則と Requirement 13 が両立しない箇所が 3 つある。
+
+### 衝突 1: `--version` の後ろに引数がある場合（8.9 と 13.2）
+
+- **現状**: 入口は `argv[1]` が `--version` かどうかだけを見る。`monde --version extra` はバージョンを表示して終了コード 0 を返す。
+- **新しい要件**: 8.9 は「`--version` が他の引数とともに指定されている」場合を使い方のエラーとする。
+- **13.2**: 改訂前に受け付けていたコマンドラインは、改訂後も同じ出力と終了コードを返す。
+- **選択肢**:
+  - (a) 8.9 を緩め、ルートコマンドが選択中の間は `--version` をどの位置でも受け付ける（`--help` と同じ扱い）。末端のルートでも規則が 1 つになる。
+  - (b) 13.2 に例外を設け、`monde --version extra` をエラーに変える。
+
+### 衝突 2: 未知のサブコマンドの後ろの `--help`（8.3 と 13.4）
+
+- **現状**: 回復走査はサブコマンドを選択した後にだけ働く。`monde bogus --help` は `unknown command 'bogus'` で終了コード 2 を返す。
+- **新しい要件**: 8.3 は未知のサブコマンドのエラーも回復の対象に含める。`monde bogus --help` はルートのヘルプで終了コード 0 になる。
+- **13.4**: 改訂前に使い方のエラーだったコマンドラインは、改訂後も使い方のエラーとする。
+- **選択肢**:
+  - (a) 13.4 に例外を設け、新しい挙動（ヘルプを優先する）を採る。規則は「誤りの種類によらずヘルプが勝つ」の 1 つになる。
+  - (b) 8.3 から未知のサブコマンドを除く。現状と同じになるが、誤りの種類で扱いが分かれる。
+
+### 衝突 3: ヘルプの書式の一本化（9.1〜9.4 と 13.3）
+
+- **現状**: 全体のヘルプとサブコマンドのヘルプは別の書式である。全体のヘルプには固有の要素がある。
+  - 使い方の行: `Usage: monde <command> [<options>] [<arguments>]`
+  - `Commands:` の一覧の末尾に `help` の行（疑似サブコマンド）
+  - 末尾の案内: `Run 'monde <command> --help' for help on a command.`
+- **新しい要件**: 9.1〜9.4 はコマンドごとのヘルプを 1 つの規則で定める。`help` の行と末尾の案内には触れていない。
+- **13.3**: `monde --help` の文面は README と `docs/commands.md` の引用と一致させる（`tests/docs/` が検査する）。
+- **選択肢**:
+  - (a) 「子を持つコマンドのヘルプ」の書式を、現状の全体のヘルプと同じ出力になるように定める（`help` の行と末尾の案内を、子を持つコマンドの共通の要素として要件に加える）。ドキュメントは変わらない。
+  - (b) 書式を新しく定め、README と `docs/commands.md` の引用を同じ変更で直す（13.3 は「引用を実際の出力に合わせる」と読み替える）。
+
+### monde-cli での引き継ぐオプションの扱い（制約）
+
+`--output`、`--quiet`、`--no-wrap` は現在、各サブコマンドに重複して宣言されている（`cli_commands.c` のマクロ）。これをルートの引き継ぐオプションに移すと、次の 2 点で Requirement 13 に反する。
+
+- `monde --quiet extract FILE` が受け付けられるようになる（13.4 に反する）。
+- `monde --help` の `Options:` に `--quiet` などが現れ、各サブコマンドのヘルプでのオプションの順序も変わる（13.3 に反する）。`--no-wrap` は `translate` にないので、そもそも一律には引き継げない。
+
+今回の改訂では、monde-cli は重複した宣言を保つことになる。引き継ぐオプションの検証は、テスト用の宣言だけで行う（Requirement 11.1 のとおり）。
+
+## Implementation Approach Options
+
+### Option A: 既存の部品をその場で作り替える
+
+`args.h` の型を新しい形に置き換え、`args_decl.c`、`args_parse.c`、`args_result.c`、`args_help.c` をそれぞれ書き換える。部品の分割とファイル名は保つ。
+
+- **変更するファイル**: `src/cli_args/` の `args_argv.*` を除く全部、`tests/cli_args/` の `argv_test.c` を除く全部、`src/cli/cli_commands.c`、`cli_run.c`、`cli_report.c`、`cli_internal.h`、`tests/cli/run_test.c`、`report_test.c`。
+- ✅ 部品の境界が今の要件にも合っている。再利用できる走査と整形のコードをそのまま残せる。
+- ✅ ファイルが増えない。利用側は 1 つなので、互換の層がいらない。
+- ❌ 型を変えた時点で、モジュールとテストの全体がビルドできなくなる。途中の状態で CI を通せず、1 つの大きな変更になりやすい。
+- ❌ `args_parse.c` は 572 行で、コマンドの選択と経路の管理を加えると見通しが悪くなる。
+
+### Option B: 新しいモジュールを並べて作り、切り替えてから古いほうを消す
+
+新しい API を別のファイル群（または別の名前の型と関数）で作り、テストをそろえてから monde-cli を切り替え、最後に古い実装を削除する。
+
+- ✅ 途中のどの時点でもビルドとテストが通る。古いテストを仕様の参照として最後まで使える。
+- ✅ 新しい設計を古い構造に引きずられずに決められる。
+- ❌ 走査と整形のコードを一時的に 2 つ持つ。同じ短縮名 `args` を使えない期間ができ、名前の付け替えが 2 回要る。
+- ❌ 利用側が 1 つしかない内部モジュールに対して、移行の手間が大きい。steering の「1 spec = 1 モジュール」の形からも一時的に外れる。
+
+### Option C: その場で作り替えるが、責務を分けて段階的に進める（ハイブリッド）
+
+Option A と同じくその場で置き換えるが、追加する責務を新しいファイルに分け、タスクをビルドが通る単位で並べる。
+
+- **新しいファイルの候補**: コマンドの選択と経路の管理（例: `args_path.c`）、有効なオプションの解決（`args_decl.c` に残すか分けるかは設計で決める）。
+- **段階の例**:
+  1. 型と宣言の検査を新しい形にする。既存の 1 段の構成を新しい型で表し、既存のテストの宣言を書き換えて通す（挙動は変えない）。
+  2. コマンドの選択を一般化する（末端のルート、任意の深さ、子を持つコマンドでのオプション）。
+  3. 結果を経路に対応させ、引き継ぐオプションを加える。
+  4. ヘルプと案内を一本化する。
+  5. monde-cli を書き換え、`tests/cli/` と `tests/docs/` を通す。
+- ✅ 各段階の終わりでテストが通る。レビューの単位が小さくなる。
+- ✅ `args_parse.c` の肥大を避けられる。
+- ❌ 段階 1 で、型だけ新しく挙動は古い中間の状態を作る必要がある。段階の切り方を設計で丁寧に決めないと、同じテストを 2 回書き換えることになる。
+
+## Effort and Risk
+
+- **Effort: M（3〜7 日）**。新しい技術はなく、既存の規約と部品をそのまま使える。量の中心はテストで、`decl_test.c`（820 行、63 件）と `help_test.c`（期待する文面のバイト比較）の書き換えと、新しい構成（サブコマンドなし、2 段以上、引き継ぐオプション）のテストの追加である。
+- **Risk: Medium**。公開 API の全面的な変更だが、利用側は 1 つで、`tests/cli/` と `tests/docs/` が `monde` の挙動とヘルプの文面をバイト単位で守っている。主なリスクは上の 3 つの衝突を決めないまま設計に進むことと、ヘルプの文面の意図しない変化である。
+
+## Recommendations for Design Phase
+
+### 推奨する進め方
+
+- **Option C** を軸に検討する。利用側が 1 つで互換の層がいらないため、Option B の並行期間は割に合わない。Option A は途中で CI を通せない点が弱い。
+- 設計の前に、3 つの衝突を要件で決める。分析上は次の組み合わせが、規則が最も少なく `monde` への影響も小さい。
+  - 衝突 1 は (a): `--version` を `--help` と同じ扱いにする。
+  - 衝突 2 は (a): ヘルプを常に優先し、13.4 に例外を明記する。
+  - 衝突 3 は (a): 子を持つコマンドのヘルプが現状の全体のヘルプと同じ出力になるように書式を定める。
+
+### 設計で決めること
+
+- **宣言の型**: プログラムとルートコマンドを 1 つの型にまとめるか、プログラム（名前とバージョン）がルートコマンドを指す形にするか。子コマンドの配列を型の再帰でどう表すか。
+- **初期化子の書き方**: 位置による初期化子を続けるか、指示付き初期化子（C99。MSVC は `/std:c11` で使える）に切り替えるか。項目が増えるので、後者のほうが今後の追加に強い。全対応コンパイラでの警告の有無を確認する。
+- **結果の保持**: 経路上の各コマンドの値をどう持つか（経路の段ごとの配列か、有効なオプションを平らに並べた 1 つの配列か）。名前での取得は、祖先との重複を禁じた（1.8）ので一意に決まる。
+- **経路の表現**: 結果が経路を返す形（コマンドへのポインタの配列か、親へのたどり方か）。宣言は `static const` で親へのポインタを持たないため、結果の側で持つ必要がある。
+- **ハンドラの対応付け**: monde-cli は名前でハンドラを引いている。入れ子では名前が一意でなくなるため、コマンドの宣言に利用側の識別子（整数や `void *`）を持たせるかどうか。
+- **状態の列挙**: `MND_ARGS_NO_COMMAND` を「子コマンドの未指定」に意味を変えて残すか、名前を変えるか。
+- **診断の接頭辞**: 経路を含む接頭辞の形と、`cli_report.c` の `strip_usage_prefix` との取り決め。接頭辞を文字列でやり取りするのをやめ、パーサが接頭辞なしの本文を返す形も検討に値する。
+- **宣言の検査**: 任意の深さの走査の方法（再帰か反復か）、深さの上限を設けるか、宣言の誤りのメッセージでコマンドをどう示すか。
+
+### Research Needed
+
+- 指示付き初期化子と入れ子の集成体の初期化が、MSVC（`/std:c11`）、MinGW-w64、Apple Clang、GCC、Clang のすべてで、現在の警告の設定のまま通ること。
+- 子を持つコマンドの使い方の行の書式（例: `Usage: tool remote [<options>] <command> ...`）について、既存の CLI（git、cargo、docker など）の慣例。現状の `Usage: monde <command> [<options>] [<arguments>]` と両立する規則にできるか。
+- 引き継ぐオプションをヘルプでどう見せるか（同じ `Options:` に並べるか、順序をどうするか）。Requirement 9.5 は「同じ項目で示す」としているので、順序の規則だけを決めればよい。
