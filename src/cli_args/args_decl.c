@@ -1,4 +1,5 @@
 #include "cli_args/args_internal.h"
+#include "foundation/buf.h"
 
 /* DeclCheck: 宣言の妥当性の検査と、子コマンド・有効なオプションの検索と列挙 */
 
@@ -71,26 +72,138 @@ static bool has_empty_item(const char *list)
     return item_len == 0;
 }
 
-/* parent の index 番目の子コマンド名を検査する。誤りの文面はこの時点では改訂前のまま */
-static void check_command_name(const mnd_args_command_t *parent, size_t index,
-                               mnd_diag_list_t *diags, bool *ok)
+/*
+ * 検査中のコマンドの木の 1 段。ルートコマンドから現在のコマンドまでの祖先の列を、
+ * parent をたどる連結リストとして持つ（祖先との重複と循環の検出に使う）
+ */
+typedef struct decl_frame decl_frame_t;
+
+struct decl_frame
 {
+    decl_frame_t *parent;              /* ルートコマンドでは NULL */
+    const mnd_args_command_t *command;
+    const char *name;                  /* 経路上の名前。ルートコマンドではプログラム名 */
+    mnd_buf_t path;                    /* 経路の文字列。最初の誤りの報告のときに作る */
+    bool path_ready;
+    bool path_failed;                  /* 経路の文字列を作れなかった（メモリ不足） */
+};
+
+typedef struct decl_check
+{
+    mnd_diag_list_t *diags;
+    bool ok;
+} decl_check_t;
+
+static void frame_init(decl_frame_t *frame, decl_frame_t *parent,
+                       const mnd_args_command_t *command, const char *name)
+{
+    frame->parent = parent;
+    frame->command = command;
+    frame->name = name;
+    mnd_buf_init(&frame->path);
+    frame->path_ready = false;
+    frame->path_failed = false;
+}
+
+static bool append_path(mnd_buf_t *buf, const decl_frame_t *frame)
+{
+    if (frame->parent != NULL)
+    {
+        if (!append_path(buf, frame->parent) || !mnd_buf_append_byte(buf, ' '))
+        {
+            return false;
+        }
+    }
+
+    return mnd_buf_append_str(buf, shown(frame->name));
+}
+
+/*
+ * frame の経路の文字列（例: "nest remote"）。各段の名前を空白で区切る。
+ * メモリ不足で作れなければ、代わりにコマンド自身の名前を返す
+ */
+static const char *frame_path(decl_frame_t *frame)
+{
+    if (!frame->path_ready)
+    {
+        frame->path_ready = true;
+        if (!append_path(&frame->path, frame))
+        {
+            mnd_buf_free(&frame->path);
+            frame->path_failed = true;
+        }
+    }
+
+    if (frame->path_failed)
+    {
+        return shown(frame->name);
+    }
+
+    return mnd_buf_cstr(&frame->path);
+}
+
+/* frame の祖先（frame 自身を除く）で、長い名前が name のオプションを持つ最も近い段。なければ NULL */
+static decl_frame_t *find_ancestor_long(const decl_frame_t *frame, const char *name)
+{
+    decl_frame_t *ancestor;
+    size_t i;
+
+    for (ancestor = frame->parent; ancestor != NULL; ancestor = ancestor->parent)
+    {
+        for (i = 0; i < ancestor->command->option_count; ++i)
+        {
+            if (names_equal(ancestor->command->options[i].long_name, name))
+            {
+                return ancestor;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+/* frame の祖先（frame 自身を除く）で、短い名前が short_name のオプションを持つ最も近い段。なければ NULL */
+static decl_frame_t *find_ancestor_short(const decl_frame_t *frame, char short_name)
+{
+    decl_frame_t *ancestor;
+    size_t i;
+
+    for (ancestor = frame->parent; ancestor != NULL; ancestor = ancestor->parent)
+    {
+        for (i = 0; i < ancestor->command->option_count; ++i)
+        {
+            if (ancestor->command->options[i].short_name == short_name)
+            {
+                return ancestor;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+/* frame のコマンドの index 番目の子コマンド名を検査する */
+static void check_command_name(decl_check_t *check, decl_frame_t *frame, size_t index)
+{
+    const mnd_args_command_t *parent = frame->command;
     const char *name = parent->commands[index].name;
     size_t j;
 
     if (is_empty(name) || (name[0] == '-'))
     {
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
-                     DECL_PREFIX "invalid command name '%s'", shown(name));
-        *ok = false;
+        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
+                     DECL_PREFIX "invalid command name '%s' in command '%s'", shown(name),
+                     frame_path(frame));
+        check->ok = false;
         return;
     }
 
     if (strcmp(name, "help") == 0)
     {
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
-                     DECL_PREFIX "command name 'help' is reserved");
-        *ok = false;
+        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
+                     DECL_PREFIX "command name 'help' is reserved in command '%s'",
+                     frame_path(frame));
+        check->ok = false;
         return;
     }
 
@@ -98,84 +211,134 @@ static void check_command_name(const mnd_args_command_t *parent, size_t index,
     {
         if (names_equal(parent->commands[j].name, name))
         {
-            mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
-                         DECL_PREFIX "duplicate command '%s'", name);
-            *ok = false;
+            mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
+                         DECL_PREFIX "duplicate command '%s' in command '%s'", name,
+                         frame_path(frame));
+            check->ok = false;
             return;
         }
     }
 }
 
-/* cmd はメッセージ上のコマンドの名前（ルートコマンドではプログラム名） */
-static void check_option(const mnd_args_command_t *command, const char *cmd, size_t index,
-                         mnd_diag_list_t *diags, bool *ok)
+/* frame のコマンドの index 番目のオプションの長い名前を検査する */
+static void check_long_name(decl_check_t *check, decl_frame_t *frame, size_t index)
 {
-    const mnd_args_option_t *option = &command->options[index];
-    const char *name = option->long_name;
+    const mnd_args_command_t *command = frame->command;
+    const char *name = command->options[index].long_name;
+    decl_frame_t *ancestor;
     size_t j;
 
     if (is_empty(name) || (name[0] == '-') || (strchr(name, '=') != NULL))
     {
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
-                     DECL_PREFIX "invalid option name '%s' in command '%s'", shown(name), cmd);
-        *ok = false;
+        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
+                     DECL_PREFIX "invalid option name '%s' in command '%s'", shown(name),
+                     frame_path(frame));
+        check->ok = false;
+        return;
     }
-    else if (strcmp(name, "help") == 0)
+
+    if ((strcmp(name, "help") == 0) || (strcmp(name, "version") == 0))
     {
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
-                     DECL_PREFIX "option '--help' is reserved in command '%s'", cmd);
-        *ok = false;
+        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
+                     DECL_PREFIX "option '--%s' is reserved in command '%s'", name,
+                     frame_path(frame));
+        check->ok = false;
+        return;
     }
-    else
+
+    for (j = 0; j < index; ++j)
     {
-        for (j = 0; j < index; ++j)
+        if (names_equal(command->options[j].long_name, name))
         {
-            if (names_equal(command->options[j].long_name, name))
-            {
-                mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
-                             DECL_PREFIX "duplicate option '--%s' in command '%s'", name, cmd);
-                *ok = false;
-                break;
-            }
+            mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
+                         DECL_PREFIX "duplicate option '--%s' in command '%s'", name,
+                         frame_path(frame));
+            check->ok = false;
+            return;
         }
     }
 
-    if (option->short_name == 'h')
+    /* 祖先のオプションとは、引き継ぐかどうかによらず重複できない（1.8） */
+    ancestor = find_ancestor_long(frame, name);
+    if (ancestor != NULL)
     {
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
-                     DECL_PREFIX "option '-h' is reserved in command '%s'", cmd);
-        *ok = false;
+        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
+                     DECL_PREFIX "option '--%s' in command '%s' duplicates an option of command '%s'",
+                     name, frame_path(frame), frame_path(ancestor));
+        check->ok = false;
     }
-    else if ((option->short_name != '\0') && !is_ascii_alnum(option->short_name))
+}
+
+/* frame のコマンドの index 番目のオプションの短い名前を検査する */
+static void check_short_name(decl_check_t *check, decl_frame_t *frame, size_t index)
+{
+    const mnd_args_command_t *command = frame->command;
+    const mnd_args_option_t *option = &command->options[index];
+    char short_name = option->short_name;
+    decl_frame_t *ancestor;
+    size_t j;
+
+    if (short_name == '\0')
     {
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
+        return;
+    }
+
+    if (short_name == 'h')
+    {
+        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
+                     DECL_PREFIX "option '-h' is reserved in command '%s'", frame_path(frame));
+        check->ok = false;
+        return;
+    }
+
+    if (!is_ascii_alnum(short_name))
+    {
+        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
                      DECL_PREFIX "invalid short option for '--%s' in command '%s'",
-                     shown(name), cmd);
-        *ok = false;
+                     shown(option->long_name), frame_path(frame));
+        check->ok = false;
+        return;
     }
-    else if (option->short_name != '\0')
+
+    for (j = 0; j < index; ++j)
     {
-        for (j = 0; j < index; ++j)
+        if (command->options[j].short_name == short_name)
         {
-            if (command->options[j].short_name == option->short_name)
-            {
-                mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
-                             DECL_PREFIX "duplicate option '-%c' in command '%s'",
-                             option->short_name, cmd);
-                *ok = false;
-                break;
-            }
+            mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
+                         DECL_PREFIX "duplicate option '-%c' in command '%s'", short_name,
+                         frame_path(frame));
+            check->ok = false;
+            return;
         }
     }
+
+    ancestor = find_ancestor_short(frame, short_name);
+    if (ancestor != NULL)
+    {
+        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
+                     DECL_PREFIX "option '-%c' in command '%s' duplicates an option of command '%s'",
+                     short_name, frame_path(frame), frame_path(ancestor));
+        check->ok = false;
+    }
+}
+
+/* frame のコマンドの index 番目のオプションを検査する */
+static void check_option(decl_check_t *check, decl_frame_t *frame, size_t index)
+{
+    const mnd_args_option_t *option = &frame->command->options[index];
+    const char *name = option->long_name;
+
+    check_long_name(check, frame, index);
+    check_short_name(check, frame, index);
 
     if (option->kind == MND_ARGS_FLAG)
     {
         if (option->required || (option->default_value != NULL))
         {
-            mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
+            mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
                          DECL_PREFIX "flag '--%s' cannot be required or have a default in command '%s'",
-                         shown(name), cmd);
-            *ok = false;
+                         shown(name), frame_path(frame));
+            check->ok = false;
         }
 
         return;
@@ -183,32 +346,47 @@ static void check_option(const mnd_args_command_t *command, const char *cmd, siz
 
     if (option->required && (option->default_value != NULL))
     {
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
+        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
                      DECL_PREFIX "option '--%s' cannot be both required and defaulted in command '%s'",
-                     shown(name), cmd);
-        *ok = false;
+                     shown(name), frame_path(frame));
+        check->ok = false;
     }
 
     if ((option->kind == MND_ARGS_LIST) && (option->default_value != NULL)
         && has_empty_item(option->default_value))
     {
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
+        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
                      DECL_PREFIX "default of '--%s' has an empty item in command '%s'",
-                     shown(name), cmd);
-        *ok = false;
+                     shown(name), frame_path(frame));
+        check->ok = false;
     }
 }
 
-static void check_positionals(const mnd_args_command_t *command, const char *cmd,
-                              mnd_diag_list_t *diags, bool *ok)
+static void check_positionals(decl_check_t *check, decl_frame_t *frame)
 {
+    const mnd_args_command_t *command = frame->command;
     bool names_match;
+
+    /* 子を持つコマンドは位置引数を持たない（1.6）。範囲の規則は末端コマンドだけに適用する */
+    if (command->command_count > 0)
+    {
+        if ((command->positional_count != 0) || (command->min_positionals != 0)
+            || (command->max_positionals != 0))
+        {
+            mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
+                         DECL_PREFIX "command '%s' cannot have both subcommands and positional arguments",
+                         frame_path(frame));
+            check->ok = false;
+        }
+
+        return;
+    }
 
     if (command->min_positionals > command->max_positionals)
     {
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
-                     DECL_PREFIX "invalid positional range in command '%s'", cmd);
-        *ok = false;
+        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
+                     DECL_PREFIX "invalid positional range in command '%s'", frame_path(frame));
+        check->ok = false;
     }
 
     if (command->max_positionals == MND_ARGS_UNLIMITED)
@@ -222,57 +400,86 @@ static void check_positionals(const mnd_args_command_t *command, const char *cmd
 
     if (!names_match)
     {
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
-                     DECL_PREFIX "positional names do not match the range in command '%s'", cmd);
-        *ok = false;
+        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
+                     DECL_PREFIX "positional names do not match the range in command '%s'",
+                     frame_path(frame));
+        check->ok = false;
     }
 }
 
-/* 1 つのコマンドのオプションと位置引数を検査する */
-static void check_command(const mnd_args_command_t *command, const char *cmd,
-                          mnd_diag_list_t *diags, bool *ok)
+/*
+ * frame のコマンドを検査し、子コマンドを深さ優先でたどる（深さに上限はない）。
+ * 祖先と同じ宣言の子コマンドは循環として報告し、その先をたどらない
+ */
+static void check_tree(decl_check_t *check, decl_frame_t *frame)
 {
-    size_t k;
+    const mnd_args_command_t *command = frame->command;
+    size_t i;
 
-    for (k = 0; k < command->option_count; ++k)
+    for (i = 0; i < command->option_count; ++i)
     {
-        check_option(command, cmd, k, diags, ok);
+        check_option(check, frame, i);
     }
 
-    check_positionals(command, cmd, diags, ok);
+    check_positionals(check, frame);
+
+    for (i = 0; i < command->command_count; ++i)
+    {
+        const mnd_args_command_t *child = &command->commands[i];
+        decl_frame_t *ancestor;
+        decl_frame_t child_frame;
+
+        check_command_name(check, frame, i);
+
+        for (ancestor = frame; ancestor != NULL; ancestor = ancestor->parent)
+        {
+            if (ancestor->command == child)
+            {
+                break;
+            }
+        }
+
+        if (ancestor != NULL)
+        {
+            mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
+                         DECL_PREFIX "command '%s' contains itself", frame_path(ancestor));
+            check->ok = false;
+            continue;
+        }
+
+        frame_init(&child_frame, frame, child, child->name);
+        check_tree(check, &child_frame);
+        mnd_buf_free(&child_frame.path);
+    }
 }
 
 bool mnd_args_decl_check(const mnd_args_program_t *program, mnd_diag_list_t *diags)
 {
-    const mnd_args_command_t *root = program->root;
-    bool ok = true;
-    size_t i;
+    decl_check_t check;
+    decl_frame_t root;
+
+    check.diags = diags;
+    check.ok = true;
 
     if (is_empty(program->name) || is_empty(program->version))
     {
         mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
                      DECL_PREFIX "program name and version are required");
-        ok = false;
+        check.ok = false;
     }
 
-    if (root == NULL)
+    if (program->root == NULL)
     {
         mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0, DECL_PREFIX "root command is required");
         return false;
     }
 
-    /* ルートコマンド自身にも同じ規則を適用する。子を持たないルートコマンドも妥当な宣言である（1.4） */
-    check_command(root, shown(program->name), diags, &ok);
+    /* ルートコマンドの経路上の名前はプログラム名。子を持たないルートコマンドも妥当な宣言である（1.4） */
+    frame_init(&root, NULL, program->root, program->name);
+    check_tree(&check, &root);
+    mnd_buf_free(&root.path);
 
-    for (i = 0; i < root->command_count; ++i)
-    {
-        const mnd_args_command_t *command = &root->commands[i];
-
-        check_command_name(root, i, diags, &ok);
-        check_command(command, shown(command->name), diags, &ok);
-    }
-
-    return ok;
+    return check.ok;
 }
 
 const mnd_args_command_t *mnd_args_find_child(const mnd_args_command_t *parent,
