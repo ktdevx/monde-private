@@ -55,14 +55,14 @@
   - _Boundary: Parser, ResultStore, CliArgsTests_
   - _Requirements: 2.2, 2.3, 2.8, 3.6, 5.7, 6.4, 7.1, 7.2, 11.2, 12.1, 12.2, 12.3, 12.4, 12.5, 12.6_
 
-- [ ] 2.4 `help` の語を任意の深さに対応させ、ヘルプの優先をすべての誤りに広げる
+- [ ] 2.4 `help` の語を任意の深さに対応させ、ヘルプの優先の範囲を末端コマンドに揃える
   - 子を持つコマンドの走査中に `help` を見たら、後続のトークンを子コマンド名として順にたどり、たどり着いたコマンドのヘルプの要求を返す（2.2 で移した 1 段だけの扱いを置き換える）
   - 名前が一致しない場合と、末端コマンドに達した後に引数がある場合は、段を `help` を見た時点まで戻してから誤りとする（接頭辞と案内は `help` を書いたコマンドの経路になる）
   - `help` の語に関する dispatch スイートの既存の期待値のうち、文面が変わるもの（`too many arguments for 'help'` は `unknown command` または `unexpected argument` になる）を直す
-  - 回復走査を、誤りの種類によらず（未知のサブコマンド、子コマンドの選択前の未知のオプションを含む）働かせる。誤りを検出した時点で選択中のコマンドのヘルプの要求を返す
-  - 完了時: `tool help`、`tool help copy`、`tool help nope`、`tool help copy x`、`nest help remote add`、`nest remote help add`、`nest help remote bogus`（`nest: unknown command 'bogus'`）、`nest help status x`（`nest: unexpected argument 'x'`）、`tool bogus --help` と `tool --bogus -h`（ルートコマンドのヘルプ）、`tool bogus -- --help`（使い方のエラー）、`single --bad --help`（ルートコマンドのヘルプ）のテストが、dispatch、errors、nested、single の各スイートで合格する。診断は常に 1 件である
+  - 回復走査を、誤りを検出した時点で選択中のコマンドが末端コマンドである場合に働かせる（末端コマンドのルートを含む）。子を持つコマンドが選択中の誤り（未知のサブコマンド、子コマンドの選択前の未知のオプション、`help` の語の誤り）では、後ろに `--help` があっても誤りを報告する
+  - 完了時: `tool help`、`tool help copy`、`tool help nope`、`tool help copy x`、`nest help remote add`、`nest remote help add`、`nest help remote bogus`（`nest: unknown command 'bogus'`）、`nest help status x`（`nest: unexpected argument 'x'`）、`tool bogus --help`・`tool --bogus -h`・`tool help nope --help`・`nest remote bogus --help`（いずれも使い方のエラーのまま）、`single --bad --help`（ルートコマンドのヘルプ）、`nest remote add --bad --help`（`add` のヘルプ）のテストが、dispatch、errors、nested、single の各スイートで合格する。診断は常に 1 件である
   - _Boundary: Parser_
-  - _Requirements: 7.4, 8.3, 8.4, 8.5, 8.6, 8.7_
+  - _Requirements: 7.4, 8.3, 8.4, 8.5, 8.6, 8.7, 8.10_
 
 - [ ] 2.5 コマンドのヘルプを 1 つの書式に統合する
   - 全体用とサブコマンド用の 2 つの書式をやめ、コマンドの性質で要素を決める: 子を持つコマンドは子コマンドの一覧（末尾に `help` の行）と末尾の案内、末端コマンドは位置引数、ルートコマンドは `--version` の行を持つ
@@ -78,7 +78,7 @@
   - `monde` の宣言を、説明と 4 つの子コマンドを持つルートコマンドとして、指示付き初期化子で書き直す。各サブコマンドのオプションと位置引数は、内容と順序を変えない。引き継ぐオプションは使わない
   - 状態ごとの振り分けを新しい取得関数と文面の生成に合わせる。ヘルプは標準出力へ、子コマンドの未指定は標準エラー出力へ書き、終了コードは変えない
   - 使い方のエラーの表示が解析結果を受け取り、経路の文字列を接頭辞として取り除いてから、案内の行を続ける
-  - monde-cli のテストを新しい形に合わせる。期待値を変えるのは、設計書の「改訂前の 1 段の構成との違い」の表に当たるものだけとし、`monde bogus --help` がルートコマンドのヘルプを標準出力に書いて終了コード 0 を返すテストを加える
+  - monde-cli のテストを新しい形に合わせる。期待値を変えるのは、設計書の「改訂前の 1 段の構成との違い」の表に当たるものだけとし、`monde bogus --help` が改訂前と同じく使い方のエラー（終了コード 2）になるテストを加える
   - 完了時: すべてのターゲットがビルドでき、`ctest -L cli` が合格する。各サブコマンドのハンドラ（extract、init、update、translate）のソースは変更していない
   - _Boundary: MondeCliAdapter_
   - _Depends: 2.1, 2.2, 2.4, 2.5_

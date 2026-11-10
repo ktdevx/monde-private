@@ -13,7 +13,7 @@
 - 親コマンドのオプションを、宣言ごとに子孫へ引き継げる。
 - 解析の結果を「成功」「ヘルプ」「バージョン」「子コマンドの未指定」「使い方のエラー」「宣言の誤り」「メモリ不足」で区別し、選択されたコマンドの経路とともに返す。
 - コマンドごとのヘルプを 1 つの書式の規則で生成する。1 段の構成では、改訂前と同じ文面になる。
-- `monde` の利用者から見た挙動を保つ（例外は要件 8.3 による 1 点だけ）。
+- `monde` の利用者から見た挙動を保つ。変わるのは、一部の使い方のエラーの文面だけである。
 
 ### Non-Goals
 - Monde のコマンドとオプションの定義の変更、`monde` のコマンド体系の変更（monde-cli）
@@ -157,7 +157,7 @@ tests/cli_args/
 ├── short_test.c       # 変更: 同上
 ├── values_test.c      # 変更: 同上
 ├── positional_test.c  # 変更: 同上
-├── errors_test.c      # 変更: 経路を含む接頭辞、未知のサブコマンドの後ろのヘルプ（8.3）
+├── errors_test.c      # 変更: 経路を含む接頭辞、回復走査の範囲（8.3、8.10）
 ├── help_test.c        # 変更: 結果を受け取る関数に合わせる。1 段の構成の文面は改訂前と同じ
 ├── single_test.c      # 新規: スイート single。サブコマンドのない構成（2.6、6.6、8.2、8.7、8.8、9.3、9.4）
 ├── nested_test.c      # 新規: スイート nested。2 段以上の構成（2.2〜2.5、2.8、7.2、7.3、8.4〜8.6、9.2）
@@ -169,7 +169,7 @@ tests/cli_args/
 - `src/cli/cli_commands.c` — 宣言テーブルを新しい型と指示付き初期化子に書き換える。ルートコマンド（説明と 4 つの子コマンド）を加える。オプションと位置引数の内容、順序は変えない。
 - `src/cli/cli_run.c` — 状態ごとの振り分けを新しい API に合わせる（`mnd_args_command`、結果を受け取る `mnd_args_format_help`）。
 - `src/cli/cli_report.c`、`cli_report.h` — `mnd_cli_report_usage_error` が解析結果を受け取り、`mnd_args_format_path` で得た経路を接頭辞として取り除く。
-- `tests/cli/run_test.c` — 宣言の検証をルートコマンドの子コマンドをたどる形にする。8.3 と 8.6 で変わる期待値を直す。
+- `tests/cli/run_test.c` — 宣言の検証をルートコマンドの子コマンドをたどる形にする。8.6 などで文面が変わる期待値を直す。
 - `tests/cli/report_test.c` — `mnd_cli_report_usage_error` の新しい引数に合わせる。
 - `src/cli/cmd_*.c`、`cli_io.c` — 変更なし（`mnd_args_flag` などの取得関数の形は変わらない）。
 
@@ -246,9 +246,9 @@ tests/cli_args/
 
 この間、トークンはすべて名前として扱う（`-` で始まるトークンをオプションとして解釈しない）。
 
-### 走査の後の検査と優先順位（2.4、6.4、7.1、7.4、8.3）
+### 走査の後の検査と優先順位（2.4、6.4、7.1、7.4、8.3、8.10）
 
-1. 走査中に最初の誤りを検出したら、その診断を保留して回復走査に移る。回復走査では、誤りの原因となったトークン（消費した値を含む）の次から、`--` より前に残っているトークンのうち、完全に `--help` または `-h` と一致するものだけを探す。見つかれば保留した誤りを捨てて、誤りを検出した時点で選択中のコマンドの `MND_ARGS_HELP` を返す（8.3）。見つからなければ保留した誤りだけを報告して `MND_ARGS_USAGE_ERROR` を返す（7.4）。回復走査は誤りの種類を問わない（未知のサブコマンドを含む）。
+1. 走査中に最初の誤りを検出したら、その診断を保留する（7.4）。誤りを検出した時点で選択中のコマンドが**末端コマンド**なら、回復走査に移る。回復走査では、誤りの原因となったトークン（消費した値を含む）の次から、`--` より前に残っているトークンのうち、完全に `--help` または `-h` と一致するものだけを探す。見つかれば保留した誤りを捨てて、その末端コマンドの `MND_ARGS_HELP` を返す（8.3）。見つからなければ保留した誤りだけを報告して `MND_ARGS_USAGE_ERROR` を返す。選択中のコマンドが**子を持つコマンド**なら、回復走査を行わずに保留した誤りを報告する（8.10）。未知のサブコマンド、子コマンドの選択前の未知のオプション、`help` の語の誤り（段を戻した後は子を持つコマンドが選択中になる）がこれに当たる。改訂前の「サブコマンドの選択後だけ回復する」という範囲を、そのまま一般化した規則である。
 2. 走査が誤りなしで終わり、選択中のコマンドが子を持つなら、`MND_ARGS_NO_COMMAND` を返す（2.4）。必須のオプションの検査と既定値の適用は行わない。
 3. 選択中のコマンドが末端コマンドなら、位置引数の個数が `min_positionals` 未満かを検査する。不足していれば、最初に不足している位置引数の名前を示す `missing argument` とする（6.4）。
 4. 次に、経路上のすべての段のオプションを、段 0 から順に、各段では宣言の順に見て、必須で明示的に指定されていない最初の 1 つを示す `missing required option` とする（7.1）。引き継ぐオプションは宣言した段に記録されるので、経路上のどこで指定されても指定済みになる（12.5）。
@@ -267,10 +267,11 @@ stateDiagram-v2
     Scan --> HelpWord: 子を持つコマンドで help
     HelpWord --> HelpWord: 子コマンドをたどる
     HelpWord --> Done_Help: 末尾に到達
-    HelpWord --> Recover: 名前の誤り
+    HelpWord --> Done_Error: 名前の誤り
     Scan --> Rest: 末端コマンドで --
     Rest --> Rest: 位置引数を記録
-    Scan --> Recover: 最初の誤り
+    Scan --> Recover: 末端コマンドでの最初の誤り
+    Scan --> Done_Error: 子を持つコマンドでの誤り
     Recover --> Done_Help: 完全一致の --help または -h
     Recover --> Done_Error: -- または末尾に到達
     Scan --> Done_NoCommand: 子を持つコマンドで末尾に到達
@@ -282,17 +283,16 @@ stateDiagram-v2
 
 ### 改訂前の 1 段の構成との違い
 
-1 段の構成（`monde`）で結果が変わるのは次の場合だけである。ほかは、状態・選択されるコマンド・値・メッセージが改訂前と一致する。
+1 段の構成（`monde`）で結果が変わるのは次の場合だけである。いずれも使い方のエラーのままで、文面だけが変わる。ほかは、状態・選択されるコマンド・値・メッセージが改訂前と一致する。
 
 | コマンドライン | 改訂前 | 改訂後 | 根拠 |
 |---|---|---|---|
-| `monde bogus --help`、`monde --bogus -h` | 使い方のエラー | ルートコマンドのヘルプ | 8.3（13.4 の例外） |
 | `monde help a b`（`a` が未知） | `too many arguments for 'help'` | `unknown command 'a'` | 8.6（エラーのまま。文面だけが変わる） |
 | `monde help extract x` | `too many arguments for 'help'` | `unexpected argument 'x'` | 8.6（同上） |
 | `monde --foo=bar` | `unknown option '--foo=bar'` | `unknown option '--foo'` | 3.6（同上） |
 | `monde --version=1` | `unknown option '--version=1'` | `option '--version' does not take a value` | 3.5（同上） |
 
-`monde --version extra` と `monde --help extra` は、改訂前と同じくバージョンとヘルプを返す（8.1、8.8）。
+`monde --version extra` と `monde --help extra` は、改訂前と同じくバージョンとヘルプを返す（8.1、8.8）。`monde bogus --help` と `monde --bogus --help` は、改訂前と同じく使い方のエラーになる（8.10）。
 
 ## メッセージ
 
@@ -331,7 +331,7 @@ stateDiagram-v2
 | 7.1, 7.2, 7.4 | 必須、メッセージ、最初の誤り | Parser | 診断 | 回復走査、事後の検査 |
 | 7.3 | ヘルプの要求方法 | HelpFormatter | `mnd_args_format_usage_hint` | — |
 | 7.5, 7.6 | 診断で返す、状態の区別 | Parser | `mnd_args_status_t` | — |
-| 8.1, 8.2, 8.3 | `--help` と回復走査 | Parser | `MND_ARGS_HELP` | 走査、回復走査 |
+| 8.1, 8.2, 8.3, 8.10 | `--help` と回復走査 | Parser | `MND_ARGS_HELP` | 走査、回復走査 |
 | 8.4, 8.5, 8.6, 8.7 | `help` の語 | Parser | `MND_ARGS_HELP` | `help` の語 |
 | 8.8, 8.9 | バージョン | Parser、HelpFormatter | `MND_ARGS_VERSION`、`mnd_args_format_version` | 走査 |
 | 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9 | 文面の生成 | HelpFormatter、DeclCheck | `mnd_args_format_help`、`mnd_args_effective_*` | — |
@@ -349,7 +349,7 @@ stateDiagram-v2
 | 型（args.h） | 宣言 | 宣言・状態・結果の型 | 1.1〜1.5 | — | State |
 | DeclCheck | 宣言 | 宣言の木の検査、子コマンドと有効なオプションの検索 | 1.6〜1.10, 2.7, 3.7, 12.1, 12.2 | Diag (P0) | Service |
 | ResultStore | 解析 | 経路の段ごとの結果の保持と取得 | 2.8, 5.1, 5.3〜5.7, 6.1, 10.1, 10.5, 12.3〜12.6 | DeclCheck (P0) | Service, State |
-| Parser | 解析 | 引数列の走査と状態の決定 | 2.1〜2.6, 3.x, 4.x, 5.2, 6.x, 7.1, 7.2, 7.4〜7.6, 8.1〜8.9 | DeclCheck (P0)、ResultStore (P0)、Diag (P0) | Service |
+| Parser | 解析 | 引数列の走査と状態の決定 | 2.1〜2.6, 3.x, 4.x, 5.2, 6.x, 7.1, 7.2, 7.4〜7.6, 8.1〜8.10 | DeclCheck (P0)、ResultStore (P0)、Diag (P0) | Service |
 | HelpFormatter | 文面 | コマンドのヘルプ、バージョン、案内、経路の生成 | 2.4, 7.3, 8.8, 9.1〜9.9 | DeclCheck (P1)、Buf (P0) | Service |
 | ArgvSource | 入力 | 引数列の UTF-8 での取得（変更なし） | 10.2〜10.4 | Diag (P0)、Wide (P0) | Service |
 | CliArgsTests | テスト | 単体テスト | 11.1〜11.4 | Naos (P0) | — |
@@ -601,7 +601,7 @@ mnd_args_status_t mnd_args_result_apply_defaults(mnd_args_result_t *result);
 | Field | Detail |
 |-------|--------|
 | Intent | 宣言に基づいて引数列を走査し、状態を決めて結果と診断を返す |
-| Requirements | 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 3.1〜3.7, 4.1〜4.7, 5.2, 6.1〜6.6, 7.1, 7.2, 7.4, 7.5, 7.6, 8.1〜8.9 |
+| Requirements | 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 3.1〜3.7, 4.1〜4.7, 5.2, 6.1〜6.6, 7.1, 7.2, 7.4, 7.5, 7.6, 8.1〜8.10 |
 
 **Responsibilities & Constraints**
 - 「解析規則」と「メッセージ」の節のとおりに動作する。
@@ -824,15 +824,15 @@ graph LR
 - **decl**: 改訂前の検査（名前の重複、予約名、必須のフラグ、リストの既定値、位置引数の範囲）を、経路を含む新しい文面で確認する。加えて、ルートコマンドが `NULL`、子を持つコマンドの位置引数（1.6）、同じ親の子コマンド名の重複と `help` という子コマンド名（1.7）、祖先のオプションとの長い名前・短い名前の重複（引き継ぐ場合と引き継がない場合の両方）（1.8）、`--version` という長い名前（1.9）、自分自身を子に持つコマンドで、それぞれ `MND_ARGS_DECL_ERROR` と名前を含む診断が返ること。2 段目のコマンドの誤りで、診断が `nest remote` のような経路を示すこと。誤りを 2 つ含む宣言で診断が 2 件になること（1.10）。
 - **dispatch**（`tool`）: `tool build x -o y` で `build` が選択され、`mnd_args_depth` が 2 であること（2.2、2.8）。`tool bulid` が `tool: unknown command 'bulid'`、`tool --verbose build` が `tool: unknown option '--verbose'`、`tool Build` が未知のサブコマンドになること（2.3、2.7、3.6）。`tool` が `MND_ARGS_NO_COMMAND` で経路がルートだけであること（2.4）。`tool -- build` が `unexpected argument 'build'`、`tool --` が `MND_ARGS_NO_COMMAND`（2.5）。`tool --help`、`tool -h`、`tool --help build`、`tool help`、`tool help copy`、`tool help nope`、`tool help copy x`、`tool --version`、`tool --version x`、`tool build --version` の状態と経路（8.1、8.2、8.4〜8.6、8.8、8.9）。
 - **long / short / values / positional**（`tool`）: 改訂前のテストを、新しい型と取得関数に合わせて保つ（3.1〜3.7、4.1〜4.7、5.1〜5.6、6.1〜6.5）。
-- **errors**（`tool`）: `tool build x` が `missing required option '--output'`（7.1）。各メッセージが `tool build: ` で始まること（7.2）。`tool build --bad --worse x` の診断が 1 件であること（7.4）。`tool build --bad -h`、`tool build x --help` に加えて、`tool bogus --help` と `tool --bogus -h` がルートコマンドの `MND_ARGS_HELP` になること、`tool bogus -- --help` は使い方のエラーのままであること（8.3）。`tool build -o -h x` が `-h` を値として解析すること。各状態が区別されること（7.6）。
-- **single**（`single`）: `single` が `MND_ARGS_OK` で位置引数 0 個、`mnd_args_depth` が 1 であること（2.6、6.6）。`single a -v b` と `single -v a b` の結果が同じであること（6.2）。`single help` と `single build` が位置引数になること（2.6、8.7）。`single --help` がルートコマンドのヘルプ、`single --version` と `single --version x` がバージョンであること（8.2、8.8）。`single --bad` が `single: unknown option '--bad'`、案内が `Run 'single --help' for usage.` であること（7.2、7.3）。ヘルプの文面（使い方の行、`Arguments:`、`Options:` に `--version` がある）をバイト単位で比較すること（9.1、9.3、9.4）。
-- **nested**（`nest`）: `nest remote add n u -t x` で経路が `nest`、`remote`、`add` の 3 段になること（2.2、2.8）。`nest remote` が `MND_ARGS_NO_COMMAND` で経路の最後が `remote` であること、そのヘルプの文面（使い方の行に ` [<options>]`、`Commands:` に `add`、`remove`、`help`、末尾の案内が `Run 'nest remote <command> --help' ...`）（2.4、9.2）。`nest remote bogus` が `nest remote: unknown command 'bogus'`、案内が `Run 'nest remote --help' for usage.`（2.3、7.2、7.3）。`nest remote add n` が `nest remote add: missing argument <URL>`（6.4、7.2）。`nest help remote add`、`nest remote help add`、`nest remote add --help` が同じコマンドのヘルプになること（8.1、8.4、8.5）。`nest help remote bogus` が `nest: unknown command 'bogus'`、`nest help status x` が `nest: unexpected argument 'x'`（8.6）。`nest remote --version` が未知のオプションになること（8.9）。`nest status` が `MND_ARGS_OK`（必須の `--token` は経路にないので検査されない）（7.1）。
+- **errors**（`tool`）: `tool build x` が `missing required option '--output'`（7.1）。各メッセージが `tool build: ` で始まること（7.2）。`tool build --bad --worse x` の診断が 1 件であること（7.4）。`tool build --bad -h`、`tool build x --help` が `MND_ARGS_HELP` になること（8.3）。`tool bogus --help`、`tool --bogus -h`、`tool help nope --help` が使い方のエラーのままで、診断が 1 件であること（8.10）。`tool build -o -h x` が `-h` を値として解析すること。各状態が区別されること（7.6）。
+- **single**（`single`）: `single` が `MND_ARGS_OK` で位置引数 0 個、`mnd_args_depth` が 1 であること（2.6、6.6）。`single a -v b` と `single -v a b` の結果が同じであること（6.2）。`single help` と `single build` が位置引数になること（2.6、8.7）。`single --help` がルートコマンドのヘルプ、`single --version` と `single --version x` がバージョンであること（8.2、8.8）。`single --bad --help` がルートコマンドのヘルプになること（末端コマンドのルートでは回復走査が働く）（8.3）。`single --bad` が `single: unknown option '--bad'`、案内が `Run 'single --help' for usage.` であること（7.2、7.3）。ヘルプの文面（使い方の行、`Arguments:`、`Options:` に `--version` がある）をバイト単位で比較すること（9.1、9.3、9.4）。
+- **nested**（`nest`）: `nest remote add n u -t x` で経路が `nest`、`remote`、`add` の 3 段になること（2.2、2.8）。`nest remote` が `MND_ARGS_NO_COMMAND` で経路の最後が `remote` であること、そのヘルプの文面（使い方の行に ` [<options>]`、`Commands:` に `add`、`remove`、`help`、末尾の案内が `Run 'nest remote <command> --help' ...`）（2.4、9.2）。`nest remote bogus` が `nest remote: unknown command 'bogus'` で、`nest remote bogus --help` も同じエラーになること（8.10）。`nest remote add --bad --help` が `add` のヘルプになること（8.3）。`nest remote bogus` の案内が `Run 'nest remote --help' for usage.`（2.3、7.2、7.3）。`nest remote add n` が `nest remote add: missing argument <URL>`（6.4、7.2）。`nest help remote add`、`nest remote help add`、`nest remote add --help` が同じコマンドのヘルプになること（8.1、8.4、8.5）。`nest help remote bogus` が `nest: unknown command 'bogus'`、`nest help status x` が `nest: unexpected argument 'x'`（8.6）。`nest remote --version` が未知のオプションになること（8.9）。`nest status` が `MND_ARGS_OK`（必須の `--token` は経路にないので検査されない）（7.1）。
 - **inherit**（`nest`）: `nest -v remote add n u -t x`、`nest remote -v add n u -t x`、`nest remote add -v n u -t x` で `mnd_args_flag(result, "verbose")` が真になり、ほかの値も同じであること（12.1、12.4）。`nest remote --dry-run add ...` が `nest remote: unknown option '--dry-run'`、`nest --dry-run remote add n u -t x` が成功して `mnd_args_flag(result, "dry-run")` が真であること（12.2、3.6、5.7）。`nest -c a remote add -c b n u -t x` で `config` が `b`、`nest remote --tags a add --tags b,c n u -t x` で `tags` が `a`、`b`、`c` になること（12.3）。`--token` を `remote` の直後と `add` の後のどちらで指定しても成功し、指定しなければ `nest remote add: missing required option '--token'` になること（12.5、7.1）。`config` を指定しないと `nest.cfg` が返り、`mnd_args_is_set` が偽であること（12.6）。`nest status --tags a` が未知のオプションになること（`remote` の子孫ではない）（12.1）。`nest remote add --help` のヘルプで、`Options:` が `--force`、`--token`、`--tags`、`--verbose`、`--config`、`-h, --help` の順に並ぶこと（9.5）。
 - **help**（`tool`）: ルートコマンドと `build`・`copy`・`cat` のヘルプ、バージョン、案内、`mnd_args_format_path` を、期待する文面のリテラルとバイト単位で比較する（7.3、8.8、9.1〜9.9、11.4）。ルートコマンドと 3 つの子コマンドのヘルプの期待値は、改訂前の `help_test.c` の文面から変えない。同じ結果から 2 回生成した文面が一致すること（9.9）。
 - **argv**: 変更なし（10.2〜10.4）。
 
 ### Integration Tests（monde-cli）
-- `tests/cli/run_test.c`: 宣言の検証（4 つの子コマンド、オプション、位置引数）が新しい型で通ること（13.1）。既存のコマンドラインのテストが、「改訂前の 1 段の構成との違い」の表に当たるものを除いて、期待値を変えずに通ること（13.2、13.4）。`monde bogus --help` がルートコマンドのヘルプを標準出力に書いて終了コード 0 を返すことを加える（8.3）。
+- `tests/cli/run_test.c`: 宣言の検証（4 つの子コマンド、オプション、位置引数）が新しい型で通ること（13.1）。既存のコマンドラインのテストが、「改訂前の 1 段の構成との違い」の表に当たるものを除いて、期待値を変えずに通ること（13.2、13.4）。`monde bogus --help` が改訂前と同じく使い方のエラー（終了コード 2）になることを加える（8.10、13.4）。
 - `tests/cli/report_test.c`: 使い方のエラーの出力（接頭辞の除去と案内の行）が、改訂前と同じバイト列になること（13.4）。
 - `tests/docs/`: 変更なしで通ること。README と `docs/commands.md` に引用した `monde --help`、`monde <sub> --help` の出力と一致する（13.3）。
 - `tests/cli/` のほかのスイート（extract、init、update、translate、roundtrip）が変更なしで通ること（13.2）。
