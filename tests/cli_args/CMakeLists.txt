@@ -11,5 +11,7 @@ monde_add_module_tests(cli_args
     errors_test.c
     help_test.c
     single_test.c
+    nested_test.c
+    inherit_test.c
     argv_test.c
 )

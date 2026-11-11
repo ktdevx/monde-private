@@ -102,3 +102,87 @@ const mnd_args_program_t test_single_program = {
     .version = "2.0",
     .root = &test_single_root
 };
+
+static const mnd_args_option_t test_nest_root_options[] = {
+    { .long_name = "verbose", .short_name = 'v', .kind = MND_ARGS_FLAG, .help = "Print more details",
+      .inherited = true },
+    { .long_name = "config", .short_name = 'c', .kind = MND_ARGS_VALUE, .value_name = "FILE",
+      .help = "Read settings from FILE", .default_value = "nest.cfg", .inherited = true },
+    { .long_name = "dry-run", .kind = MND_ARGS_FLAG, .help = "Show what would be done" }
+};
+
+static const mnd_args_option_t test_nest_remote_options[] = {
+    { .long_name = "token", .short_name = 't', .kind = MND_ARGS_VALUE, .value_name = "TOKEN",
+      .help = "Access token", .required = true, .inherited = true },
+    { .long_name = "tags", .kind = MND_ARGS_LIST, .value_name = "TAG", .help = "Tags to attach",
+      .inherited = true }
+};
+
+static const mnd_args_option_t test_nest_remote_add_options[] = {
+    { .long_name = "force", .short_name = 'f', .kind = MND_ARGS_FLAG,
+      .help = "Overwrite an existing remote" }
+};
+
+static const mnd_args_positional_t test_nest_remote_add_positionals[] = {
+    { "NAME", "Name of the remote" },
+    { "URL", "URL of the remote" }
+};
+
+static const mnd_args_positional_t test_nest_remote_remove_positionals[] = {
+    { "NAME", "Name of the remote" }
+};
+
+static const mnd_args_command_t test_nest_remote_commands[] = {
+    {
+        .name = "add",
+        .summary = "Add a remote",
+        .options = test_nest_remote_add_options,
+        .option_count = TEST_TOOL_COUNT_OF(test_nest_remote_add_options),
+        .positionals = test_nest_remote_add_positionals,
+        .positional_count = TEST_TOOL_COUNT_OF(test_nest_remote_add_positionals),
+        .min_positionals = 2,
+        .max_positionals = 2
+    },
+    {
+        .name = "remove",
+        .summary = "Remove a remote",
+        .positionals = test_nest_remote_remove_positionals,
+        .positional_count = TEST_TOOL_COUNT_OF(test_nest_remote_remove_positionals),
+        .min_positionals = 1,
+        .max_positionals = 1
+    }
+};
+
+static const mnd_args_command_t test_nest_commands[] = {
+    {
+        .name = "remote",
+        .summary = "Manage remotes",
+        .options = test_nest_remote_options,
+        .option_count = TEST_TOOL_COUNT_OF(test_nest_remote_options),
+        .commands = test_nest_remote_commands,
+        .command_count = TEST_TOOL_COUNT_OF(test_nest_remote_commands)
+    },
+    {
+        .name = "status",
+        .summary = "Show the status"
+    }
+};
+
+static const mnd_args_command_t test_nest_root = {
+    .description = "A sample tool with nested commands.",
+    .options = test_nest_root_options,
+    .option_count = TEST_TOOL_COUNT_OF(test_nest_root_options),
+    .commands = test_nest_commands,
+    .command_count = TEST_TOOL_COUNT_OF(test_nest_commands)
+};
+
+const mnd_args_program_t test_nest_program = {
+    .name = "nest",
+    .version = "3.0",
+    .root = &test_nest_root
+};
+
+const mnd_args_command_t *const test_nest_remote = &test_nest_commands[0];
+const mnd_args_command_t *const test_nest_remote_add = &test_nest_remote_commands[0];
+const mnd_args_command_t *const test_nest_remote_remove = &test_nest_remote_commands[1];
+const mnd_args_command_t *const test_nest_status = &test_nest_commands[1];
