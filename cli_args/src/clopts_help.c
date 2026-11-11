@@ -19,6 +19,9 @@
 #define HELP_COMMAND_NAME "help"
 #define HELP_COMMAND_TEXT "Show help for a command"
 
+/* 否定できるフラグの左列で、長い名前の前に挟む表記（14.12） */
+#define NEGATE_PREFIX "[no-]"
+
 static bool has_text(const char *text)
 {
     return (text != NULL) && (text[0] != '\0');
@@ -85,11 +88,19 @@ static bool append_description(clopts_buf_t *out, const char *description)
            && clopts_buf_append_byte(out, '\n');
 }
 
-/* オプションの左列: "-c, --name" または "    --name" に、値 " <VALUE>"、リスト値 " <VALUE>[,<VALUE>...]" を続ける */
+/*
+ * オプションの左列: "-c, --name" または "    --name" に、値 " <VALUE>"、リスト値 " <VALUE>[,<VALUE>...]" を続ける。
+ * 否定できるフラグは "--" の後ろに "[no-]" を挟む（14.12）
+ */
 static size_t option_left_width(const clopts_option_t *option)
 {
     size_t width = 4 + 2 + strlen(option->long_name);
     size_t value_len;
+
+    if (option->negatable)
+    {
+        width += strlen(NEGATE_PREFIX);
+    }
 
     if (option->kind == CLOPTS_FLAG)
     {
@@ -120,7 +131,12 @@ static bool append_option_left(clopts_buf_t *out, const clopts_option_t *option)
     {
         ok = append_spaces(out, 4);
     }
-    ok = ok && clopts_buf_append_str(out, "--") && clopts_buf_append_str(out, option->long_name);
+    ok = ok && clopts_buf_append_str(out, "--");
+    if (ok && option->negatable)
+    {
+        ok = clopts_buf_append_str(out, NEGATE_PREFIX);
+    }
+    ok = ok && clopts_buf_append_str(out, option->long_name);
     if (!ok || (option->kind == CLOPTS_FLAG))
     {
         return ok;
@@ -137,7 +153,10 @@ static bool append_option_left(clopts_buf_t *out, const clopts_option_t *option)
     return ok;
 }
 
-/* 説明と注記 " (required)"、" (default: X)"。説明がなければ注記の先頭の空白を出さない */
+/*
+ * 説明と注記 " (required)"、" (default: X)"、既定で有効のフラグの " (default: on)"（14.17）。
+ * 説明がなければ注記の先頭の空白を出さない
+ */
 static bool append_option_text(clopts_buf_t *out, const clopts_option_t *option)
 {
     bool has_help = has_text(option->help);
@@ -157,6 +176,10 @@ static bool append_option_text(clopts_buf_t *out, const clopts_option_t *option)
         ok = clopts_buf_append_str(out, has_help ? " (default: " : "(default: ")
              && clopts_buf_append_str(out, option->default_value) && clopts_buf_append_byte(out, ')');
     }
+    if (ok && option->default_enabled)
+    {
+        ok = clopts_buf_append_str(out, has_help ? " (default: on)" : "(default: on)");
+    }
 
     return ok;
 }
@@ -170,7 +193,8 @@ static bool append_option_row(clopts_buf_t *out, const clopts_option_t *option, 
         return false;
     }
 
-    if (has_text(option->help) || option->required || (option->default_value != NULL))
+    if (has_text(option->help) || option->required || (option->default_value != NULL)
+        || option->default_enabled)
     {
         if (!append_pad(out, left_width, max_width) || !append_option_text(out, option))
         {
