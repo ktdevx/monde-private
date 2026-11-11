@@ -4,7 +4,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 # CLOpts のバージョン番号を書く場所はここだけ
-project(CLOpts VERSION 0.1.0 LANGUAGES C)
+project(CLOpts VERSION 0.2.0 LANGUAGES C)
 
 # 既定は「最上位なら有効、取り込まれたなら無効」。利用側が先に変数を設定していれば、その値が優先される
 option(CLOPTS_BUILD_TESTS "Build the CLOpts tests and register them with CTest" ${PROJECT_IS_TOP_LEVEL})

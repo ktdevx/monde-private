@@ -5,7 +5,7 @@ CLOpts は、C で書かれたコマンドライン引数の解析ライブラ�
 ## 概要
 
 - 呼び出し側が `static const` の構造体で書いたコマンドの宣言に基づいて、引数列を解析します。サブコマンドなし、1 段のサブコマンド、入れ子のサブコマンドを扱えます。
-- オプションは、値を取らないフラグ（`CLOPTS_FLAG`）、単一の値（`CLOPTS_VALUE`）、カンマ区切りのリスト値（`CLOPTS_LIST`）の 3 種類です。長い名前（`--name`）と 1 文字の短い名前（`-n`）、必須の指定、既定値、子孫のコマンドへの引き継ぎを宣言できます。位置引数の個数の下限と上限も宣言できます。
+- オプションは、値を取らないフラグ（`CLOPTS_FLAG`）、単一の値（`CLOPTS_VALUE`）、カンマ区切りのリスト値（`CLOPTS_LIST`）の 3 種類です。長い名前（`--name`）と 1 文字の短い名前（`-n`）、必須の指定、既定値、子孫のコマンドへの引き継ぎを宣言できます。フラグは、`--no-<name>` で無効にできる否定できるフラグとして宣言でき、既定で有効にもできます（[否定できるフラグ](#否定できるフラグ)）。位置引数の個数の下限と上限も宣言できます。
 - `-h`、`--help`、子コマンドを持つコマンドでの `help` の語、ルートコマンドの `--version` を組み込みで解釈し、ヘルプ、バージョン、使い方の案内の文字列を宣言から生成します。
 - エラーは標準エラー出力に書かず、プロセスも終了しません。英語の UTF-8 のメッセージをエラーの列（`clopts_errors_t`）に追加し、戻り値で結果を返します。表示の方法は利用側が決めます。
 - Windows では、プロセスのコマンドラインを UTF-16 から UTF-8 に変換した引数列を取得できます。
@@ -17,7 +17,7 @@ CLOpts は、C で書かれたコマンドライン引数の解析ライブラ�
 
 | ヘッダ | 内容 |
 |--------|------|
-| `clopts/clopts.h` | 宣言の型（`clopts_program_t`、`clopts_command_t`、`clopts_option_t`、`clopts_positional_t`）、解析（`clopts_parse`）、解析結果の参照（`clopts_value`、`clopts_flag`、`clopts_positional_at` など） |
+| `clopts/clopts.h` | 宣言の型（`clopts_program_t`、`clopts_command_t`、`clopts_option_t`、`clopts_positional_t`）、解析（`clopts_parse`）、解析結果の参照（`clopts_value`、`clopts_flag`、`clopts_is_set`、`clopts_positional_at` など） |
 | `clopts/errors.h` | エラーの列 `clopts_errors_t` の読み取り（`clopts_errors_count`、`clopts_errors_at`、`clopts_errors_dropped`）と解放（`clopts_errors_free`） |
 | `clopts/help.h` | ヘルプ、バージョン、使い方の案内、コマンドの経路の生成（`clopts_format_*`）と、その解放（`clopts_text_free`） |
 | `clopts/argv.h` | UTF-8 の引数列の取得（`clopts_argv_get`）と解放（`clopts_argv_free`） |
@@ -136,7 +136,7 @@ cmake --install build --config Release --prefix /path/to/prefix
 cmake_minimum_required(VERSION 3.21)
 project(greet LANGUAGES C)
 
-find_package(CLOpts 0.1 CONFIG REQUIRED)
+find_package(CLOpts 0.2 CONFIG REQUIRED)
 
 add_executable(greet main.c)
 target_link_libraries(greet PRIVATE CLOpts::clopts)
@@ -147,7 +147,7 @@ cmake -S . -B build -DCMAKE_PREFIX_PATH=/path/to/prefix -DCMAKE_BUILD_TYPE=Relea
 cmake --build build --config Release
 ```
 
-1.0 より前のため、バージョンの照合は `SameMinorVersion` です。`find_package(CLOpts 0.1)` は 0.1.x に一致し、マイナーバージョンの違う CLOpts は見つからないものとして扱われます。
+1.0 より前のため、バージョンの照合は `SameMinorVersion` です。`find_package(CLOpts 0.2)` は 0.2.x に一致し、マイナーバージョンの違う CLOpts は見つからないものとして扱われます。
 
 ## 最小の使用例
 
@@ -275,6 +275,54 @@ Run 'greet --help' for usage.
 ```
 
 `greet --help` は、宣言から生成したヘルプを表示します。
+
+## 否定できるフラグ
+
+フラグ（`CLOPTS_FLAG`）の宣言で `negatable` を `true` にすると、`--<name>` で有効に、`--no-<name>` で無効にできます。シェルの別名や先に書いた指定で有効になったフラグを、コマンドラインの後ろで打ち消すための機能です。さらに `default_enabled` を `true` にすると、指定がないときに有効なフラグになります。
+
+```c
+static const clopts_option_t options[] = {
+    { .long_name = "color", .short_name = 'c', .kind = CLOPTS_FLAG, .help = "Colorize the output",
+      .negatable = true },
+    { .long_name = "sync", .kind = CLOPTS_FLAG, .help = "Flush after each file", .negatable = true,
+      .default_enabled = true },
+};
+```
+
+`negatable` と `default_enabled` は `clopts_option_t` の末尾のメンバーで、どちらも既定は `false`（否定できない、既定で無効）です。指示付き初期化子で書いた既存の宣言は、そのままビルドでき、挙動も変わりません。C++ の指示付き初期化子で書く場合は、ほかのメンバーの後ろに書いてください。
+
+解析の規則は次のとおりです。
+
+- 肯定の形（`--color`、`-c`、短い名前のまとめ書きの中の `c`）と否定の形（`--no-color`）を合わせて何回指定しても、エラーにはならず、引数列で最後に現れた指定が残ります。子孫に引き継ぐフラグでは、子コマンドの名前の前後にまたがる指定にも同じ規則を当てはめます。
+- `--no-<name>` は、まず `no-<name>` という長い名前のオプションとして探し、見つからなければ `<name>` の否定の形として探します。このため、`no-cache` のような名前のフラグは、これまでどおり `--no-cache` で指定できます。
+- 否定の形は長い名前だけで、短い名前の否定の形はありません。`--no-color=1` のように値を付けると `option '--no-color' does not take a value` に、否定できないフラグ、値付きオプション、リスト値の `--no-<name>` は `unknown option '--no-<name>'` になります。
+
+結果は、ほかのフラグと同じ 2 つの関数で取得します。
+
+| 関数 | 戻り値 |
+|------|--------|
+| `clopts_flag(&result, "color")` | フラグが最終的に有効なら `true`。指定がなければ既定の状態（`default_enabled` の値） |
+| `clopts_is_set(&result, "color")` | 利用者が肯定の形か否定の形で明示的に指定したなら `true` |
+
+既定で有効のフラグも、最終的な状態は `clopts_flag` だけで得られます。既定の状態か明示的な指定かを区別したいときだけ、`clopts_is_set` を併せて使ってください。否定できないフラグでは、2 つの関数の戻り値は常に一致します。
+
+ヘルプでは、否定できるフラグの長い名前を `--[no-]<name>` の形で示し、既定で有効のフラグの説明には ` (default: on)` を付けます。上の宣言をルートコマンドに付けた場合、ヘルプの `Options:` は次のようになります。
+
+```text
+Options:
+  -c, --[no-]color  Colorize the output
+      --[no-]sync   Flush after each file (default: on)
+  -h, --help        Show this help
+      --version     Show version information
+```
+
+次の宣言は宣言の誤り（`CLOPTS_DECL_ERROR`）になります。
+
+- フラグではないオプション（`CLOPTS_VALUE`、`CLOPTS_LIST`）の `negatable` を `true` にする
+- 否定できるフラグではないオプション（否定できないフラグ、`CLOPTS_VALUE`、`CLOPTS_LIST`）の `default_enabled` を `true` にする
+- 否定できるフラグ `<name>` と、長い名前が `no-<name>` のオプションを、同じコマンド、またはコマンドとその祖先に宣言する（祖先の側のオプションが引き継がないものでも誤りです）
+
+フラグに `default_value` を付けると宣言の誤りになる点は、否定できるフラグでも同じです。既定で有効にするには `default_enabled` を使ってください。
 
 ## ライセンス
 
