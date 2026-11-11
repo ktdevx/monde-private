@@ -22,7 +22,7 @@
 - 診断とヘルプの表示先・表示形式の最終決定と、終了コードの決定（monde-cli）
 - 子コマンドを持つコマンドの位置引数、既定の子コマンド、サブコマンドの別名、同時に指定できないオプションの組の検査
 - 値の型変換と妥当性の検査、長いオプションの省略形
-- すべてのフラグへの一律の `--no-<name>` の適用、短い名前による否定、`--<name>=false` の形式、フラグの既定値、値付きオプションの指定の取り消し
+- すべてのフラグへの一律の `--no-<name>` の適用、短い名前による否定、`--<name>=false` の形式、否定できないフラグを既定で有効にすること、値付きオプションの指定の取り消し
 - 端末の幅による折り返し、未知のオプション・サブコマンドに対する候補の提示
 - 環境変数や設定ファイルからの読み込み
 - 改訂前の API との互換の層
@@ -358,6 +358,9 @@ stateDiagram-v2
 | 14.10, 14.11 | 否定に関する宣言の誤り | DeclCheck | `clopts_decl_check` | 解析の最初 |
 | 14.12 | ヘルプの `--[no-]<name>` | HelpFormatter | `clopts_format_help` | — |
 | 14.13 | 否定できるフラグがなければ改訂前と同じ | 全体 | 既存のテスト一式 | 改訂（2026-11-11）の「Testing Strategy」 |
+| 14.14, 14.16 | 既定で有効の宣言と、その誤り | 型（clopts.h）、DeclCheck | `clopts_option_t.default_enabled`、`clopts_decl_check` | 解析の最初 |
+| 14.15 | 指定がなければ既定の状態を返す | ResultStore | `clopts_result_apply_defaults`、`clopts_flag` | 走査の後の検査 |
+| 14.17 | ヘルプに既定で有効を示す | HelpFormatter | `clopts_format_help` | — |
 
 ## Components and Interfaces
 
@@ -886,14 +889,15 @@ flowchart LR
 
 ### 概要
 
-- **Purpose**: 宣言で選んだフラグを、`--<name>` で有効に、`--no-<name>` で無効にでき、両方が指定されたときは後に書いた方を優先する。
-- **Impact**: CLOpts の公開の型にメンバーを 2 つ足す（宣言の `negatable`、結果の `enabled`）。否定できるフラグを宣言しない利用側（Monde を含む）は、ソースも挙動も変わらない。
+- **Purpose**: 宣言で選んだフラグを、`--<name>` で有効に、`--no-<name>` で無効にでき、両方が指定されたときは後に書いた方を優先する。否定できるフラグは、既定で有効と宣言できる。
+- **Impact**: CLOpts の公開の型にメンバーを 3 つ足す（宣言の `negatable` と `default_enabled`、結果の `enabled`）。否定できるフラグを宣言しない利用側（Monde を含む）は、ソースも挙動も変わらない。
 - **分類**: 既存の部品の拡張（Extension）。新しい部品、新しい依存、新しいファイル（テストを除く）はない。
 
 ### Boundary Commitments
 
 #### This Spec Owns
 - `clopts_option_t` の `negatable` と、その妥当性の規則（フラグだけに許す、`no-<name>` との衝突を誤りにする）
+- `clopts_option_t` の `default_enabled` と、その妥当性の規則（否定できるフラグだけに許す）、ヘルプでの既定の表記
 - `--no-<name>` の照合の規則と、照合の順序（完全一致を先に見る）
 - フラグの結果の持ち方（`clopts_value_t` の `enabled`）と、`clopts_flag` / `clopts_is_set` の意味
 - ヘルプでの `--[no-]<name>` の表記
@@ -902,7 +906,7 @@ flowchart LR
 
 #### Out of Boundary
 - `monde` のオプションを否定できるフラグに置き換えること。`src/cli/`、`tests/cli/`、`docs/`、ルートの `README.md` は変更しない
-- 短い名前による否定、`--<name>=false` の形式、フラグの既定値、値付きオプションとリスト値の取り消し
+- 短い名前による否定、`--<name>=false` の形式、否定できないフラグを既定で有効にすること、値付きオプションとリスト値の取り消し
 - すべてのフラグへの一律の適用
 - CLOpts のビルド定義、パッケージ定義、CI（clopts-standalone が持つ）。変更するのは `project(CLOpts VERSION ...)` の番号と、テストのソースの一覧だけである
 
@@ -912,9 +916,9 @@ flowchart LR
 - モジュール内の依存の向きは変えない: 型 → DeclCheck → ResultStore → Parser。HelpFormatter は DeclCheck にだけ依存する。
 
 #### Revalidation Triggers
-- `negatable` の意味や、照合の順序の変更 → 否定できるフラグを宣言している利用側
+- `negatable`、`default_enabled` の意味や、照合の順序の変更 → 否定できるフラグを宣言している利用側
 - `clopts_flag` / `clopts_is_set` の意味の変更 → すべての利用側（Monde の `src/cli/cmd_*.c` を含む）
-- ヘルプの `--[no-]<name>` の表記の変更 → 否定できるフラグを宣言している利用側のヘルプの期待値
+- ヘルプの `--[no-]<name>` と `(default: on)` の表記の変更 → 否定できるフラグを宣言している利用側のヘルプの期待値
 - `monde` が否定できるフラグを使い始める場合 → monde-cli の要件、`docs/commands.md` と README の引用（`tests/docs/`）
 
 ### File Structure Plan
@@ -923,20 +927,20 @@ flowchart LR
 cli_args/
 ├── CMakeLists.txt                # 変更: project(CLOpts VERSION 0.2.0)
 ├── README.md                     # 変更: 機能の一覧に否定できるフラグを加え、宣言と取得の説明を足す
-├── include/clopts/clopts.h       # 変更: clopts_option_t に negatable、clopts_value_t に enabled。clopts_flag / clopts_is_set のコメント
+├── include/clopts/clopts.h       # 変更: clopts_option_t に negatable と default_enabled、clopts_value_t に enabled。clopts_flag / clopts_is_set のコメント
 ├── src/
 │   ├── clopts_internal.h         # 変更: clopts_find_negated を加える。clopts_result_set_flag に bool enabled の引数を加える
-│   ├── clopts_decl.c             # 変更: 否定に関する宣言の検査（14.10、14.11）、clopts_find_negated
-│   ├── clopts_result.c           # 変更: enabled の初期化と記録、clopts_flag が enabled を返す
+│   ├── clopts_decl.c             # 変更: 否定に関する宣言の検査（14.10、14.11、14.16）、clopts_find_negated
+│   ├── clopts_result.c           # 変更: enabled の初期化と記録、既定で有効の適用、clopts_flag が enabled を返す
 │   ├── clopts_parse.c            # 変更: scan_long に否定の形の照合を加える。フラグの記録に enabled を渡す
-│   └── clopts_help.c             # 変更: 左列の幅の計算と出力に "[no-]" を加える
+│   └── clopts_help.c             # 変更: 左列の幅の計算と出力に "[no-]" を加える。説明に " (default: on)" を加える
 └── tests/
     ├── CMakeLists.txt            # 変更: negate_test.c を加える
     ├── main.c                    # 変更: スイート negate を登録する
     ├── test_decl.h               # 変更: 架空のプログラム neg の宣言
     ├── test_decl.c               # 変更: 同上の定義
-    ├── negate_test.c             # 新規: スイート negate（14.1〜14.9、14.12）
-    └── decl_test.c               # 変更: 否定に関する宣言の誤り（14.10、14.11）
+    ├── negate_test.c             # 新規: スイート negate（14.1〜14.9、14.12、14.15、14.17）
+    └── decl_test.c               # 変更: 否定に関する宣言の誤り（14.10、14.11、14.16）
 ```
 
 変更しないファイル: `cli_args/src/clopts_argv.c`、`clopts_buf.[ch]`、`clopts_errors.c`、`cli_args/cmake/`、`cli_args/tests/` のほかのスイート（14.13 の検証として、期待値を変えずに通す）、`src/`、`tests/`、`docs/`、`.github/`。
@@ -955,6 +959,7 @@ typedef struct clopts_option
     const char *default_value;
     bool inherited;
     bool negatable;             /* true なら "--no-<long_name>" で無効にできる。フラグだけに指定できる（14.1） */
+    bool default_enabled;       /* true なら、指定がないときに有効とする。否定できるフラグだけに指定できる（14.14） */
 } clopts_option_t;
 
 typedef struct clopts_value
@@ -964,16 +969,17 @@ typedef struct clopts_value
     char **items;
     size_t item_count;
     size_t item_cap;
-    bool enabled;        /* フラグ: 最後の指定が肯定の形なら true、否定の形か未指定なら false。フラグ以外では false */
+    bool enabled;        /* フラグ: 最後の指定が肯定の形なら true、否定の形なら false。未指定なら宣言の default_enabled。フラグ以外では false */
 } clopts_value_t;
 
 bool clopts_is_set(const clopts_result_t *result, const char *long_name);   /* どちらかの形で明示的に指定された（5.6、14.5） */
-bool clopts_flag(const clopts_result_t *result, const char *long_name);     /* フラグが有効である（14.5） */
+bool clopts_flag(const clopts_result_t *result, const char *long_name);     /* フラグが有効である。未指定なら既定の状態（14.5、14.15） */
 ```
 
-- どちらのメンバーも末尾に足す。0（`false`）が「否定できない」「無効」を表すので、指示付き初期化子で書いた既存の宣言は変えずに済む。C++ の指示付き初期化子は宣言順を要求するが、末尾への追加は既存の記述に影響しない。
+- どのメンバーも末尾に足す。0（`false`）が「否定できない」「既定で無効」「無効」を表すので、指示付き初期化子で書いた既存の宣言は変えずに済む。C++ の指示付き初期化子は宣言順を要求するが、末尾への追加は既存の記述に影響しない。
 - `clopts_flag` の戻り値を `explicit_set` から `enabled` に変える。否定できないフラグは肯定の形でしか指定できないので、2 つは常に一致し、戻り値は改訂前と変わらない（14.13）。
-- 取得関数は増やさない。「指定がなければ有効」としたい利用側は、`clopts_is_set(r, "x") ? clopts_flag(r, "x") : true` と書く。
+- 取得関数は増やさない。既定で有効のフラグも、利用側は `clopts_flag(r, "x")` だけで最終的な状態を得る。既定の状態か明示的な指定かを区別したいときだけ `clopts_is_set` を併せて使う。
+- 既定で有効の宣言に、既存の `default_value`（文字列）は使わない。CLOpts は値を文字列のまま返す部品で、`"true"` のような文字列を真偽に解釈する規則を持ち込まないためである。フラグに `default_value` を付けると宣言の誤りになる点は、改訂前のままとする。
 
 ### 解析規則
 
@@ -1005,7 +1011,8 @@ bool clopts_flag(const clopts_result_t *result, const char *long_name);     /* �
 
 - `--` の後の `--no-<name>` は位置引数になる（6.3）。
 - 回復の走査（8.3）は `--help` / `-h` との完全一致だけを見るので、変わらない。末端コマンドで `--no-<x>` が `unknown option` になり、後ろに `--help` があれば、ヘルプを優先する。
-- 必須の検査と既定値の適用は、フラグを対象にしないので変わらない。
+- 必須の検査は、フラグを対象にしないので変わらない。
+- 既定値の適用（走査が成功した後、経路上のすべての段に対して行う）に、フラグの分を足す。明示的に指定されていないフラグで `default_enabled` が真なら、`enabled = true` にする。`explicit_set` は偽のままにする（14.15）。経路上のすべての段が対象なので、引き継ぐフラグは子孫のコマンドが選択された場合にも既定の状態になる（12.6 と同じ仕組み）。
 
 ### メッセージ
 
@@ -1016,11 +1023,12 @@ bool clopts_flag(const clopts_result_t *result, const char *long_name);     /* �
 | 否定の形への値 | `<prefix>option '--no-<name>' does not take a value` | 14.7 |
 | 否定できないものへの否定 | `<prefix>unknown option '--no-<name>'` | 14.8 |
 
-宣言の誤り（`invalid argument declaration: ` に続く理由）を 3 つ加える。`<path>` は経路の文字列である。
+宣言の誤り（`invalid argument declaration: ` に続く理由）を 4 つ加える。`<path>` は経路の文字列である。
 
 | 誤り | 理由 | 要件 |
 |---|---|---|
 | フラグ以外に `negatable` が真 | `option '--<name>' cannot be negatable in command '<path>'` | 14.10 |
+| 否定できるフラグ以外に `default_enabled` が真 | `option '--<name>' must be a negatable flag to be enabled by default in command '<path>'` | 14.16 |
 | 同じコマンドに、否定できるフラグ `<name>` と長い名前 `no-<name>` のオプションがある | `option '--no-<name>' conflicts with negatable flag '--<name>' in command '<path>'` | 14.11 |
 | コマンドとその祖先の間で、一方に否定できるフラグ `<name>`、他方に長い名前 `no-<name>` のオプションがある | `option '--no-<name>' in command '<path>' conflicts with negatable flag '--<name>' of command '<path>'`（`no-<name>` が子孫の側）、`negatable flag '--<name>' in command '<path>' conflicts with option '--no-<name>' of command '<path>'`（否定できるフラグが子孫の側） | 14.11 |
 
@@ -1028,12 +1036,12 @@ bool clopts_flag(const clopts_result_t *result, const char *long_name);     /* �
 
 | Component | 変更 | Req Coverage |
 |---|---|---|
-| 型（`clopts.h`） | `negatable`、`enabled` を加える | 1.5, 14.1, 14.5 |
-| DeclCheck（`clopts_decl.c`） | 宣言の検査 2 種と `clopts_find_negated` を加える | 14.2, 14.8〜14.11 |
-| ResultStore（`clopts_result.c`） | `enabled` を記録し、`clopts_flag` が返す | 14.4〜14.6 |
+| 型（`clopts.h`） | `negatable`、`default_enabled`、`enabled` を加える | 1.5, 14.1, 14.5, 14.14 |
+| DeclCheck（`clopts_decl.c`） | 宣言の検査 3 種と `clopts_find_negated` を加える | 14.2, 14.8〜14.11, 14.16 |
+| ResultStore（`clopts_result.c`） | `enabled` を記録し、既定で有効を適用し、`clopts_flag` が返す | 14.4〜14.6, 14.15 |
 | Parser（`clopts_parse.c`） | `scan_long` に手順 3 を加える | 14.2, 14.3, 14.7, 14.8 |
-| HelpFormatter（`clopts_help.c`） | 左列に `[no-]` を加える | 14.12 |
-| CLOptsTests（`cli_args/tests/`） | プログラム `neg`、スイート negate、decl の追加 | 11.1, 14.1〜14.13 |
+| HelpFormatter（`clopts_help.c`） | 左列に `[no-]`、説明に既定の注記を加える | 14.12, 14.17 |
+| CLOptsTests（`cli_args/tests/`） | プログラム `neg`、スイート negate、decl の追加 | 11.1, 14.1〜14.17 |
 
 #### DeclCheck
 
@@ -1048,7 +1056,7 @@ bool clopts_find_negated(const clopts_result_t *result, const char *name, size_t
 
 - 有効なオプションの探索は `clopts_find_long` と同じ `find_effective` を使う。引き継ぎの範囲（12.1、12.2）がそのまま否定の形にも当てはまる（14.9）。
 - 宣言の検査は、既存の「オプションごとの検査」と「長い名前の重複の検査」に条件を足す。
-  - オプションごとの検査: `negatable` が真で `kind != CLOPTS_FLAG` なら誤り（14.10）。
+  - オプションごとの検査: `negatable` が真で `kind != CLOPTS_FLAG` なら誤り（14.10）。`default_enabled` が真で、否定できるフラグ（`kind == CLOPTS_FLAG` かつ `negatable`）でなければ誤り（14.16）。フラグ以外に両方を付けた宣言は、2 つの誤りを報告する。
   - 重複の検査: 2 つのオプション A、B を比べる箇所（同じコマンドの中、祖先との間）で、名前の完全一致に加えて「A が否定できるフラグで、B の長い名前が `no-` + A の長い名前」と、その逆を誤りとする（14.11）。祖先との比較は各コマンドが自分の祖先を見る形なので、否定できるフラグが祖先の側にある場合も子孫の側にある場合も、1 回の走査で検出する。祖先の側のオプションが引き継ぐものかどうかは問わない（1.8 と同じ）。
 - 1 つの宣言に誤りが複数あれば、それぞれ報告する（既存の方針のまま）。
 
@@ -1060,6 +1068,7 @@ void clopts_result_set_flag(clopts_result_t *result, clopts_ref_t ref, bool enab
 ```
 
 - `clopts_value_init` は `enabled = false` にする（14.6）。
+- `clopts_result_apply_defaults` は、フラグで `explicit_set` が偽かつ `default_enabled` が真なら `enabled = true` にする（14.15）。確保を行わないので、失敗の経路は増えない。
 - `clopts_flag` は `enabled` を、`clopts_is_set` は `explicit_set` を返す。オプションが経路上で宣言されていなければ、どちらも `false`（5.7 のまま）。
 
 #### Parser
@@ -1072,6 +1081,7 @@ void clopts_result_set_flag(clopts_result_t *result, clopts_ref_t ref, bool enab
 
 - 左列は、否定できるフラグだけ `--` の後ろに `[no-]` を挟む: `-c, --[no-]color`、`    --[no-]force`。
 - `option_left_width` は、否定できるフラグで 5 バイトを足す。`append_option_left` は同じ条件で `[no-]` を出す。列の揃え方（最大幅 + 2 バイトの空き）は変えない（14.12）。
+- 説明の注記に、`default_enabled` が真のフラグで ` (default: on)` を加える。位置と空白の規則は、値付きオプションの ` (default: X)` と同じである（説明がなければ先頭の空白を出さない）。既定で無効のフラグには注記を出さない（14.17）。例: `    --[no-]sync  Flush after each file (default: on)`。
 - 否定できるフラグを含まないコマンドのヘルプは、1 バイトも変わらない（14.13）。
 
 ### Error Handling
@@ -1083,23 +1093,25 @@ void clopts_result_set_flag(clopts_result_t *result, clopts_ref_t ref, bool enab
 
 テスト用の宣言に、架空のプログラム **`neg`**（バージョン `4.0`）を加える（11.1）。
 
-- ルート（子を持つ）: `--color/-c`（フラグ、否定できる、引き継ぐ）、`--no-cache`（フラグ、否定できない）、`--wrap`（フラグ、否定できない）、`--name <NAME>`（値）。
-- `run`（末端）: `--force/-f`（フラグ、否定できる）、`--quiet/-q`（フラグ、否定できない）。位置引数 `FILE`（0 個以上、上限なし）。
+- ルート（子を持つ）: `--color/-c`（フラグ、否定できる、引き継ぐ）、`--pager`（フラグ、否定できる、引き継ぐ、既定で有効）、`--no-cache`（フラグ、否定できない）、`--wrap`（フラグ、否定できない）、`--name <NAME>`（値）。
+- `run`（末端）: `--force/-f`（フラグ、否定できる）、`--sync`（フラグ、否定できる、既定で有効、説明あり）、`--quiet/-q`（フラグ、否定できない）。位置引数 `FILE`（0 個以上、上限なし）。
 
 **negate**（`cli_args/tests/negate_test.c`、プログラム `neg`）:
 
 - 肯定・否定・未指定の 3 つの状態: `neg --color run`、`neg --no-color run`、`neg run` で、`clopts_flag` と `clopts_is_set` がそれぞれ（真・真）（偽・真）（偽・偽）になること（14.2、14.5、14.6）。
 - 後に書いた指定の優先: `neg --color --no-color run` が無効、`neg --no-color --color run` と `neg --no-color -c run` が有効、`neg run -fq --no-force` が `force` 無効・`quiet` 有効、`neg run --no-force -qf` が `force` 有効になること。どれもエラーにならないこと（14.4）。
 - 引き継ぐフラグ: `neg --color run --no-color` が無効、`neg --no-color run --color` が有効、`neg run --no-color` が無効になること（14.9）。
+- 既定で有効: `neg run` で `sync` と `pager` が `clopts_flag` 真・`clopts_is_set` 偽になること。`neg run --no-sync` と `neg --no-pager run`、`neg run --no-pager` が偽・真、`neg run --sync` が真・真、`neg run --no-sync --sync` が真・真になること（14.15、14.4）。
 - 完全一致の優先: `neg --no-cache run` で `no-cache` が有効になること（14.3）。
 - 値の指定: `neg --no-color=1 run` が `neg: option '--no-color' does not take a value`、`neg run --no-force=` が `neg run: option '--no-force' does not take a value` になること（14.7）。
 - 未知のオプション: `neg --no-wrap run`、`neg --no-name run`、`neg --no-force run`（まだ選択されていない子コマンドのフラグ）、`neg --no-bogus run`、`neg --no- run`、`neg --no-colo run`（前方一致）、`neg --No-color run` が、その引数を示す `unknown option` になること（14.8、3.6、3.7）。
 - ほかの規則との組み合わせ: `neg run -- --no-force` で `--no-force` が位置引数になり `force` が未指定のままであること（6.3）。`neg run --no-quiet --help` がヘルプの要求になること（8.3）。
-- ヘルプ: ルートコマンドと `run` のヘルプを、期待する文面のリテラルとバイト単位で比較する。`-c, --[no-]color`、`    --no-cache`、`-f, --[no-]force` の左列と、説明の開始位置が最大幅に揃うことを含む（14.12、11.4）。`run` のヘルプに、引き継いだ `--[no-]color` が現れること（9.5）。
+- ヘルプ: ルートコマンドと `run` のヘルプを、期待する文面のリテラルとバイト単位で比較する。`-c, --[no-]color`、`    --no-cache`、`-f, --[no-]force` の左列と、説明の開始位置が最大幅に揃うことを含む（14.12、11.4）。`--[no-]sync` と `--[no-]pager` の説明に ` (default: on)` が付き、既定で無効の `--[no-]color` と `--[no-]force` には付かないこと（14.17）。`run` のヘルプに、引き継いだ `--[no-]color` と `--[no-]pager` が現れること（9.5）。
 
 **decl**（`cli_args/tests/decl_test.c` への追加）:
 
 - 値付きオプションとリスト値に `negatable` を付けた宣言が、それぞれ `cannot be negatable` の誤りになること（14.10）。
+- 否定できないフラグ、値付きオプション、リスト値に `default_enabled` を付けた宣言が、それぞれ `must be a negatable flag to be enabled by default` の誤りになること。否定できるフラグに `default_value` を付けた宣言が、改訂前と同じ `cannot be required or have a default` の誤りになること（14.16）。
 - 同じコマンドに `color`（否定できる）と `no-color` がある宣言、祖先に `color`（否定できる）で子孫に `no-color` がある宣言、その逆の宣言が、上の表の文面の誤りになること。祖先の側が引き継がないオプションでも誤りになること（14.11）。
 - `color`（否定できない）と `no-color` が並ぶ宣言、`no-x`（否定できる）だけの宣言が、妥当であること（14.11 の境界）。
 
