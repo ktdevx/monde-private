@@ -73,3 +73,45 @@ Monde は、Markdown 文書を gettext の `.pot` / `.po` を介して翻訳す�
 - [x] translation-units -- Markdown とフロントマターからの翻訳単位の抽出（msgid、`#:`、`#.`、重複の統合）と、翻訳済み Markdown の範囲置換による再構成。Dependencies: po-format, markdown-parser, yaml-front-matter
 - [x] monde-cli -- `extract` / `init` / `update` / `translate` の統合、各オプション、翻訳率の表示、CommonMark spec のラウンドトリップによる受け入れテスト。Dependencies: cli-args, po-merge, translation-units
 - [x] docs-and-release -- 日本語の README と利用マニュアル、GitHub Releases での各 OS 向けバイナリ配布ワークフロー。Dependencies: monde-cli
+
+## Phase 2: CLOpts の独立化
+
+### Overview
+
+コマンドライン引数パーサ（cli-args）を、将来別リポジトリで管理する独立ライブラリ「CLOpts」（CMake では `CLOpts::clopts`）として扱えるようにする。ルートの `cli_args/` に必要なファイルをすべて集め、そのディレクトリだけで構成・ビルド・テストができる状態にする。Monde 本体は `add_subdirectory(cli_args)` で取り込む。
+
+### Approach Decision
+
+- **Chosen**: 自己完結化 + 改名 + パッケージ化。foundation への依存をなくし（自前の最小限のエラー報告型と内部ユーティリティ）、公開 API を `clopts_*` に改名し、`install` / `find_package(CLOpts)` にも対応する。
+- **Why**: 切り離し時に破壊的変更を残さず、「`cli_args/` を移して Monde 側の取り込みを差し替えるだけ」にできる。
+- **Rejected alternatives**:
+  - foundation の一部を同梱する: Monde と同時にリンクするとシンボルが衝突し、コードが二重管理になる。
+  - 診断をコールバックで受け渡す: API の形が大きく変わり、テストの書き換えが増える。
+  - 改名を切り離し時まで先送りする: ライブラリ名と API 名が食い違う状態が残る。
+  - `add_subdirectory` / `FetchContent` だけに対応する: インストールして使う形態を今回確認できない。
+
+### Scope
+
+- **In**: `cli_args/` への移設、foundation 依存の除去、`clopts_*` への改名、独立した CMake プロジェクト、install / find_package 対応、Monde 本体の追従、単独ビルドの CI、README とライセンス、steering の更新
+- **Out**: 別リポジトリへの実際の切り離し、引数パーサの機能追加と挙動の変更、共有ライブラリ対応、パッケージマネージャーへの登録、CLOpts 単体のリリース運用
+- Phase 1 の Scope で Out とした「ライブラリとしての公開 API」は、CLOpts に限って In とする。Monde のほかの部品は引き続き内部モジュールのままとする。
+
+### Constraints
+
+- `cli_args/` の中から、その外にあるファイルを参照しない。
+- サブプロジェクトとして取り込まれたときに、親プロジェクトへ警告オプションを伝播させず、Naos を二重に取得しない。
+- `monde` の外から見える動作（ヘルプ、エラーメッセージ、終了コード）を変えない。
+- C99、CMake 3.21 以上、対応環境、警告水準は Phase 1 と同じ。
+
+### Boundary Strategy
+
+- **Why this split**: 配置、名前、依存、ビルド、配布の変更は互いに密接で、途中の状態ではビルドが通らないため、1 つの spec にまとめる。挙動の要件は cli-args が持ち続ける。
+- **Shared seams to watch**:
+  - **エラーの橋渡し**: CLOpts のエラー報告型から `mnd_diag_list_t` への変換を `src/cli/` に置く。メッセージの文言と順序を変えない。
+  - **ヘルプ整形の出力先**: 公開 API が `mnd_buf_t` を受け取っている箇所を、CLOpts 独自の形に置き換える。
+  - **Naos の共有**: Monde と一緒に構成したときと単独で構成したときの両方で、同じ固定版を 1 回だけ取得する。
+  - **リリース構成**: Monde の配布物（CPack）に CLOpts の install 規則が混ざらないようにする。
+
+### Specs (dependency order)
+
+- [ ] clopts-standalone -- cli-args をルートの `cli_args/` に移し、foundation に依存しない独立ライブラリ CLOpts（`CLOpts::clopts`、`clopts_*` API、install / find_package 対応）として単独でビルド・テストできるようにする。Monde 本体は `add_subdirectory` で取り込む。Dependencies: cli-args, monde-cli, docs-and-release
