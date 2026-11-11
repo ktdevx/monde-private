@@ -361,6 +361,9 @@ stateDiagram-v2
 | 14.14, 14.16 | 既定で有効の宣言と、その誤り | 型（clopts.h）、DeclCheck | `clopts_option_t.default_enabled`、`clopts_decl_check` | 解析の最初 |
 | 14.15 | 指定がなければ既定の状態を返す | ResultStore | `clopts_result_apply_defaults`、`clopts_flag` | 走査の後の検査 |
 | 14.17 | ヘルプに既定で有効を示す | HelpFormatter | `clopts_format_help` | — |
+| 15.1〜15.7 | フラグの出現回数 | 型（clopts.h）、ResultStore | `clopts_value_t.count`、`clopts_flag_count` | 改訂（2026-11-11）: 出現回数、隠しオプション、別名の「Requirements Traceability」 |
+| 16.1〜16.7 | 隠しオプション | 型（clopts.h）、DeclCheck、HelpFormatter | `clopts_option_t.hidden` | 同上 |
+| 17.1〜17.14 | オプションの別名 | 型（clopts.h）、DeclCheck | `clopts_option_t.aliases`、`clopts_find_long` | 同上 |
 
 ## Components and Interfaces
 
@@ -1127,3 +1130,350 @@ void clopts_result_set_flag(clopts_result_t *result, clopts_ref_t ref, bool enab
 - 互換の層は要らない。公開の型へのメンバーの追加は末尾で、既存の利用側のソースは変えずにビルドできる。
 - `clopts_result_set_flag` の引数の追加は内部の関数の変更で、公開の API には影響しない。呼び出し元は `clopts_parse.c` の肯定の形の 2 か所と否定の形の 1 か所（追加）、内部の関数を直接使う `cli_args/tests/values_test.c` の 3 か所である。`values_test.c` には引数 `true` を足すだけで、テストの意味と期待値は変えない。型と ResultStore を先に変え、続けて Parser を変える。DeclCheck と HelpFormatter は、型の変更の後なら互いに独立に進められる。
 - CLOpts のバージョンは、公開の型の変更を表すために 0.2.0 に上げる。番号を書く場所は `cli_args/CMakeLists.txt` の `project(CLOpts VERSION ...)` だけで、パッケージの検証はこの値を使う。Monde のバージョンは変えない。
+
+## 改訂（2026-11-11）: 出現回数、隠しオプション、別名
+
+要件 15、16、17 と、それに伴う 1.5、1.12、11.1 の変更の設計である。この節は現在の名前（`cli_args/`、`clopts_*` / `CLOPTS_*`）で書く。この節に書いていない規則（走査、優先順位、メッセージの接頭辞、ヘルプの書式、否定できるフラグの規則）は、前の節のままとする。
+
+### 概要
+
+- **Purpose**: フラグが指定された回数を取得できるようにし、オプションをヘルプに出さない宣言と、長い名前の別名の宣言を加える。
+- **Impact**: CLOpts の公開の型にメンバーを 3 つ足す（宣言の `hidden` と `aliases`、結果の `count`）。公開の関数を 1 つ足す（`clopts_flag_count`）。この 3 つを使わない利用側（Monde を含む）は、ソースも挙動も変わらない。
+- **分類**: 既存の部品の拡張（Extension）。新しい部品、新しい依存、新しいソースファイル（テストを除く）はない。
+- **3 つの機能の関係**: 互いに独立している。共有するのは、宣言の型と、「別名で指定したフラグも 1 回と数える」（15.2、17.3）という 1 点だけで、後者は記録の場所が 1 つであることから追加の処理なしで満たせる。
+
+### Boundary Commitments
+
+#### This Spec Owns
+- フラグの出現回数の持ち方（`clopts_value_t` の `count`）、数え方の規則、取得の関数 `clopts_flag_count`
+- `clopts_option_t` の `hidden` と、その妥当性の規則（必須のオプションには許さない）、ヘルプのオプションの一覧と使い方の行からの除外
+- `clopts_option_t` の `aliases` の書き方（カンマ区切りの 1 つの文字列）と、その妥当性の規則（形、予約、重複、`no-` の衝突）、別名の照合
+- 追加する宣言の誤りの英語のメッセージ
+- CLOpts のバージョン番号（0.2.0 → 0.3.0）と `cli_args/README.md` の該当箇所
+
+#### Out of Boundary
+- `monde` のオプションに隠しオプションや別名を使うこと、`monde` が出現回数を使うこと。`src/cli/`、`tests/cli/`、`docs/`、ルートの `README.md` は変更しない
+- 値の選択肢の検査（要件確認で対応しないことにした）、値の型変換、そのほかの値の妥当性検査
+- 子コマンドをヘルプに出さない宣言、組み込みのオプション（`--help`、`-h`、`--version`）を隠す宣言
+- 短い名前の別名、別名のヘルプでの表示、別名による解析結果の取得、別名が使われたことの通知
+- 出現回数の下限・上限の宣言、値付きオプションとリスト値の出現回数
+- CLOpts のビルド定義、パッケージ定義、CI（clopts-standalone が持つ）。変更するのは `project(CLOpts VERSION ...)` の番号と、テストのソースの一覧だけである
+
+#### Allowed Dependencies
+- CLOpts のライブラリは C99 の標準ライブラリだけに依存する（clopts-standalone の設計のまま）。この改訂で依存は増えない。
+- `cli_args/` の中から、その外のファイルを参照しない。
+- モジュール内の依存の向きは変えない: 型 → DeclCheck → ResultStore → Parser。HelpFormatter は DeclCheck にだけ依存する。
+
+#### Revalidation Triggers
+- 出現回数の数え方（否定の形で 0 に戻す、既定で有効なら 1）の変更 → `clopts_flag_count` を使う利用側
+- `count` と `enabled` の関係（`enabled` は `count > 0` と常に一致する）の変更 → `clopts_flag` を使うすべての利用側（Monde の `src/cli/cmd_*.c` を含む）
+- `aliases` の書き方（カンマ区切り）や照合の順序の変更 → 別名を宣言している利用側
+- 隠しオプションをヘルプのどこに出さないか（一覧、使い方の行）の変更 → 隠しオプションを宣言している利用側のヘルプの期待値
+- `monde` が隠しオプション、別名、出現回数を使い始める場合 → monde-cli の要件、`docs/commands.md` と README の引用（`tests/docs/`）
+
+### File Structure Plan
+
+```
+cli_args/
+├── CMakeLists.txt                # 変更: project(CLOpts VERSION 0.3.0)
+├── README.md                     # 変更: 概要に 3 つの機能を加え、節「出現回数」「隠しオプション」「別名」を足す。find_package の例を 0.3 にする
+├── include/clopts/clopts.h       # 変更: clopts_option_t に hidden と aliases、clopts_value_t に count、関数 clopts_flag_count
+├── src/
+│   ├── clopts_decl.c             # 変更: 名前の列挙（長い名前と別名）、別名の照合、別名の形・予約・重複・衝突の検査（17.12〜17.14）、必須かつ隠しの検査（16.6）
+│   ├── clopts_result.c           # 変更: count の記録と解放時の初期化、既定で有効の適用で count を 1 にする、clopts_flag_count
+│   └── clopts_help.c             # 変更: オプションの一覧の 2 つのループと使い方の行で、隠しオプションを除く
+└── tests/
+    ├── CMakeLists.txt            # 変更: count_test.c、hidden_test.c、alias_test.c を加える
+    ├── main.c                    # 変更: スイート count、hidden、alias を登録する
+    ├── test_decl.h               # 変更: 架空のプログラム ext の宣言
+    ├── test_decl.c               # 変更: 同上の定義
+    ├── count_test.c              # 新規: スイート count（15.1〜15.7）
+    ├── hidden_test.c             # 新規: スイート hidden（16.1〜16.5、16.7）。ファイル内の宣言 solo を含む
+    ├── alias_test.c              # 新規: スイート alias（17.1〜17.11）
+    └── decl_test.c               # 変更: 隠しオプションと別名に関する宣言の誤り（16.6、17.12〜17.14）
+```
+
+変更しないファイル: `cli_args/src/clopts_parse.c`（走査は `clopts_find_long` と `clopts_result_set_flag` の結果だけを使うので、変更が要らない）、`clopts_internal.h`（内部の関数の宣言は増えない）、`clopts_argv.c`、`clopts_buf.[ch]`、`clopts_errors.c`、`cli_args/cmake/`、`cli_args/tests/` のほかのスイート（1.12 の検証として、期待値を変えずに通す）、`src/`、`tests/`、`docs/`、`.github/`。
+
+### 型（`cli_args/include/clopts/clopts.h`）
+
+```c
+typedef struct clopts_option
+{
+    const char *long_name;
+    char short_name;
+    clopts_kind_t kind;
+    const char *value_name;
+    const char *help;
+    bool required;
+    const char *default_value;
+    bool inherited;
+    bool negatable;
+    bool default_enabled;
+    bool hidden;                /* true なら、ヘルプに出さない。必須のオプションには指定できない（16.1） */
+    const char *aliases;        /* 長い名前の別名。複数はカンマ区切りで書く（例: "out,outfile"）。NULL ならなし（17.1） */
+} clopts_option_t;
+
+typedef struct clopts_value
+{
+    bool explicit_set;
+    const char *value;
+    char **items;
+    size_t item_count;
+    size_t item_cap;
+    bool enabled;        /* フラグ: count > 0 と常に一致する */
+    size_t count;        /* フラグ: 出現回数。最後の否定の形より後ろの肯定の形の数。未指定なら既定で有効のフラグは 1、ほかは 0。フラグ以外では 0（15.2〜15.4） */
+} clopts_value_t;
+
+/* フラグの出現回数。フラグではないオプション、経路上で宣言されていない名前、別名には 0 を返す（15.1、15.7、17.8） */
+size_t clopts_flag_count(const clopts_result_t *result, const char *long_name);
+```
+
+- どのメンバーも末尾に足す。0（`false`、`NULL`）が「ヘルプに出す」「別名なし」「0 回」を表すので、指示付き初期化子で書いた既存の宣言は変えずに済む。C++ の指示付き初期化子は宣言順を要求するが、末尾への追加は既存の記述に影響しない。
+- `enabled` は残す。`clopts_flag` は今までどおり `enabled` を返し、`clopts_flag_count` は `count` を返す。2 つを書き込む場所を ResultStore の 3 つの関数（記録、既定の適用、解放）に限ることで、`enabled == (count > 0)` を保つ（15.6）。
+- `CLOPTS_RESULT_INIT` は変えない（値の配列は解析のときに CLOpts が確保する）。
+- 別名はカンマ区切りの 1 つの文字列で書く。リスト値の既定値（`default_value = "a,b"`）と同じ書き方で、別名ごとの配列の定義が要らず、C と C++ で同じに書ける。このため、別名はカンマを含められない。長い名前はカンマを含められるままとする（改訂前の規則を変えない）。
+
+### 解析規則
+
+#### 出現回数（Requirement 15）
+
+フラグの記録（前の改訂の「フラグの記録」）に、回数を足す。
+
+| 指定 | `explicit_set` | `enabled` | `count` |
+|---|---|---|---|
+| 肯定の形（`--<name>`、`--<alias>`、`-<c>`、まとめ書きの中の `<c>`） | `true` | `true` | 1 を足す |
+| 否定の形（`--no-<name>`、`--no-<alias>`） | `true` | `false` | 0 にする |
+| 指定なし、既定で有効のフラグ（走査の後の既定の適用） | `false` のまま | `true` | 1 にする |
+| 指定なし、それ以外のフラグ | `false` | `false` | 0 |
+
+- 記録する場所は、ほかのオプションと同じく**宣言した段**の 1 か所である。このため、引き継ぐフラグを子コマンド名の前後にまたがって指定しても、同じ `count` に足される（15.5）。別名による指定も同じ場所に記録するので、`-v --verbose --<alias>` は 3 になる（15.2、17.3）。
+- 否定できないフラグは肯定の形でしか指定できないので、`count` は肯定の形の総数になる（15.2）。否定できるフラグは、否定の形で 0 に戻るので、最後の否定の形より後ろの肯定の形の数になる（15.3）。
+- 引数の個数は `int` の範囲なので、`count` が `size_t` の範囲を超えることはない。
+- 値付きオプションとリスト値では `count` を書かない。確保した時点の 0 のままである（15.7）。
+
+例（プログラム `neg`、`color` は否定できるフラグ、`pager` は否定できる既定で有効のフラグ）:
+
+| 引数列 | `clopts_flag_count` | `clopts_flag` |
+|---|---|---|
+| `neg -c -c run -c` | `color` は 3 | 真 |
+| `neg -c -c --no-color run -c` | `color` は 1 | 真 |
+| `neg -c --no-color run` | `color` は 0 | 偽 |
+| `neg run` | `color` は 0、`pager` は 1 | 偽、真 |
+| `neg --pager --pager run` | `pager` は 2 | 真 |
+| `neg --no-pager run` | `pager` は 0 | 偽 |
+
+#### 隠しオプション（Requirement 16）
+
+走査、結果、エラーは `hidden` を見ない。隠しオプションは、ほかのオプションと同じに照合され、同じに記録され、指定の誤りは同じ文面のエラーになる（16.4、16.5）。`hidden` を見るのは、宣言の検査（16.6）とヘルプの生成（16.2、16.3）だけである。
+
+#### 別名（Requirement 17）
+
+「解析規則」の節の走査の表の `--<name>` と `--<name>=<value>` の行で、手順 2 の照合の対象を広げる。順序は変えない。
+
+1. `help`、`version`（ルートコマンドが選択中のとき）の組み込みの名前。
+2. `<name>` 全体を、有効なオプションの**長い名前と別名**から探す（`clopts_find_long`）。見つかれば、そのオプションの指定として、元の名前の場合と同じに扱う（17.2）。
+3. `<name>` が `no-` で始まり、残りが 1 バイト以上あるとき、残りを有効なオプションの**長い名前と別名**から探す。見つかったオプションが否定できるフラグなら、否定の形とする（`clopts_find_negated`、17.5）。
+4. どれにも当たらなければ、`unknown option` とする。
+
+この順序から、次の扱いが決まる（`output` は値付きオプションで別名 `out`、`color` は否定できるフラグで別名 `colour`）。
+
+| 引数 | 扱い |
+|---|---|
+| `--out x`、`--out=x` | `output` に値 `x` を記録する |
+| `--out` が引数列の最後 | `option '--out' requires a value`（利用者が書いた別名で示す。17.9） |
+| `--colour`、`--no-colour` | `color` を有効、無効にする |
+| `--no-colour=1` | `option '--no-colour' does not take a value`（17.9） |
+| `--ou`（別名の前方一致）、`--Out` | `unknown option`（3.6、3.7 と同じ） |
+| `--no-out` | `unknown option '--no-out'`（`output` は否定できるフラグではない） |
+
+- エラーの名前は、既存の仕組み（走査がトークンの名前の部分を保留する）のままで、利用者が書いた別名になる。必須のオプションの欠落は、宣言の `long_name` を示すので、元の名前になる（17.10）。
+- 引き継ぎの範囲は、有効なオプションの探索（`find_effective`）で決まるので、別名も元の名前と同じ範囲で有効になる（17.4）。
+- 解析結果の取得（`clopts_lookup`）は `long_name` だけを見る。別名を渡すと、宣言されていない名前と同じ結果になる（17.7、17.8）。
+
+### ヘルプ
+
+- **オプションの一覧**: 有効なオプションのうち、`hidden` が真のものを、列幅の計算と行の出力の両方で飛ばす。引き継いだオプションも同じ列挙を通るので、子孫のコマンドのヘルプからも消える（16.2、16.3）。`-h, --help` の行と、ルートコマンドの `--version` の行は、宣言されたオプションではないので常に出す（16.7）。
+- **使い方の行**: 子を持つコマンドの、経路の直後の ` [<options>]` は、「有効なオプションが 1 つ以上あるとき」ではなく「**隠しオプションではない**有効なオプションが 1 つ以上あるとき」に出す。隠しオプションしか持たないコマンドのヘルプを、オプションを 1 つも宣言しないコマンドのヘルプと同じにするためである。末端コマンドの ` [<options>]` は、改訂前から常に出しているので変えない。
+- **別名**: ヘルプの左列は `long_name` だけから作るので、別名は出ない（17.11）。変更は要らない。
+- 隠しオプションを含まないコマンドのヘルプは、1 バイトも変わらない（1.12）。
+
+例（ルートコマンドが `--verbose/-v` と、隠しオプション `--trace-parser` を持つ場合）:
+
+```text
+Options:
+  -v, --verbose  Print more messages
+  -h, --help     Show this help
+      --version  Show version information
+```
+
+### メッセージ
+
+使い方のエラーは既存のものを使い、文面を増やさない。
+
+宣言の誤り（`invalid argument declaration: ` に続く理由）を 3 つ加える。`<path>` は経路の文字列である。
+
+| 誤り | 理由 | 要件 |
+|---|---|---|
+| 必須のオプションに `hidden` が真 | `option '--<name>' cannot be both required and hidden in command '<path>'` | 16.6 |
+| 別名が長い名前として受け付けない形（空、先頭が `-`、`=` を含む） | `invalid alias '<alias>' of option '--<name>' in command '<path>'` | 17.13 |
+| 別名が `help` または `version` | `alias '--<alias>' of option '--<name>' is reserved in command '<path>'` | 17.13 |
+
+別名の重複（17.12）と `no-` の衝突（17.14）は、既存の 5 つの文面をそのまま使い、名前の位置に、重複または衝突した名前（別名のこともある）を入れる。
+
+| 誤り | 理由（既存の文面） | 要件 |
+|---|---|---|
+| 同じコマンドの中で、名前（長い名前か別名）が重複している。同じオプションの元の名前とほかの別名との重複を含む | `duplicate option '--<n>' in command '<path>'` | 1.8, 17.12 |
+| コマンドの名前が、祖先のオプションの名前と重複している | `option '--<n>' in command '<path>' duplicates an option of command '<path>'` | 1.8, 17.12 |
+| 同じコマンドの中で、否定できるフラグの名前 `<n>` と、名前 `no-<n>` がある。同じオプションの中の組を含む | `option '--no-<n>' conflicts with negatable flag '--<n>' in command '<path>'` | 14.11, 17.14 |
+| コマンドとその祖先の間で、一方に否定できるフラグの名前 `<n>`、他方に名前 `no-<n>` がある | 14.11 の 2 つの文面（どちらが子孫の側かで分ける） | 14.11, 17.14 |
+
+別名を 1 つも含まない宣言では、`<n>` は長い名前だけになり、メッセージは改訂前と 1 バイトも変わらない（1.12）。
+
+### Requirements Traceability
+
+| Requirement | Summary | Components | Interfaces | Flows |
+|---|---|---|---|---|
+| 1.5 | 隠しの印と別名の宣言（追加分） | 型（clopts.h） | `clopts_option_t.hidden`、`clopts_option_t.aliases` | — |
+| 1.12 | 使わない宣言は改訂前と同じ | 全体 | 既存のテスト一式 | この節の「Testing Strategy」 |
+| 11.1 | テスト用の宣言で検証 | CLOptsTests | プログラム `ext`、スイート count、hidden、alias | — |
+| 15.1, 15.7 | 出現回数の取得、フラグ以外と宣言のない名前は 0 | ResultStore | `clopts_flag_count` | — |
+| 15.2, 15.3, 15.5 | 肯定の形を数え、否定の形で 0 に戻す。引き継ぐフラグは合算 | ResultStore | `clopts_result_set_flag`、宣言した段への記録 | この節の「出現回数」 |
+| 15.4 | 指定がなければ 0、既定で有効なら 1 | ResultStore | `clopts_result_apply_defaults` | 走査の後の検査 |
+| 15.6 | 回数が 1 以上であることと有効であることの一致 | ResultStore | `clopts_value_t.count`、`clopts_value_t.enabled` | — |
+| 16.1 | ヘルプに出さないかの宣言 | 型（clopts.h） | `clopts_option_t.hidden` | — |
+| 16.2, 16.3, 16.7 | 一覧と列幅から除く。組み込みのオプションは出す | HelpFormatter | `clopts_format_help` | この節の「ヘルプ」 |
+| 16.4, 16.5 | 解析とエラーは同じ | Parser、ResultStore | 変更なし（`hidden` を見ない） | — |
+| 16.6 | 必須かつ隠しは宣言の誤り | DeclCheck | `clopts_decl_check` | 解析の最初 |
+| 17.1 | 別名の宣言 | 型（clopts.h） | `clopts_option_t.aliases` | — |
+| 17.2, 17.4, 17.5 | 別名の照合、引き継ぎの範囲、否定の形 | DeclCheck | `clopts_find_long`、`clopts_find_negated` | この節の「別名」 |
+| 17.3, 17.6 | 元の名前と別名の混在は繰り返し。別名で必須を満たす | ResultStore | 同じ `clopts_ref_t` への記録 | — |
+| 17.7, 17.8 | 元の名前で取得し、別名では取得できない | ResultStore | `clopts_lookup`（変更なし） | — |
+| 17.9, 17.10 | エラーは書かれた別名で、必須の欠落は元の名前で示す | Parser | 変更なし（保留した名前、宣言の `long_name`） | — |
+| 17.11 | 別名をヘルプに出さない | HelpFormatter | 変更なし（左列は `long_name` から作る） | — |
+| 17.12, 17.13, 17.14 | 別名の重複、形と予約、`no-` の衝突 | DeclCheck | `clopts_decl_check` | 解析の最初 |
+
+### Components and Interfaces
+
+| Component | 変更 | Req Coverage |
+|---|---|---|
+| 型（`clopts.h`） | `hidden`、`aliases`、`count`、`clopts_flag_count` を加える | 1.5, 15.1, 16.1, 17.1 |
+| DeclCheck（`clopts_decl.c`） | 名前の列挙、別名の照合、別名の検査、必須かつ隠しの検査 | 16.6, 17.2, 17.4, 17.5, 17.12〜17.14 |
+| ResultStore（`clopts_result.c`） | `count` の記録、既定の適用、`clopts_flag_count` | 15.1〜15.7, 17.3 |
+| Parser（`clopts_parse.c`） | 変更なし | 16.4, 16.5, 17.9, 17.10 |
+| HelpFormatter（`clopts_help.c`） | 一覧と使い方の行で隠しオプションを除く | 16.2, 16.3, 16.7, 17.11 |
+| CLOptsTests（`cli_args/tests/`） | プログラム `ext`、スイート count、hidden、alias、decl の追加 | 11.1, 15.1〜17.14 |
+
+#### DeclCheck
+
+名前の列挙を、ファイルの中だけで使う関数として加える。公開もせず、内部ヘッダにも出さない。
+
+```c
+/* 名前の 1 つ。NUL で終わるとは限らない（別名はカンマ区切りの文字列の一部を指す） */
+typedef struct clopts_name
+{
+    const char *bytes;
+    size_t len;
+} clopts_name_t;
+
+/*
+ * option の n 番目の名前を *name に入れて true。0 番目は long_name、1 番目以降は aliases を
+ * カンマで区切った項目（空の項目も 1 つの名前として返す）。n が名前の数以上なら false。
+ * long_name が NULL なら、0 番目は長さ 0 の名前とする
+ */
+static bool option_name_at(const clopts_option_t *option, size_t n, clopts_name_t *name);
+```
+
+- **照合**: `match_long` は、キーを `option_name_at` のすべての名前と比べる。`clopts_find_long` と、それを呼ぶ `clopts_find_negated` は、これで別名にも一致する（17.2、17.5）。確保は行わない。
+- **検査の一般化**: 既存の重複の検査と衝突の検査は、「このオプションの長い名前」と「相手のオプションの長い名前」を比べている。これを「このオプションの各名前」と「相手のオプションの各名前」の組の比較に広げる。比べる相手は改訂前と同じである。
+  - 同じコマンドの、前に宣言されたオプション（すべての名前）
+  - **同じオプションの、前の名前**（元の名前と、前に書いた別名）。追加分
+  - 祖先のコマンドのオプション（すべての名前。引き継ぐかどうかは問わない。1.8 と同じ）
+- **重複**（1.8、17.12）: 2 つの名前がバイト単位で一致すれば誤り。各コマンドが自分の前のオプションと祖先を見る形なので、「前のオプションの別名」と「後のオプションの長い名前」の重複も、後のオプションの検査で見つかる。
+- **衝突**（14.11、17.14）: 否定できるフラグの名前 `<n>` と、名前 `no-<n>` の組があれば誤り。組は、別のオプションとの間だけでなく、**同じオプションの名前の間**でも見る（否定できるフラグ `color` に別名 `no-color` を付けた宣言）。
+- **別名の形と予約**（17.13）: 別名ごとに、長い名前と同じ条件（空、先頭が `-`、`=` を含む）と、予約（`help`、`version`）を検査する。`aliases` が空文字列の場合と、先頭・末尾・連続のカンマは、空の別名として誤りになる。
+- **報告の数**: 1 つのオプションについて、重複は最初の 1 件、衝突は最初の 1 件を報告する（改訂前の `return` の位置のまま）。形と予約の誤りは別名ごとに報告する。長い名前が形の誤りのとき、そのオプションの重複と衝突は検査しない（改訂前のまま）。別名の形と予約の検査は、その場合も行う。
+- **必須かつ隠し**（16.6）: オプションごとの検査に、`hidden` と `required` がともに真なら誤り、を足す。フラグに `required` を付けた宣言は、既存の誤り（`cannot be required or have a default`）と合わせて 2 件になる。
+- 名前を示すメッセージは、`%.*s` で長さを指定して出す（別名が NUL で終わらないため）。長さは既存の `name_precision` と同じ考え方で `int` に収める。
+
+#### ResultStore
+
+```c
+size_t clopts_flag_count(const clopts_result_t *result, const char *long_name);
+```
+
+- `clopts_result_set_flag(result, ref, enabled)`: `enabled` が真なら `count` に 1 を足し、偽なら 0 にする。`explicit_set` と `enabled` の書き込みは改訂前のままである。関数の形は変えないので、呼び出し元（`clopts_parse.c` の 3 か所と `values_test.c`）は変えない。
+- `clopts_result_apply_defaults`: 既定で有効のフラグを有効にする箇所で、`count = 1` も書く（15.4）。
+- `clopts_value_free`: `count` も 0 に戻す。
+- `clopts_flag_count`: `clopts_lookup` で値を探し、見つかれば `count` を、見つからなければ 0 を返す。フラグ以外のオプションの `count` は常に 0 なので、種類の判定は要らない（15.7）。
+
+#### HelpFormatter
+
+- `append_options_section`: 列幅を求めるループと、行を出すループで、`hidden` が真のオプションを飛ばす。
+- `append_usage_line`: 子を持つコマンドの条件を、隠しオプションではない有効なオプションの数で判定する。数える処理は `clopts_help.c` の中の関数にする（`clopts_effective_count` の意味は変えない。走査の側は隠しオプションも有効なオプションとして数える必要があるため）。
+
+### Error Handling
+
+- 宣言の誤りは、既存の経路（`clopts_errors_t` への追加と `CLOPTS_DECL_ERROR`）で返す。新しい状態と、新しい使い方のエラーはない。
+- 3 つの機能のどれも確保を行わないので、メモリ不足の経路は増えない。
+
+### Testing Strategy
+
+テスト用の宣言に、架空のプログラム **`ext`**（バージョン `5.0`）を加える（11.1）。出現回数は、既存のプログラム `tool`、`nest`、`neg` でも検証する。
+
+- ルート（子を持つ）: `--verbose/-v`（フラグ、引き継ぐ、別名 `chatty`）、`--color`（フラグ、否定できる、引き継ぐ、別名 `colour`）、`--trace`（フラグ、隠し、引き継ぐ）、`--profile <NAME>`（値、隠し、引き継がない）。
+- `run`（末端）: `--output/-o <FILE>`（値、別名 `out,outfile`）、`--token <TOKEN>`（値、必須、別名 `key`）、`--tags <TAG>`（リスト、別名 `labels`）、`--jobs/-j <N>`（値、隠し、既定値 `1`、説明あり。左列がこのコマンドで最も長い）、`--force/-f`（フラグ）。位置引数 `FILE`（0 個以上、上限なし）。
+
+有効なオプションがすべて隠しオプションになるコマンドは、`ext` では作れない（ルートの引き継ぐオプションが子孫でも見えるため）。この場合だけ、`hidden_test.c` の中に小さな宣言 **`solo`**（バージョン `1.0`）を置く。ルート（子を持つ）のオプションは `--dump`（フラグ、隠し）だけで、子は `state`（末端、オプションなし）である。
+
+**count**（`cli_args/tests/count_test.c`）:
+
+- 否定できないフラグ: `tool build -vvv ...` が 3、`tool build -v --verbose -qv ...` で `verbose` が 3・`quiet` が 1、指定なしが 0 になること。`clopts_flag` が回数 1 以上のときだけ真になること（15.2、15.4、15.6）。
+- 否定できるフラグ: この節の「出現回数」の例の表の 6 行（15.3、15.4）。
+- 引き継ぐフラグ: `nest -v remote -v --token t add -v n u` で `verbose` が 3 になること。`neg -c run -c --no-color -c` が 1 になること（15.5）。
+- 別名との合算: `ext -v --chatty run --token t --verbose` で `verbose` が 3 になること（15.2、17.3）。
+- 0 を返す場合: 値付きオプション（指定あり、複数回の指定を含む）、リスト値、宣言のない名前、別名（`chatty`）、`NULL` の名前、解析前の結果（15.7、17.8）。
+- 状態が成功以外のとき: ヘルプの要求と使い方のエラーの結果に対して呼んでも、落ちずに値を返すこと。
+
+**hidden**（`cli_args/tests/hidden_test.c`、プログラム `ext`）:
+
+- ヘルプ: `ext` のルートコマンドと `run`、`solo` のルートコマンドのヘルプを、期待する文面のリテラルとバイト単位で比較する（11.4）。確かめる点は次のとおり。
+  - ルートと `run` のどちらにも `--trace` が出ないこと（引き継ぐ隠しオプション。16.2）。
+  - `run` の一覧に `--jobs` が出ず、説明の開始位置が `--jobs` の行を除いた最大幅に揃うこと（16.3）。
+  - `-h, --help` と、ルートの `--version` が出ること（16.7）。
+  - `solo` の使い方の行が `Usage: solo <command> [<options>] [<arguments>]` で、経路の直後の ` [<options>]` がないこと。`Options:` の段落が `-h, --help` と `--version` の行だけになること。`ext` のルートコマンドでは、経路の直後の ` [<options>]` が出ること。
+  - `solo --dump state` が成功し、`dump` が有効になること（隠しオプションしかないコマンドでも解析は同じ）。
+- 解析: `ext --trace run --token t --jobs 4` で `trace` が有効、`jobs` が `4` になること。`ext run --token t` で `jobs` が既定値 `1` になること。`ext run --token t -j2` の短い名前も働くこと（16.4）。
+- エラー: `ext run --token t --jobs` が `ext run: option '--jobs' requires a value`、`ext --trace=1 run` が `ext: option '--trace' does not take a value`、`ext run --profile x`（引き継がない隠しオプション）が `ext run: unknown option '--profile'` になること（16.5、12.2）。
+
+**alias**（`cli_args/tests/alias_test.c`、プログラム `ext`）:
+
+- 照合: `--out x`、`--out=x`、`--outfile x` が `output` の値になること。`--key t` で必須の `token` が満たされること。`--labels a,b` が `tags` の項目になること（17.2、17.6）。
+- 繰り返し: `--output a --out b` が `b`、`--out a -o b` が `b`、`--tags a --labels b,c` が 3 項目になること（17.3）。
+- 引き継ぎ: `ext run --token t --chatty` と `ext --chatty run --token t` が同じ結果になること（17.4）。
+- 否定の形: `ext --colour run ...` が有効、`ext --no-colour run ...` が無効、`ext --color --no-colour run ...` が無効、`ext --no-color run --colour ...` が有効になること（17.5、14.4）。
+- 取得: `clopts_value(r, "out")`、`clopts_is_set(r, "key")`、`clopts_flag(r, "colour")`、`clopts_list_count(r, "labels")` が、宣言のない名前と同じ結果になること（17.8）。元の名前では値が取れること（17.7）。
+- エラー: `ext run --token t --out` が `ext run: option '--out' requires a value`、`ext --chatty=1 run` が `ext: option '--chatty' does not take a value`、`ext --no-colour=1 run` が `ext: option '--no-colour' does not take a value`、`ext run --token t --labels a,,b` が `ext run: option '--labels' has an empty item in 'a,,b'` になること（17.9）。
+- 必須の欠落: `ext run` が `ext run: missing required option '--token'` になること（17.10）。
+- 未知のオプション: `--ou`、`--Out`、`--no-out`、`--no-chatty`（否定できないフラグの別名）が `unknown option` になること（3.6、3.7、14.8）。
+- ヘルプ: ルートコマンドと `run` のヘルプに、別名（`chatty`、`colour`、`out`、`outfile`、`key`、`labels`）が現れないこと。hidden のスイートのバイト単位の比較が、これも確かめている（17.11）。
+
+**decl**（`cli_args/tests/decl_test.c` への追加）:
+
+- 値付きオプションに `required` と `hidden` を付けた宣言が、`cannot be both required and hidden` の誤りになること。`hidden` だけの宣言（フラグ、値、リスト値）が妥当であること（16.6、16.1）。
+- 別名の形: `aliases` が `""`、`"a,,b"`、`",a"`、`"a,"`、`"-x"`、`"a=b"` の宣言が、それぞれ `invalid alias` の誤りになること。`"help"`、`"x,version"` が `is reserved` の誤りになること（17.13）。
+- 別名の重複: 同じコマンドの前のオプションの長い名前と同じ別名、前のオプションの別名と同じ長い名前、2 つのオプションの同じ別名、自分の長い名前と同じ別名（`output` に `"output"`）、同じ別名の 2 回書き（`"out,out"`）が、`duplicate option` の誤りになること。祖先のオプションの長い名前・別名と同じ別名、祖先のオプションの別名と同じ長い名前が、`duplicates an option of command` の誤りになること。祖先の側が引き継がないオプションでも誤りになること（17.12）。
+- 別名の衝突: 否定できるフラグ `color`（別名 `colour`）と、長い名前 `no-colour` のオプション、別名 `no-color` のオプション、別名 `no-colour` のオプションが、それぞれ誤りになること。否定できるフラグ `color` 自身の別名が `no-color` の宣言が誤りになること。祖先と子孫の両方の向きで誤りになること（17.14）。
+- 境界: 否定できないフラグ `color` と別名 `no-color` を持つ別のオプションが並ぶ宣言、兄弟のコマンドどうしで同じ別名を持つ宣言が、妥当であること。
+
+**改訂前と同じであること**（1.12）:
+
+- `cli_args/tests/` の既存のスイート（decl、dispatch、long、short、values、positional、errors、help、single、nested、inherit、argv、errors_api、negate）を、期待値を変えずに通す。変えるのは `main.c` の登録と `decl_test.c` への追加だけである。
+- Monde の全テスト（`ctest` の全体。`cli`、`docs`、`clopts` を含む）を、`src/` と `tests/` を変えずに通す。`ctest -L docs` が通ることが、`monde` のヘルプの文面が変わっていないことの証拠になる。
+- CLOpts の単独構成（`cmake -S cli_args -B build-clopts`）でビルドとテストを通す。`clopts_package.find_package` が、バージョン 0.3.0 と C++ の利用例（`consumer_cxx.cpp`）で通ることを含む。
+
+### Migration Strategy
+
+- 互換の層は要らない。公開の型へのメンバーの追加は末尾で、既存の利用側のソースは変えずにビルドできる。内部の関数の形も変えない。
+- 進める順序は、型（`clopts.h` の 3 つのメンバーと関数の宣言）を最初に入れ、その後に 3 つの機能を 1 つずつ入れる。出現回数は `clopts_result.c`、隠しオプションは `clopts_help.c` と `clopts_decl.c` の 1 か所、別名は `clopts_decl.c` を変える。隠しオプションと別名はどちらも `clopts_decl.c` とテスト用の宣言（`test_decl.[ch]`）に触れるので、並行にはせず順に進める。
+- CLOpts のバージョンは、公開の型と関数の追加を表すために 0.3.0 に上げる。照合が `SameMinorVersion` なので、`find_package(CLOpts 0.2)` と書いた利用側は、0.3.0 を見つけなくなる。README の例を `0.3` に直す。Monde は `add_subdirectory` で取り込んでいるので影響を受けない。Monde のバージョンは変えない。
