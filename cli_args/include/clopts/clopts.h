@@ -34,6 +34,8 @@ typedef struct clopts_option
     bool inherited;             /* true なら、宣言したコマンドの子孫でも有効（1.5） */
     bool negatable;             /* true なら "--no-<long_name>" で無効にできる。フラグだけに指定できる（14.1） */
     bool default_enabled;       /* true なら、指定がないときに有効とする。否定できるフラグだけに指定できる（14.14） */
+    bool hidden;                /* true なら、ヘルプに出さない。必須のオプションには指定できない（16.1） */
+    const char *aliases;        /* 長い名前の別名。複数はカンマ区切りで書く（例: "out,outfile"）。NULL ならなし（17.1） */
 } clopts_option_t;
 
 typedef struct clopts_positional
@@ -92,6 +94,7 @@ typedef struct clopts_value
     size_t item_count;
     size_t item_cap;
     bool enabled;        /* フラグ: 最後の指定が肯定の形なら true、否定の形なら false。未指定なら宣言の default_enabled。フラグ以外では false */
+    size_t count;        /* フラグ: 出現回数。最後の否定の形より後ろの肯定の形の数。未指定なら既定で有効のフラグは 1、ほかは 0。フラグ以外では 0（15.2〜15.4） */
 } clopts_value_t;
 
 /* 経路上の 1 つの段 */
@@ -128,6 +131,8 @@ const clopts_command_t *clopts_command_at(const clopts_result_t *result, size_t 
 /* 以下、long_name が経路上のどのコマンドでも宣言されていない場合は false / NULL / 0 を返す（5.7） */
 bool clopts_is_set(const clopts_result_t *result, const char *long_name);   /* どちらかの形で明示的に指定された（5.6、14.5） */
 bool clopts_flag(const clopts_result_t *result, const char *long_name);     /* フラグが有効である。未指定なら既定の状態（14.5、14.15） */
+/* フラグの出現回数。フラグではないオプション、経路上で宣言されていない名前、別名には 0 を返す（15.1、15.7、17.8） */
+size_t clopts_flag_count(const clopts_result_t *result, const char *long_name);
 const char *clopts_value(const clopts_result_t *result, const char *long_name); /* 単一の値または既定値 */
 size_t clopts_list_count(const clopts_result_t *result, const char *long_name);
 const char *clopts_list_at(const clopts_result_t *result, const char *long_name, size_t index);

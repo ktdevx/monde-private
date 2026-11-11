@@ -51,6 +51,7 @@ static void clopts_value_free(clopts_value_t *value)
     value->item_count = 0;
     value->item_cap = 0;
     value->enabled = false;
+    value->count = 0;
 }
 
 /* 段の値の配列を解放する */
@@ -443,6 +444,14 @@ bool clopts_flag(const clopts_result_t *result, const char *long_name)
     const clopts_value_t *value = clopts_lookup(result, long_name);
 
     return (value != NULL) && (value->enabled);
+}
+
+size_t clopts_flag_count(const clopts_result_t *result, const char *long_name)
+{
+    const clopts_value_t *value = clopts_lookup(result, long_name);
+
+    /* フラグ以外のオプションの count は常に 0 なので、種類の判定は要らない（15.7） */
+    return (value != NULL) ? value->count : 0;
 }
 
 const char *clopts_value(const clopts_result_t *result, const char *long_name)
