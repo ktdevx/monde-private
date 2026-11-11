@@ -166,6 +166,8 @@ void clopts_result_set_flag(clopts_result_t *result, clopts_ref_t ref, bool enab
 
     target->explicit_set = true;
     target->enabled = enabled;
+    /* 肯定の形は 1 回と数え、否定の形はそれまでの回数を取り消す（15.2、15.3） */
+    target->count = enabled ? (target->count + 1) : 0;
 }
 
 void clopts_result_set_value(clopts_result_t *result, clopts_ref_t ref, const char *value)
@@ -330,10 +332,11 @@ clopts_status_t clopts_result_apply_defaults(clopts_result_t *result)
             const clopts_option_t *option = &command->options[ref.index];
             clopts_value_t *value = &level->values[ref.index];
 
-            /* 明示的に指定されていない既定で有効のフラグを有効にする。explicit_set は偽のまま（14.15） */
+            /* 明示的に指定されていない既定で有効のフラグを有効にし、1 回と数える。explicit_set は偽のまま（14.15、15.4） */
             if ((option->kind == CLOPTS_FLAG) && option->default_enabled && !value->explicit_set)
             {
                 value->enabled = true;
+                value->count = 1;
                 continue;
             }
 

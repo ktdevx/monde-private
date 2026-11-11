@@ -93,7 +93,7 @@ typedef struct clopts_value
     char **items;        /* リスト値: 確保した項目の配列 */
     size_t item_count;
     size_t item_cap;
-    bool enabled;        /* フラグ: 最後の指定が肯定の形なら true、否定の形なら false。未指定なら宣言の default_enabled。フラグ以外では false */
+    bool enabled;        /* フラグ: count > 0 と常に一致する */
     size_t count;        /* フラグ: 出現回数。最後の否定の形より後ろの肯定の形の数。未指定なら既定で有効のフラグは 1、ほかは 0。フラグ以外では 0（15.2〜15.4） */
 } clopts_value_t;
 
