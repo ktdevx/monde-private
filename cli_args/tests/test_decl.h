@@ -58,4 +58,18 @@ extern const clopts_program_t test_neg_program;
 /* test_neg_program のルートコマンドの子コマンド */
 extern const clopts_command_t *const test_neg_run;
 
+/*
+ * テスト専用の架空のプログラム "ext"（バージョン 5.0）の宣言。隠しオプションと、長い名前の別名を持つ。
+ *   ルート（子を持つ）: --verbose/-v（フラグ、引き継ぐ、別名 chatty）、
+ *                       --color（フラグ、否定できる、引き継ぐ、別名 colour）、
+ *                       --trace（フラグ、隠し、引き継ぐ）、--profile <NAME>（値、隠し、引き継がない）
+ *     run（末端）: --output/-o <FILE>（値、別名 out、outfile）、--token <TOKEN>（値、必須、別名 key）、
+ *                  --tags <TAG>（リスト、別名 labels）、--jobs/-j <NUMBER-OF-WORKERS>（値、隠し、既定値 "1"。左列が run で最も長い）、
+ *                  --force/-f（フラグ）。位置引数 FILE（0 個以上、上限なし）
+ */
+extern const clopts_program_t test_ext_program;
+
+/* test_ext_program のルートコマンドの子コマンド */
+extern const clopts_command_t *const test_ext_run;
+
 #endif

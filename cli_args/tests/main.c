@@ -15,6 +15,9 @@ NAOS_DECLARE_SUITE(argv);
 NAOS_DECLARE_SUITE(errors_api);
 NAOS_DECLARE_SUITE(buf);
 NAOS_DECLARE_SUITE(negate);
+NAOS_DECLARE_SUITE(count);
+NAOS_DECLARE_SUITE(hidden);
+NAOS_DECLARE_SUITE(alias);
 
 NAOS_MAIN(
     NAOS_ADD_SUITE(decl),
@@ -31,5 +34,8 @@ NAOS_MAIN(
     NAOS_ADD_SUITE(argv),
     NAOS_ADD_SUITE(errors_api),
     NAOS_ADD_SUITE(buf),
-    NAOS_ADD_SUITE(negate)
+    NAOS_ADD_SUITE(negate),
+    NAOS_ADD_SUITE(count),
+    NAOS_ADD_SUITE(hidden),
+    NAOS_ADD_SUITE(alias)
 )
