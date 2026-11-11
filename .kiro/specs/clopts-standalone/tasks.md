@@ -93,7 +93,7 @@
   - _Boundary: IsolationCheck_
   - _Requirements: 1.2, 3.1, 4.2, 9.2_
 
-- [ ] 4.3 CLOpts のインストールと、`find_package` 用のパッケージ構成を定義する
+- [x] 4.3 CLOpts のインストールと、`find_package` 用のパッケージ構成を定義する
   - インストールが有効なときに、静的ライブラリ、公開ヘッダ、パッケージ構成ファイル、バージョン照合のファイル、ライセンスの全文を、設計の配置でインストールする。テスト、内部ヘッダ、テストフレームワークはインストールしない
   - CLOpts ディレクトリに、Monde と同じライセンスの全文を置く
   - インストールしたターゲットが、公開ヘッダの場所と必要な OS のライブラリを利用側に伝えるようにする。構成ファイルに絶対パスを埋め込まない
@@ -149,3 +149,4 @@
 - 2.4: 橋渡しの 5 件を加え、Monde の CTest の全件は 1511 件（1494 + 2.1 の 12 件 + 橋渡しの 5 件）。`src/monde/main.c` は橋渡しのために `cli/cli_clopts.h` を取り込む
 - 4.1: 公開ヘッダの `$<INSTALL_INTERFACE:...>` はタスク 4.3 で加える。Monde は `cmake/MondeCLOpts.cmake` で `CLOPTS_*` を通常の変数として設定し、CMP0077（NEW）で `option()` に効かせている
 - 4.2: 単独性の検査 `clopts_check.isolation` は、`CMakeCache.txt` を含むディレクトリ（`cli_args/` の中に置いたビルドディレクトリ）を走査しない（設計にない、生成物による誤検出を避けるための除外）。README には `monde_`、`MONDE_`、`monde::`、`foundation/`、`../` を書けない
+- 4.3: パッケージ構成ファイルは `CLOptsTargets.cmake` の読み込みに加えて `check_required_components(CLOpts)` を呼ぶ（CMake の標準の形。設計の記述との差はタスク 5.3 で設計に反映する）。Monde の配布物の検証には release.yml と同じ `-DCMAKE_EXE_LINKER_FLAGS=-static` が要る

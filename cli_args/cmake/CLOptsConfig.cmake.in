@@ -1,0 +1,7 @@
+# CLOpts のパッケージ構成ファイル。find_package(CLOpts) で読み込まれ、ターゲット CLOpts::clopts を定義する。
+# パスはこのファイルの場所からの相対で求めるため、インストール先のディレクトリを移しても使える。
+@PACKAGE_INIT@
+
+include("${CMAKE_CURRENT_LIST_DIR}/CLOptsTargets.cmake")
+
+check_required_components(CLOpts)

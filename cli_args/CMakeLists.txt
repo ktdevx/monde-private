@@ -34,6 +34,51 @@ if(WIN32)
 endif()
 clopts_apply_compile_options(clopts)
 
+if(CLOPTS_INSTALL)
+  # インストールの規則とパッケージ構成ファイル。テスト、src/ の内部ヘッダ、Naos はインストールしない
+  include(GNUInstallDirs)
+  include(CMakePackageConfigHelpers)
+
+  # インストール先では、公開ヘッダの場所をインストール先の相対パスで伝える
+  target_include_directories(clopts PUBLIC "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
+
+  set(_clopts_package_dir "${CMAKE_INSTALL_LIBDIR}/cmake/CLOpts")
+
+  install(TARGETS clopts
+    EXPORT CLOptsTargets
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+  )
+  install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/clopts/"
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/clopts"
+    FILES_MATCHING PATTERN "*.h"
+  )
+  install(EXPORT CLOptsTargets
+    NAMESPACE CLOpts::
+    DESTINATION "${_clopts_package_dir}"
+  )
+
+  configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CLOptsConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/CLOptsConfig.cmake"
+    INSTALL_DESTINATION "${_clopts_package_dir}"
+    NO_SET_AND_CHECK_MACRO
+  )
+  # 1.0 より前のため、マイナーバージョンが違えば互換なしとする
+  write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/CLOptsConfigVersion.cmake"
+    VERSION "${PROJECT_VERSION}"
+    COMPATIBILITY SameMinorVersion
+  )
+  install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/CLOptsConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/CLOptsConfigVersion.cmake"
+    DESTINATION "${_clopts_package_dir}"
+  )
+  install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/CLOpts"
+  )
+endif()
+
 if(CLOPTS_BUILD_TESTS)
   # 取り込み構成では、利用側が CTest を有効にしている前提でテストを登録する
   if(PROJECT_IS_TOP_LEVEL)
