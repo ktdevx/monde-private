@@ -44,6 +44,13 @@ bool clopts_find_long(const clopts_result_t *result, const char *name, size_t na
                       clopts_ref_t *ref);
 bool clopts_find_short(const clopts_result_t *result, char short_name, clopts_ref_t *ref);
 
+/*
+ * name が "no-" で始まり、残り（1 バイト以上）が有効なオプションの長い名前と一致し、
+ * そのオプションが negatable のフラグなら、*ref に位置を入れて true（14.2、14.8、14.9）
+ */
+bool clopts_find_negated(const clopts_result_t *result, const char *name, size_t name_len,
+                         clopts_ref_t *ref);
+
 /* 有効なオプションの列挙。順序は「最後の段のオプション、親の引き継ぐオプション、…、ルートの引き継ぐオプション」 */
 size_t clopts_effective_count(const clopts_result_t *result);
 clopts_ref_t clopts_effective_at(const clopts_result_t *result, size_t i); /* i < count */
@@ -65,7 +72,8 @@ bool clopts_result_push(clopts_result_t *result, const clopts_command_t *command
 /* 段を level_count 個まで減らし、取り除いた段の値を解放する（help の語の誤りで使う） */
 void clopts_result_truncate(clopts_result_t *result, size_t level_count);
 
-void clopts_result_set_flag(clopts_result_t *result, clopts_ref_t ref);
+/* フラグを「明示的に指定された」にし、有効か無効かを記録する（5.5、14.2、14.4） */
+void clopts_result_set_flag(clopts_result_t *result, clopts_ref_t ref, bool enabled);
 void clopts_result_set_value(clopts_result_t *result, clopts_ref_t ref, const char *value);
 
 /* value を ',' で区切って追加する。空の項目があれば何も追加せず CLOPTS_USAGE_ERROR、確保の失敗は CLOPTS_OUT_OF_MEMORY */
@@ -73,7 +81,7 @@ clopts_status_t clopts_result_append_list(clopts_result_t *result, clopts_ref_t 
                                           const char *value, bool explicit_set);
 bool clopts_result_add_positional(clopts_result_t *result, const char *arg);
 
-/* 経路上のすべての段で、明示的に指定されていないオプションに既定値を適用する */
+/* 経路上のすべての段で、明示的に指定されていないオプションに既定値を適用する（既定で有効のフラグを含む） */
 clopts_status_t clopts_result_apply_defaults(clopts_result_t *result);
 
 #endif

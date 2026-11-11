@@ -32,6 +32,8 @@ typedef struct clopts_option
     bool required;              /* フラグでは false でなければならない */
     const char *default_value;  /* 既定値。NULL ならなし。リスト値はカンマ区切りで書く。フラグでは NULL */
     bool inherited;             /* true なら、宣言したコマンドの子孫でも有効（1.5） */
+    bool negatable;             /* true なら "--no-<long_name>" で無効にできる。フラグだけに指定できる（14.1） */
+    bool default_enabled;       /* true なら、指定がないときに有効とする。否定できるフラグだけに指定できる（14.14） */
 } clopts_option_t;
 
 typedef struct clopts_positional
@@ -84,11 +86,12 @@ typedef enum clopts_status
 
 typedef struct clopts_value
 {
-    bool explicit_set;   /* 利用者が明示的に指定した */
+    bool explicit_set;   /* 利用者が明示的に指定した（否定の形を含む） */
     const char *value;   /* 単一の値: 引数列か既定値を指す。なければ NULL */
     char **items;        /* リスト値: 確保した項目の配列 */
     size_t item_count;
     size_t item_cap;
+    bool enabled;        /* フラグ: 最後の指定が肯定の形なら true、否定の形なら false。未指定なら宣言の default_enabled。フラグ以外では false */
 } clopts_value_t;
 
 /* 経路上の 1 つの段 */
@@ -123,8 +126,8 @@ size_t clopts_depth(const clopts_result_t *result);                        /* �
 const clopts_command_t *clopts_command_at(const clopts_result_t *result, size_t level); /* level < depth */
 
 /* 以下、long_name が経路上のどのコマンドでも宣言されていない場合は false / NULL / 0 を返す（5.7） */
-bool clopts_is_set(const clopts_result_t *result, const char *long_name);   /* 明示的な指定（5.6） */
-bool clopts_flag(const clopts_result_t *result, const char *long_name);     /* フラグが指定された */
+bool clopts_is_set(const clopts_result_t *result, const char *long_name);   /* どちらかの形で明示的に指定された（5.6、14.5） */
+bool clopts_flag(const clopts_result_t *result, const char *long_name);     /* フラグが有効である。未指定なら既定の状態（14.5、14.15） */
 const char *clopts_value(const clopts_result_t *result, const char *long_name); /* 単一の値または既定値 */
 size_t clopts_list_count(const clopts_result_t *result, const char *long_name);
 const char *clopts_list_at(const clopts_result_t *result, const char *long_name, size_t index);

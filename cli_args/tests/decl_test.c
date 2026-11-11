@@ -1245,6 +1245,203 @@ NAOS_TEST(positional_name_repeats_last_name)
     NAOS_CHECK_STR_EQ("OUTPUT", clopts_positional_name(&f.commands[1], 5));
 }
 
+/* 否定できるフラグの宣言（14.10、14.11、14.16） */
+
+NAOS_TEST(neg_declaration_is_valid)
+{
+    check_valid(&test_neg_program);
+}
+
+NAOS_TEST(negatable_flag_is_valid)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[1].negatable = true;
+    check_valid(&f.program);
+}
+
+NAOS_TEST(negatable_flag_enabled_by_default_is_valid)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[1].negatable = true;
+    f.run_options[1].default_enabled = true;
+    check_valid(&f.program);
+}
+
+NAOS_TEST(negatable_value_option_is_error)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[0].negatable = true;
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--name' cannot be negatable in command 'prog run'");
+}
+
+NAOS_TEST(negatable_list_option_is_error)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[2].negatable = true;
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--tags' cannot be negatable in command 'prog run'");
+}
+
+NAOS_TEST(non_negatable_flag_enabled_by_default_is_error)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[1].default_enabled = true;
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--force' must be a negatable flag to be enabled by default in command 'prog run'");
+}
+
+NAOS_TEST(value_option_enabled_by_default_is_error)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[0].default_enabled = true;
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--name' must be a negatable flag to be enabled by default in command 'prog run'");
+}
+
+NAOS_TEST(list_option_enabled_by_default_is_error)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[2].default_enabled = true;
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--tags' must be a negatable flag to be enabled by default in command 'prog run'");
+}
+
+NAOS_TEST(negatable_value_option_enabled_by_default_is_two_errors)
+{
+    decl_fixture_t f;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
+
+    fixture_init(&f);
+    f.run_options[0].negatable = true;
+    f.run_options[0].default_enabled = true;
+
+    NAOS_CHECK_FALSE(clopts_decl_check(&f.program, &errors));
+    NAOS_REQUIRE_UINT_EQ(2, clopts_errors_count(&errors));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: option '--name' cannot be negatable in command 'prog run'",
+                      clopts_errors_at(&errors, 0));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: option '--name' must be a negatable flag to be enabled by default in command 'prog run'",
+                      clopts_errors_at(&errors, 1));
+    clopts_errors_free(&errors);
+}
+
+NAOS_TEST(negatable_flag_with_default_value_is_error)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[1].negatable = true;
+    f.run_options[1].default_value = "on";
+    check_single_error(&f.program,
+                       "invalid argument declaration: flag '--force' cannot be required or have a default in command 'prog run'");
+}
+
+NAOS_TEST(negated_name_after_negatable_flag_in_same_command_is_error)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[1].negatable = true;
+    f.run_options[2].long_name = "no-force";
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--no-force' conflicts with negatable flag '--force' in command 'prog run'");
+}
+
+NAOS_TEST(negated_name_before_negatable_flag_in_same_command_is_error)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[0].long_name = "no-force";
+    f.run_options[1].negatable = true;
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--no-force' conflicts with negatable flag '--force' in command 'prog run'");
+}
+
+NAOS_TEST(negated_name_in_descendant_of_inherited_negatable_flag_is_error)
+{
+    nest_fixture_t f;
+
+    nest_init(&f);
+    f.root_options[0].negatable = true;
+    nest_add_option(&f, "no-verbose", '\0');
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--no-verbose' in command 'nest remote add' conflicts with negatable flag '--verbose' of command 'nest'");
+}
+
+NAOS_TEST(negated_name_in_descendant_of_non_inherited_negatable_flag_is_error)
+{
+    nest_fixture_t f;
+
+    nest_init(&f);
+    f.root_options[2].negatable = true;
+    nest_add_option(&f, "no-dry-run", '\0');
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--no-dry-run' in command 'nest remote add' conflicts with negatable flag '--dry-run' of command 'nest'");
+}
+
+NAOS_TEST(negatable_flag_in_descendant_of_negated_name_is_error)
+{
+    nest_fixture_t f;
+
+    nest_init(&f);
+    f.root_options[0].long_name = "no-force";
+    f.add_options[0].negatable = true;
+    check_single_error(&f.program,
+                       "invalid argument declaration: negatable flag '--force' in command 'nest remote add' conflicts with option '--no-force' of command 'nest'");
+}
+
+NAOS_TEST(negatable_flag_in_descendant_of_non_inherited_negated_name_is_error)
+{
+    nest_fixture_t f;
+
+    nest_init(&f);
+    f.root_options[2].long_name = "no-token";
+    f.remote_options[0].kind = CLOPTS_FLAG;
+    f.remote_options[0].value_name = NULL;
+    f.remote_options[0].negatable = true;
+    check_single_error(&f.program,
+                       "invalid argument declaration: negatable flag '--token' in command 'nest remote' conflicts with option '--no-token' of command 'nest'");
+}
+
+NAOS_TEST(non_negatable_flag_and_negated_name_are_valid)
+{
+    decl_fixture_t f;
+    nest_fixture_t n;
+
+    fixture_init(&f);
+    f.run_options[2].long_name = "no-force";
+    check_valid(&f.program);
+
+    nest_init(&n);
+    nest_add_option(&n, "no-verbose", '\0');
+    check_valid(&n.program);
+}
+
+NAOS_TEST(negatable_flag_named_with_no_prefix_alone_is_valid)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[1].long_name = "no-x";
+    f.run_options[1].negatable = true;
+    check_valid(&f.program);
+}
+
 NAOS_SUITE(decl,
     NAOS_ADD_TEST(tool_declaration_is_valid),
     NAOS_ADD_TEST(fixture_declaration_is_valid),
@@ -1336,5 +1533,23 @@ NAOS_SUITE(decl,
     NAOS_ADD_TEST(value_name_uses_declared_name),
     NAOS_ADD_TEST(value_name_defaults_to_value),
     NAOS_ADD_TEST(positional_name_by_index),
-    NAOS_ADD_TEST(positional_name_repeats_last_name)
+    NAOS_ADD_TEST(positional_name_repeats_last_name),
+    NAOS_ADD_TEST(neg_declaration_is_valid),
+    NAOS_ADD_TEST(negatable_flag_is_valid),
+    NAOS_ADD_TEST(negatable_flag_enabled_by_default_is_valid),
+    NAOS_ADD_TEST(negatable_value_option_is_error),
+    NAOS_ADD_TEST(negatable_list_option_is_error),
+    NAOS_ADD_TEST(non_negatable_flag_enabled_by_default_is_error),
+    NAOS_ADD_TEST(value_option_enabled_by_default_is_error),
+    NAOS_ADD_TEST(list_option_enabled_by_default_is_error),
+    NAOS_ADD_TEST(negatable_value_option_enabled_by_default_is_two_errors),
+    NAOS_ADD_TEST(negatable_flag_with_default_value_is_error),
+    NAOS_ADD_TEST(negated_name_after_negatable_flag_in_same_command_is_error),
+    NAOS_ADD_TEST(negated_name_before_negatable_flag_in_same_command_is_error),
+    NAOS_ADD_TEST(negated_name_in_descendant_of_inherited_negatable_flag_is_error),
+    NAOS_ADD_TEST(negated_name_in_descendant_of_non_inherited_negatable_flag_is_error),
+    NAOS_ADD_TEST(negatable_flag_in_descendant_of_negated_name_is_error),
+    NAOS_ADD_TEST(negatable_flag_in_descendant_of_non_inherited_negated_name_is_error),
+    NAOS_ADD_TEST(non_negatable_flag_and_negated_name_are_valid),
+    NAOS_ADD_TEST(negatable_flag_named_with_no_prefix_alone_is_valid)
 )

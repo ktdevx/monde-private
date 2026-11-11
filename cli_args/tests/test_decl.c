@@ -186,3 +186,54 @@ const clopts_command_t *const test_nest_remote = &test_nest_commands[0];
 const clopts_command_t *const test_nest_remote_add = &test_nest_remote_commands[0];
 const clopts_command_t *const test_nest_remote_remove = &test_nest_remote_commands[1];
 const clopts_command_t *const test_nest_status = &test_nest_commands[1];
+
+static const clopts_option_t test_neg_root_options[] = {
+    { .long_name = "color", .short_name = 'c', .kind = CLOPTS_FLAG, .help = "Colorize the output",
+      .inherited = true, .negatable = true },
+    { .long_name = "pager", .kind = CLOPTS_FLAG, .inherited = true, .negatable = true,
+      .default_enabled = true },
+    { .long_name = "no-cache", .kind = CLOPTS_FLAG, .help = "Do not use the cache" },
+    { .long_name = "wrap", .kind = CLOPTS_FLAG, .help = "Wrap long lines" },
+    { .long_name = "name", .kind = CLOPTS_VALUE, .value_name = "NAME", .help = "Name of the job" }
+};
+
+static const clopts_option_t test_neg_run_options[] = {
+    { .long_name = "force", .short_name = 'f', .kind = CLOPTS_FLAG, .help = "Overwrite existing files",
+      .negatable = true },
+    { .long_name = "sync", .kind = CLOPTS_FLAG, .help = "Flush after each file", .negatable = true,
+      .default_enabled = true },
+    { .long_name = "quiet", .short_name = 'q', .kind = CLOPTS_FLAG, .help = "Print only errors" }
+};
+
+static const clopts_positional_t test_neg_run_positionals[] = {
+    { "FILE", "Files to process" }
+};
+
+static const clopts_command_t test_neg_commands[] = {
+    {
+        .name = "run",
+        .summary = "Process files",
+        .options = test_neg_run_options,
+        .option_count = TEST_TOOL_COUNT_OF(test_neg_run_options),
+        .positionals = test_neg_run_positionals,
+        .positional_count = TEST_TOOL_COUNT_OF(test_neg_run_positionals),
+        .min_positionals = 0,
+        .max_positionals = CLOPTS_UNLIMITED
+    }
+};
+
+static const clopts_command_t test_neg_root = {
+    .description = "A sample tool with negatable flags.",
+    .options = test_neg_root_options,
+    .option_count = TEST_TOOL_COUNT_OF(test_neg_root_options),
+    .commands = test_neg_commands,
+    .command_count = TEST_TOOL_COUNT_OF(test_neg_commands)
+};
+
+const clopts_program_t test_neg_program = {
+    .name = "neg",
+    .version = "4.0",
+    .root = &test_neg_root
+};
+
+const clopts_command_t *const test_neg_run = &test_neg_commands[0];
