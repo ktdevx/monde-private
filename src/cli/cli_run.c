@@ -44,54 +44,54 @@ static void report_single_error(FILE *err, const char *message)
 }
 
 /*
- * ヘルプ（command が NULL なら全体）またはバージョンの文面を fp に書き、成功なら exit_code を返す。
+ * ヘルプ（result の経路の最後のコマンド）またはバージョンの文面を fp に書き、成功なら exit_code を返す。
  * 文面の生成や書き込みに失敗したら err に診断を書いて 1 を返す
  */
-static int write_text(const mnd_cli_env_t *env, FILE *fp, const mnd_args_program_t *program,
-                      const mnd_args_command_t *command, bool version, int exit_code)
+static int write_text(const mnd_cli_env_t *env, FILE *fp, const mnd_args_result_t *result, bool version,
+                      int exit_code)
 {
     mnd_buf_t text = MND_BUF_INIT;
     bool formatted;
-    int result = exit_code;
+    int code = exit_code;
 
     if (version)
     {
-        formatted = mnd_args_format_version(program, &text);
+        formatted = mnd_args_format_version(result->program, &text);
     }
     else
     {
-        formatted = mnd_args_format_help(program, command, &text);
+        formatted = mnd_args_format_help(result, &text);
     }
 
     if (!formatted)
     {
         report_single_error(env->err, RUN_OUT_OF_MEMORY_MESSAGE);
-        result = MND_CLI_EXIT_FAILURE;
+        code = MND_CLI_EXIT_FAILURE;
     }
     else if (!write_buf(fp, &text))
     {
         report_single_error(env->err, (fp == env->out) ? "failed to write to standard output"
                                                        : "failed to write to standard error");
-        result = MND_CLI_EXIT_FAILURE;
+        code = MND_CLI_EXIT_FAILURE;
     }
 
     mnd_buf_free(&text);
 
-    return result;
+    return code;
 }
 
 /* 解析に成功したサブコマンドのハンドラを呼び、診断を表示して終了コードを返す */
 static int run_handler(const mnd_cli_env_t *env, const mnd_args_result_t *result, mnd_diag_list_t *diags,
                        mnd_cli_find_handler_fn find_handler)
 {
-    mnd_cli_handler_fn handler = find_handler(result->command->name);
+    const char *name = mnd_args_command(result)->name;
+    mnd_cli_handler_fn handler = find_handler(name);
     mnd_cli_ctx_t ctx;
     bool ok;
 
     if (handler == NULL)
     {
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0, "internal error: no handler for command '%s'",
-                     result->command->name);
+        mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0, "internal error: no handler for command '%s'", name);
         mnd_cli_report_diags(env->err, diags);
         return MND_CLI_EXIT_FAILURE;
     }
@@ -127,16 +127,16 @@ int mnd_cli_run_with(const mnd_cli_env_t *env, int argc, char *const *argv, mnd_
         exit_code = run_handler(env, &result, &diags, find_handler);
         break;
     case MND_ARGS_HELP:
-        exit_code = write_text(env, env->out, &program, result.command, false, MND_CLI_EXIT_OK);
+        exit_code = write_text(env, env->out, &result, false, MND_CLI_EXIT_OK);
         break;
     case MND_ARGS_VERSION:
-        exit_code = write_text(env, env->out, &program, NULL, true, MND_CLI_EXIT_OK);
+        exit_code = write_text(env, env->out, &result, true, MND_CLI_EXIT_OK);
         break;
     case MND_ARGS_NO_COMMAND:
-        exit_code = write_text(env, env->err, &program, NULL, false, MND_CLI_EXIT_USAGE);
+        exit_code = write_text(env, env->err, &result, false, MND_CLI_EXIT_USAGE);
         break;
     case MND_ARGS_USAGE_ERROR:
-        mnd_cli_report_usage_error(env->err, &program, result.command, &diags);
+        mnd_cli_report_usage_error(env->err, &result, &diags);
         exit_code = MND_CLI_EXIT_USAGE;
         break;
     case MND_ARGS_DECL_ERROR:

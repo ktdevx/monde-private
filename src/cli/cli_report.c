@@ -64,27 +64,16 @@ void mnd_cli_report_diags(FILE *err, const mnd_diag_list_t *diags)
     write_dropped(err, diags);
 }
 
-/* 使い方のエラーはパスと行を付けず "monde: <severity>: <message>" で書き、最後に cli-args の案内を 1 行書く（1.6） */
-/* text が "<first> <second>: "（second が NULL なら "<first>: "）で始まるなら、その直後を返す。でなければ NULL */
-static const char *skip_prefix(const char *text, const char *first, const char *second)
+/* text が "<prefix>: " で始まるなら、その直後を返す。でなければ NULL */
+static const char *skip_prefix(const char *text, const char *prefix)
 {
-    size_t len = strlen(first);
+    size_t len = strlen(prefix);
 
-    if (strncmp(text, first, len) != 0)
+    if ((len == 0) || (strncmp(text, prefix, len) != 0))
     {
         return NULL;
     }
     text += len;
-
-    if (second != NULL)
-    {
-        len = strlen(second);
-        if ((text[0] != ' ') || (strncmp(text + 1, second, len) != 0))
-        {
-            return NULL;
-        }
-        text += 1 + len;
-    }
 
     if ((text[0] != ':') || (text[1] != ' '))
     {
@@ -95,47 +84,54 @@ static const char *skip_prefix(const char *text, const char *first, const char *
 }
 
 /*
- * cli-args の使い方のエラーのメッセージから接頭辞を除く。"<program> <command>: "（command があるとき）、
- * 次に "<program>: " を試し、どちらも一致しなければそのまま返す
+ * cli-args の使い方のエラーのメッセージから接頭辞を除く。経路の文字列 path による "<path>: "、
+ * 次にプログラム名 program による "<program>: " を試し、どちらも一致しなければそのまま返す（13.4）
  */
-static const char *strip_usage_prefix(const char *message, const mnd_args_program_t *program,
-                                      const mnd_args_command_t *command)
+static const char *strip_usage_prefix(const char *message, const char *path, const char *program)
 {
     const char *rest = NULL;
 
-    if ((program == NULL) || (program->name == NULL))
+    if (path != NULL)
     {
-        return message;
+        rest = skip_prefix(message, path);
     }
-    if ((command != NULL) && (command->name != NULL))
+    if ((rest == NULL) && (program != NULL))
     {
-        rest = skip_prefix(message, program->name, command->name);
-    }
-    if (rest == NULL)
-    {
-        rest = skip_prefix(message, program->name, NULL);
+        rest = skip_prefix(message, program);
     }
 
     return (rest != NULL) ? rest : message;
 }
 
-void mnd_cli_report_usage_error(FILE *err, const mnd_args_program_t *program,
-                                const mnd_args_command_t *command, const mnd_diag_list_t *diags)
+/* 使い方のエラーはパスと行を付けず "monde: <severity>: <message>" で書き、最後に cli-args の案内を 1 行書く（1.6） */
+void mnd_cli_report_usage_error(FILE *err, const mnd_args_result_t *result, const mnd_diag_list_t *diags)
 {
+    mnd_buf_t path = MND_BUF_INIT;
     mnd_buf_t hint = MND_BUF_INIT;
+    const char *path_text = NULL;
+    const char *program = NULL;
     size_t count = mnd_diag_list_count(diags);
     size_t i;
+
+    if (mnd_args_format_path(result, &path))
+    {
+        path_text = mnd_buf_cstr(&path);
+    }
+    if (result->program != NULL)
+    {
+        program = result->program->name;
+    }
 
     for (i = 0; i < count; i++)
     {
         const mnd_diag_t *diag = mnd_diag_list_at(diags, i);
 
         fprintf(err, "%s: %s: %s\n", REPORT_PROGRAM, severity_name(diag->severity),
-                strip_usage_prefix(message_text(diag), program, command));
+                strip_usage_prefix(message_text(diag), path_text, program));
     }
     write_dropped(err, diags);
 
-    if (mnd_args_format_usage_hint(program, command, &hint))
+    if (mnd_args_format_usage_hint(result, &hint))
     {
         fwrite(mnd_buf_cstr(&hint), 1, hint.len, err);
     }
@@ -144,6 +140,7 @@ void mnd_cli_report_usage_error(FILE *err, const mnd_args_program_t *program,
         fprintf(err, "%s: error: %s\n", REPORT_PROGRAM, "out of memory");
     }
     mnd_buf_free(&hint);
+    mnd_buf_free(&path);
 }
 
 void mnd_cli_report_extract(FILE *err, bool quiet, size_t messages)
