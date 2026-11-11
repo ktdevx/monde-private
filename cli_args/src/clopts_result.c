@@ -318,7 +318,7 @@ clopts_status_t clopts_result_apply_defaults(clopts_result_t *result)
 {
     clopts_ref_t ref;
 
-    /* 経路上のすべての段で、明示的に指定されていないオプションに既定値を適用する（5.6、12.6） */
+    /* 経路上のすべての段で、明示的に指定されていないオプションに既定値を適用する（5.6、12.6、14.15） */
     for (ref.level = 0; ref.level < result->level_count; ref.level++)
     {
         const clopts_level_t *level = &result->levels[ref.level];
@@ -333,6 +333,13 @@ clopts_status_t clopts_result_apply_defaults(clopts_result_t *result)
         {
             const clopts_option_t *option = &command->options[ref.index];
             clopts_value_t *value = &level->values[ref.index];
+
+            /* 明示的に指定されていない既定で有効のフラグを有効にする。explicit_set は偽のまま（14.15） */
+            if ((option->kind == CLOPTS_FLAG) && option->default_enabled && !value->explicit_set)
+            {
+                value->enabled = true;
+                continue;
+            }
 
             if ((value->explicit_set) || (option->default_value == NULL))
             {

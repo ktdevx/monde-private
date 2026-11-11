@@ -84,7 +84,7 @@ clopts_status_t clopts_result_append_list(clopts_result_t *result, clopts_ref_t 
                                           const char *value, bool explicit_set);
 bool clopts_result_add_positional(clopts_result_t *result, const char *arg);
 
-/* 経路上のすべての段で、明示的に指定されていないオプションに既定値を適用する */
+/* 経路上のすべての段で、明示的に指定されていないオプションに既定値を適用する（既定で有効のフラグを含む） */
 clopts_status_t clopts_result_apply_defaults(clopts_result_t *result);
 
 #endif

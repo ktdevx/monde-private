@@ -332,6 +332,73 @@ NAOS_TEST(negated_form_for_default_on_flag_of_selected_command)
     check_flag_state(3, tokens, test_neg_run, "sync", false, true);
 }
 
+/* 既定で有効（14.15、14.4、12.6）。指定がなければ有効で、明示的な指定はないものとする */
+
+NAOS_TEST(default_on_flags_are_enabled_and_not_set)
+{
+    static const char *const tokens[] = {"neg", "run"};
+    negate_run_t run;
+
+    run_parse(&run, 2, tokens);
+    check_ok(&run, test_neg_run);
+    NAOS_CHECK_TRUE(clopts_flag(&run.result, "sync"));
+    NAOS_CHECK_FALSE(clopts_is_set(&run.result, "sync"));
+    NAOS_CHECK_TRUE(clopts_flag(&run.result, "pager"));
+    NAOS_CHECK_FALSE(clopts_is_set(&run.result, "pager"));
+    NAOS_CHECK_FALSE(clopts_flag(&run.result, "force"));
+    NAOS_CHECK_FALSE(clopts_flag(&run.result, "quiet"));
+    run_free(&run);
+}
+
+NAOS_TEST(default_on_inherited_flag_is_enabled_at_root_level)
+{
+    static const char *const tokens[] = {"neg", "run"};
+    negate_run_t run;
+
+    run_parse(&run, 2, tokens);
+    check_ok(&run, test_neg_run);
+    NAOS_REQUIRE_UINT_EQ(2, run.result.level_count);
+    NAOS_REQUIRE_NOT_NULL(run.result.levels[0].values);
+    /* pager はルートの 2 番目のオプション。引き継ぐフラグの値はルートの段に記録される */
+    NAOS_CHECK_TRUE(run.result.levels[0].values[1].enabled);
+    NAOS_CHECK_FALSE(run.result.levels[0].values[1].explicit_set);
+    run_free(&run);
+}
+
+NAOS_TEST(positive_form_of_default_on_flag_is_enabled_and_set)
+{
+    static const char *const tokens[] = {"neg", "run", "--sync"};
+
+    check_flag_state(3, tokens, test_neg_run, "sync", true, true);
+}
+
+NAOS_TEST(positive_form_after_negated_form_of_default_on_flag_wins)
+{
+    static const char *const tokens[] = {"neg", "run", "--no-sync", "--sync"};
+
+    check_flag_state(4, tokens, test_neg_run, "sync", true, true);
+}
+
+NAOS_TEST(negated_form_after_positive_form_of_default_on_flag_wins)
+{
+    static const char *const tokens[] = {"neg", "--pager", "run", "--no-pager"};
+
+    check_flag_state(4, tokens, test_neg_run, "pager", false, true);
+}
+
+NAOS_TEST(default_on_flag_is_unaffected_by_other_flag)
+{
+    static const char *const tokens[] = {"neg", "run", "--no-sync"};
+    negate_run_t run;
+
+    run_parse(&run, 3, tokens);
+    check_ok(&run, test_neg_run);
+    NAOS_CHECK_FALSE(clopts_flag(&run.result, "sync"));
+    NAOS_CHECK_TRUE(clopts_flag(&run.result, "pager"));
+    NAOS_CHECK_FALSE(clopts_is_set(&run.result, "pager"));
+    run_free(&run);
+}
+
 /* 完全一致の優先（14.3） */
 
 NAOS_TEST(exact_match_of_no_prefixed_name_wins)
@@ -455,6 +522,12 @@ NAOS_SUITE(negate,
     NAOS_ADD_TEST(inherited_negated_form_in_child_command_for_default_on_flag),
     NAOS_ADD_TEST(negated_form_before_command_for_default_on_flag),
     NAOS_ADD_TEST(negated_form_for_default_on_flag_of_selected_command),
+    NAOS_ADD_TEST(default_on_flags_are_enabled_and_not_set),
+    NAOS_ADD_TEST(default_on_inherited_flag_is_enabled_at_root_level),
+    NAOS_ADD_TEST(positive_form_of_default_on_flag_is_enabled_and_set),
+    NAOS_ADD_TEST(positive_form_after_negated_form_of_default_on_flag_wins),
+    NAOS_ADD_TEST(negated_form_after_positive_form_of_default_on_flag_wins),
+    NAOS_ADD_TEST(default_on_flag_is_unaffected_by_other_flag),
     NAOS_ADD_TEST(exact_match_of_no_prefixed_name_wins),
     NAOS_ADD_TEST(negated_form_with_value_is_error),
     NAOS_ADD_TEST(negated_form_with_empty_value_is_error),
