@@ -838,6 +838,8 @@ NAOS_TEST(deep_declaration_is_checked_without_depth_limit)
         }
     }
 
+    /* set_option が設定しないメンバ（aliases など）を 0 にしておく */
+    memset(&bad, 0, sizeof bad);
     set_option(&bad, "help", '\0', CLOPTS_FLAG, NULL, NULL);
     bad.inherited = false;
     chain[39].options = &bad;
@@ -1442,6 +1444,256 @@ NAOS_TEST(negatable_flag_named_with_no_prefix_alone_is_valid)
     check_valid(&f.program);
 }
 
+/* 隠しオプションの宣言（16.1、16.6） */
+
+NAOS_TEST(ext_declaration_passes_decl_check)
+{
+    check_valid(&test_ext_program);
+}
+
+NAOS_TEST(hidden_flag_value_and_list_are_valid)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[0].hidden = true;
+    f.run_options[1].hidden = true;
+    f.run_options[2].hidden = true;
+    check_valid(&f.program);
+}
+
+NAOS_TEST(required_and_hidden_value_is_error)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[0].required = true;
+    f.run_options[0].hidden = true;
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--name' cannot be both required and hidden in command 'prog run'");
+}
+
+NAOS_TEST(required_and_hidden_list_is_error)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[2].default_value = NULL;
+    f.run_options[2].required = true;
+    f.run_options[2].hidden = true;
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--tags' cannot be both required and hidden in command 'prog run'");
+}
+
+NAOS_TEST(required_and_hidden_flag_is_two_errors)
+{
+    decl_fixture_t f;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
+
+    fixture_init(&f);
+    f.run_options[1].required = true;
+    f.run_options[1].hidden = true;
+
+    NAOS_CHECK_FALSE(clopts_decl_check(&f.program, &errors));
+    NAOS_REQUIRE_UINT_EQ(2, clopts_errors_count(&errors));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: flag '--force' cannot be required or have a default in command 'prog run'",
+                      clopts_errors_at(&errors, 0));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: option '--force' cannot be both required and hidden in command 'prog run'",
+                      clopts_errors_at(&errors, 1));
+    clopts_errors_free(&errors);
+}
+
+NAOS_TEST(hidden_flag_with_default_is_one_error)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[1].default_value = "1";
+    f.run_options[1].hidden = true;
+    check_single_error(&f.program,
+                       "invalid argument declaration: flag '--force' cannot be required or have a default in command 'prog run'");
+}
+
+/* 別名の形と予約（17.13） */
+
+/* run の --name に aliases を付けた宣言が、期待するメッセージの誤り 1 件になることを確かめる */
+static void check_alias_error(const char *aliases, const char *expected)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[0].aliases = aliases;
+    check_single_error(&f.program, expected);
+}
+
+NAOS_TEST(well_formed_aliases_are_valid)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[0].aliases = "nm";
+    f.run_options[1].aliases = "a-b,Help,VERSION,helper";
+    f.run_options[2].aliases = "tag,label";
+    check_valid(&f.program);
+}
+
+NAOS_TEST(alias_empty_string_is_error)
+{
+    check_alias_error("",
+                      "invalid argument declaration: invalid alias '' of option '--name' in command 'prog run'");
+}
+
+NAOS_TEST(alias_double_comma_is_error)
+{
+    check_alias_error("a,,b",
+                      "invalid argument declaration: invalid alias '' of option '--name' in command 'prog run'");
+}
+
+NAOS_TEST(alias_leading_comma_is_error)
+{
+    check_alias_error(",a",
+                      "invalid argument declaration: invalid alias '' of option '--name' in command 'prog run'");
+}
+
+NAOS_TEST(alias_trailing_comma_is_error)
+{
+    check_alias_error("a,",
+                      "invalid argument declaration: invalid alias '' of option '--name' in command 'prog run'");
+}
+
+NAOS_TEST(alias_starting_with_dash_is_error)
+{
+    check_alias_error("-x",
+                      "invalid argument declaration: invalid alias '-x' of option '--name' in command 'prog run'");
+}
+
+NAOS_TEST(alias_containing_equals_is_error)
+{
+    check_alias_error("a=b",
+                      "invalid argument declaration: invalid alias 'a=b' of option '--name' in command 'prog run'");
+}
+
+NAOS_TEST(invalid_alias_among_valid_ones_shows_only_that_alias)
+{
+    check_alias_error("nm,-x,alt",
+                      "invalid argument declaration: invalid alias '-x' of option '--name' in command 'prog run'");
+}
+
+NAOS_TEST(alias_help_is_reserved)
+{
+    check_alias_error("help",
+                      "invalid argument declaration: alias '--help' of option '--name' is reserved in command 'prog run'");
+}
+
+NAOS_TEST(alias_version_after_valid_alias_is_reserved)
+{
+    check_alias_error("x,version",
+                      "invalid argument declaration: alias '--version' of option '--name' is reserved in command 'prog run'");
+}
+
+NAOS_TEST(alias_errors_are_reported_per_alias)
+{
+    decl_fixture_t f;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
+
+    fixture_init(&f);
+    f.run_options[0].aliases = "-x,ok,a=b,help,";
+
+    NAOS_CHECK_FALSE(clopts_decl_check(&f.program, &errors));
+    NAOS_REQUIRE_UINT_EQ(4, clopts_errors_count(&errors));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: invalid alias '-x' of option '--name' in command 'prog run'",
+                      clopts_errors_at(&errors, 0));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: invalid alias 'a=b' of option '--name' in command 'prog run'",
+                      clopts_errors_at(&errors, 1));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: alias '--help' of option '--name' is reserved in command 'prog run'",
+                      clopts_errors_at(&errors, 2));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: invalid alias '' of option '--name' in command 'prog run'",
+                      clopts_errors_at(&errors, 3));
+    clopts_errors_free(&errors);
+}
+
+NAOS_TEST(two_invalid_aliases_are_two_errors)
+{
+    decl_fixture_t f;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
+
+    fixture_init(&f);
+    f.run_options[2].aliases = ",";
+
+    NAOS_CHECK_FALSE(clopts_decl_check(&f.program, &errors));
+    NAOS_REQUIRE_UINT_EQ(2, clopts_errors_count(&errors));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: invalid alias '' of option '--tags' in command 'prog run'",
+                      clopts_errors_at(&errors, 0));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: invalid alias '' of option '--tags' in command 'prog run'",
+                      clopts_errors_at(&errors, 1));
+    clopts_errors_free(&errors);
+}
+
+NAOS_TEST(aliases_are_checked_when_long_name_is_invalid)
+{
+    decl_fixture_t f;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
+
+    fixture_init(&f);
+    f.run_options[0].long_name = "";
+    f.run_options[0].aliases = "-x,version";
+
+    NAOS_CHECK_FALSE(clopts_decl_check(&f.program, &errors));
+    NAOS_REQUIRE_UINT_EQ(3, clopts_errors_count(&errors));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: invalid option name '' in command 'prog run'",
+                      clopts_errors_at(&errors, 0));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: invalid alias '-x' of option '--' in command 'prog run'",
+                      clopts_errors_at(&errors, 1));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: alias '--version' of option '--' is reserved in command 'prog run'",
+                      clopts_errors_at(&errors, 2));
+    clopts_errors_free(&errors);
+}
+
+NAOS_TEST(aliases_are_checked_when_long_name_is_null_or_reserved)
+{
+    decl_fixture_t f;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
+
+    fixture_init(&f);
+    f.run_options[0].long_name = NULL;
+    f.run_options[0].aliases = "";
+    f.run_options[1].long_name = "help";
+    f.run_options[1].aliases = "a=b";
+
+    NAOS_CHECK_FALSE(clopts_decl_check(&f.program, &errors));
+    NAOS_REQUIRE_UINT_EQ(4, clopts_errors_count(&errors));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: invalid option name '' in command 'prog run'",
+                      clopts_errors_at(&errors, 0));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: invalid alias '' of option '--' in command 'prog run'",
+                      clopts_errors_at(&errors, 1));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: option '--help' is reserved in command 'prog run'",
+                      clopts_errors_at(&errors, 2));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: invalid alias 'a=b' of option '--help' in command 'prog run'",
+                      clopts_errors_at(&errors, 3));
+    clopts_errors_free(&errors);
+}
+
+NAOS_TEST(alias_error_in_nested_command_shows_path)
+{
+    nest_fixture_t f;
+
+    nest_init(&f);
+    f.add_options[0].aliases = "help";
+    check_single_error(&f.program,
+                       "invalid argument declaration: alias '--help' of option '--force' is reserved in command 'nest remote add'");
+
+    nest_init(&f);
+    f.root_options[1].aliases = "cfg,-c";
+    check_single_error(&f.program,
+                       "invalid argument declaration: invalid alias '-c' of option '--config' in command 'nest'");
+}
+
+NAOS_TEST(alias_with_percent_is_not_a_format_string)
+{
+    check_alias_error("-%s%n",
+                      "invalid argument declaration: invalid alias '-%s%n' of option '--name' in command 'prog run'");
+}
+
 NAOS_SUITE(decl,
     NAOS_ADD_TEST(tool_declaration_is_valid),
     NAOS_ADD_TEST(fixture_declaration_is_valid),
@@ -1551,5 +1803,27 @@ NAOS_SUITE(decl,
     NAOS_ADD_TEST(negatable_flag_in_descendant_of_negated_name_is_error),
     NAOS_ADD_TEST(negatable_flag_in_descendant_of_non_inherited_negated_name_is_error),
     NAOS_ADD_TEST(non_negatable_flag_and_negated_name_are_valid),
-    NAOS_ADD_TEST(negatable_flag_named_with_no_prefix_alone_is_valid)
+    NAOS_ADD_TEST(negatable_flag_named_with_no_prefix_alone_is_valid),
+    NAOS_ADD_TEST(ext_declaration_passes_decl_check),
+    NAOS_ADD_TEST(hidden_flag_value_and_list_are_valid),
+    NAOS_ADD_TEST(required_and_hidden_value_is_error),
+    NAOS_ADD_TEST(required_and_hidden_list_is_error),
+    NAOS_ADD_TEST(required_and_hidden_flag_is_two_errors),
+    NAOS_ADD_TEST(hidden_flag_with_default_is_one_error),
+    NAOS_ADD_TEST(well_formed_aliases_are_valid),
+    NAOS_ADD_TEST(alias_empty_string_is_error),
+    NAOS_ADD_TEST(alias_double_comma_is_error),
+    NAOS_ADD_TEST(alias_leading_comma_is_error),
+    NAOS_ADD_TEST(alias_trailing_comma_is_error),
+    NAOS_ADD_TEST(alias_starting_with_dash_is_error),
+    NAOS_ADD_TEST(alias_containing_equals_is_error),
+    NAOS_ADD_TEST(invalid_alias_among_valid_ones_shows_only_that_alias),
+    NAOS_ADD_TEST(alias_help_is_reserved),
+    NAOS_ADD_TEST(alias_version_after_valid_alias_is_reserved),
+    NAOS_ADD_TEST(alias_errors_are_reported_per_alias),
+    NAOS_ADD_TEST(two_invalid_aliases_are_two_errors),
+    NAOS_ADD_TEST(aliases_are_checked_when_long_name_is_invalid),
+    NAOS_ADD_TEST(aliases_are_checked_when_long_name_is_null_or_reserved),
+    NAOS_ADD_TEST(alias_error_in_nested_command_shows_path),
+    NAOS_ADD_TEST(alias_with_percent_is_not_a_format_string)
 )
