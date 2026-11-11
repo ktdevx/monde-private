@@ -297,7 +297,7 @@ stateDiagram-v2
 | `monde -- extract` | `unknown option '--'` | `unexpected argument 'extract'` | 2.5（同上） |
 | `monde help extract --help` | `too many arguments for 'help'` | `unexpected argument '--help'` | 8.6（同上） |
 | `monde --` | `unknown option '--'`（使い方のエラー） | 子コマンドの未指定（ルートのヘルプを標準エラー出力へ、終了コード 2） | 2.5（終了コードは同じ） |
-| `monde -hx`、`monde -h1`、`monde -h=1` | `unknown option '<トークン>'`（使い方のエラー、終了コード 2） | ルートのヘルプ（標準出力、終了コード 0） | 4.x、8.1、13.4 の例外（短いオプションを左から処理し、`h` でヘルプの要求になる。`monde extract -hx` と同じ扱い） |
+| `monde -hx`、`monde -hh`、`monde -h1`、`monde -h=1` | `unknown option '<トークン>'`（使い方のエラー、終了コード 2） | ルートのヘルプ（標準出力、終了コード 0） | 4.3、4.5、8.1、13.4 の例外（短いオプションを左から処理し、`h` でヘルプの要求になる。`monde extract -hx` と同じ扱い） |
 
 `monde --version extra` と `monde --help extra` は、改訂前と同じくバージョンとヘルプを返す（8.1、8.8）。`monde bogus --help` と `monde --bogus --help` は、改訂前と同じく使い方のエラーになる（8.10）。
 

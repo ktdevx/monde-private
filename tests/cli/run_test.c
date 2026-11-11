@@ -855,14 +855,15 @@ NAOS_TEST(run_entry_terminator_alone_prints_help_to_err)
 
 /*
  * 子コマンドの選択前の、h で始まる短いオプションのまとめ書きは、全体のヘルプを out に書いて 0 を返す
- * （4.x、8.1、13.4 の例外。monde extract -hx と同じ扱い）
+ * （4.3、4.5、8.1、13.4 の例外。monde extract -hx と同じ扱い）
  */
 NAOS_TEST(run_entry_short_help_cluster_prints_help)
 {
     static const char *const tokens_hx[] = {"monde", "-hx", NULL};
+    static const char *const tokens_hh[] = {"monde", "-hh", NULL};
     static const char *const tokens_h1[] = {"monde", "-h1", NULL};
     static const char *const tokens_heq[] = {"monde", "-h=1", NULL};
-    static const char *const *const cases[] = {tokens_hx, tokens_h1, tokens_heq};
+    static const char *const *const cases[] = {tokens_hx, tokens_hh, tokens_h1, tokens_heq};
     mnd_buf_t expected = MND_BUF_INIT;
     size_t i;
 
