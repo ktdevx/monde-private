@@ -65,6 +65,10 @@ bool clopts_result_push(clopts_result_t *result, const clopts_command_t *command
 /* 段を level_count 個まで減らし、取り除いた段の値を解放する（help の語の誤りで使う） */
 void clopts_result_truncate(clopts_result_t *result, size_t level_count);
 
+/* フラグを「明示的に指定された」にし、有効か無効かを記録する（5.5、14.2、14.4） */
+void clopts_result_record_flag(clopts_result_t *result, clopts_ref_t ref, bool enabled);
+
+/* 肯定の形の記録。clopts_result_record_flag(result, ref, true) と同じ（既存のテストが使う） */
 void clopts_result_set_flag(clopts_result_t *result, clopts_ref_t ref);
 void clopts_result_set_value(clopts_result_t *result, clopts_ref_t ref, const char *value);
 

@@ -50,6 +50,7 @@ static void clopts_value_free(clopts_value_t *value)
     value->items = NULL;
     value->item_count = 0;
     value->item_cap = 0;
+    value->enabled = false;
 }
 
 /* 段の値の配列を解放する */
@@ -158,9 +159,17 @@ void clopts_result_truncate(clopts_result_t *result, size_t level_count)
     }
 }
 
+void clopts_result_record_flag(clopts_result_t *result, clopts_ref_t ref, bool enabled)
+{
+    clopts_value_t *target = clopts_value_ref(result, ref);
+
+    target->explicit_set = true;
+    target->enabled = enabled;
+}
+
 void clopts_result_set_flag(clopts_result_t *result, clopts_ref_t ref)
 {
-    clopts_value_ref(result, ref)->explicit_set = true;
+    clopts_result_record_flag(result, ref, true);
 }
 
 void clopts_result_set_value(clopts_result_t *result, clopts_ref_t ref, const char *value)
@@ -431,7 +440,7 @@ bool clopts_flag(const clopts_result_t *result, const char *long_name)
 {
     const clopts_value_t *value = clopts_lookup(result, long_name);
 
-    return (value != NULL) && (value->explicit_set);
+    return (value != NULL) && (value->enabled);
 }
 
 const char *clopts_value(const clopts_result_t *result, const char *long_name)
