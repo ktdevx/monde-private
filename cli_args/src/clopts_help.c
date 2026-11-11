@@ -275,7 +275,34 @@ static size_t wider(size_t max_width, size_t width)
     return (width > max_width) ? width : max_width;
 }
 
-/* 使い方の行（9.1、9.2、9.3）。子を持つコマンドでは、有効なオプションがあるときだけ経路の直後に " [<options>]" */
+/* ヘルプに出すオプションか。隠しオプションは、一覧にも列幅の基準にも入れない（16.2、16.3） */
+static bool is_listed(const clopts_option_t *option)
+{
+    return !option->hidden;
+}
+
+/* 有効なオプションのうち、ヘルプに出すものの数 */
+static size_t listed_option_count(const clopts_result_t *result)
+{
+    size_t option_count = clopts_effective_count(result);
+    size_t count = 0;
+    size_t i;
+
+    for (i = 0; i < option_count; i++)
+    {
+        if (is_listed(clopts_option_at(result, clopts_effective_at(result, i))))
+        {
+            count++;
+        }
+    }
+
+    return count;
+}
+
+/*
+ * 使い方の行（9.1、9.2、9.3）。子を持つコマンドでは、隠しオプションではない有効なオプションが
+ * あるときだけ経路の直後に " [<options>]"（16.8）。末端コマンドでは常に出す
+ */
 static bool append_usage_line(const clopts_result_t *result, clopts_buf_t *out)
 {
     const clopts_command_t *command = selected_command(result);
@@ -287,7 +314,7 @@ static bool append_usage_line(const clopts_result_t *result, clopts_buf_t *out)
 
     if (command->command_count > 0)
     {
-        if ((clopts_effective_count(result) > 0) && !clopts_buf_append_str(out, " [<options>]"))
+        if ((listed_option_count(result) > 0) && !clopts_buf_append_str(out, " [<options>]"))
         {
             return false;
         }
@@ -367,7 +394,9 @@ static bool append_arguments_section(const clopts_command_t *command, clopts_buf
 
 /*
  * Options: の段落（9.1、9.4〜9.8）。有効なオプション（そのコマンドのオプション、親から祖先へ向かう順の
- * 引き継いだオプション）、-h, --help、ルートコマンドでは --version の順に並べる
+ * 引き継いだオプション）、-h, --help、ルートコマンドでは --version の順に並べる。
+ * 隠しオプションは、列幅の計算と行の出力の両方で飛ばす（16.2、16.3）。-h, --help と --version の行は
+ * 宣言されたオプションではないので、常に出す（16.7）
  */
 static bool append_options_section(const clopts_result_t *result, clopts_buf_t *out)
 {
@@ -378,8 +407,12 @@ static bool append_options_section(const clopts_result_t *result, clopts_buf_t *
 
     for (i = 0; i < option_count; i++)
     {
-        max_width = wider(max_width,
-                          option_left_width(clopts_option_at(result, clopts_effective_at(result, i))));
+        const clopts_option_t *option = clopts_option_at(result, clopts_effective_at(result, i));
+
+        if (is_listed(option))
+        {
+            max_width = wider(max_width, option_left_width(option));
+        }
     }
     if (is_root)
     {
@@ -393,8 +426,9 @@ static bool append_options_section(const clopts_result_t *result, clopts_buf_t *
 
     for (i = 0; i < option_count; i++)
     {
-        if (!append_option_row(out, clopts_option_at(result, clopts_effective_at(result, i)),
-                               max_width))
+        const clopts_option_t *option = clopts_option_at(result, clopts_effective_at(result, i));
+
+        if (is_listed(option) && !append_option_row(out, option, max_width))
         {
             return false;
         }
