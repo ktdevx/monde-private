@@ -4,6 +4,6 @@ monde_add_executable(monde
     main.c
   LIBRARIES
     monde::cli
-    monde::cli_args
+    CLOpts::clopts
 )
 target_compile_definitions(monde PRIVATE "MONDE_VERSION=\"${PROJECT_VERSION}\"")

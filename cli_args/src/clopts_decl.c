@@ -1,4 +1,4 @@
-#include "cli_args/args_internal.h"
+#include "clopts_internal.h"
 #include "foundation/buf.h"
 
 /* DeclCheck: 宣言の妥当性の検査と、子コマンド・有効なオプションの検索と列挙 */

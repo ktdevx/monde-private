@@ -1,5 +1,5 @@
-#include "cli_args/args.h"
-#include "cli_args/args_internal.h"
+#include "clopts/clopts.h"
+#include "clopts_internal.h"
 #include "foundation/buf.h"
 
 /* Parser: 引数列の走査と状態の決定 */

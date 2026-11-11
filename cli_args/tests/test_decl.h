@@ -1,7 +1,7 @@
 #ifndef MONDE_TESTS_CLI_ARGS_TEST_DECL_H
 #define MONDE_TESTS_CLI_ARGS_TEST_DECL_H
 
-#include "cli_args/args.h"
+#include "clopts/clopts.h"
 
 /*
  * テスト専用の架空のプログラム "tool"（バージョン 1.2.3）の宣言。ルートコマンドは

@@ -3,7 +3,7 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "cli_args/args.h"
+#include "clopts/clopts.h"
 #include "foundation/diag.h"
 #include "test_decl.h"
 

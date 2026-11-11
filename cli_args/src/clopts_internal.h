@@ -3,7 +3,7 @@
 
 /* モジュール内部の宣言。src/cli_args/ の .c と tests/cli_args/ だけが include する */
 
-#include "cli_args/args.h"
+#include "clopts/clopts.h"
 #include "foundation/diag.h"
 
 #include <stdbool.h>

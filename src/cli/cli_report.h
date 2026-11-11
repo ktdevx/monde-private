@@ -6,7 +6,7 @@
  * モジュール内部のヘッダ（src/cli/ と tests/cli/ だけが include する）
  */
 
-#include "cli_args/args.h"
+#include "clopts/clopts.h"
 #include "foundation/diag.h"
 #include "po_merge/merge.h"
 #include "tu/tu.h"

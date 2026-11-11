@@ -3,8 +3,8 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "cli_args/args.h"
-#include "cli_args/args_help.h"
+#include "clopts/clopts.h"
+#include "clopts/help.h"
 #include "foundation/buf.h"
 #include "foundation/diag.h"
 #include "test_decl.h"

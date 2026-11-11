@@ -1,7 +1,7 @@
 #ifndef MONDE_CLI_ARGS_ARGS_HELP_H
 #define MONDE_CLI_ARGS_ARGS_HELP_H
 
-#include "cli_args/args.h"
+#include "clopts/clopts.h"
 #include "foundation/buf.h"
 
 #include <stdbool.h>

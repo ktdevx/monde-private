@@ -2,8 +2,8 @@
 
 #include <string.h>
 
-#include "cli_args/args_help.h"
-#include "cli_args/args_internal.h"
+#include "clopts/help.h"
+#include "clopts_internal.h"
 #include "foundation/buf.h"
 #include "test_decl.h"
 

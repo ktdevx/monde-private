@@ -5,7 +5,7 @@
 #include "cli/cli_io.h"
 #include "cli/cli_report.h"
 
-#include "cli_args/args.h"
+#include "clopts/clopts.h"
 #include "foundation/buf.h"
 #include "foundation/diag.h"
 #include "po/po.h"

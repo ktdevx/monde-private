@@ -17,11 +17,17 @@ endif()
 
 include(CTest)
 
+# Naos は CLOpts の取り込みより前に用意する（CLOpts のテストは既存の Naos を使う）
+if(BUILD_TESTING)
+  include(MondeNaos)
+endif()
+
+include(MondeCLOpts)
+
 add_subdirectory(src)
 
 include(MondePackage)
 
 if(BUILD_TESTING)
-  include(MondeNaos)
   add_subdirectory(tests)
 endif()

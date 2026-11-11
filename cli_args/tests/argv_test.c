@@ -1,6 +1,6 @@
 #include <naos/naos.h>
 
-#include "cli_args/args_argv.h"
+#include "clopts/argv.h"
 #include "foundation/diag.h"
 
 #ifdef _WIN32

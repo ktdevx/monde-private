@@ -11,9 +11,10 @@ monde_add_module(cli
     cmd_update.c
     cmd_translate.c
   DEPENDS
-    cli_args
     po_merge
     tu
     po
     foundation
 )
+# 引数パーサ CLOpts は monde_add_module の DEPENDS（monde::<module> 専用）ではなく、ここでリンクする
+target_link_libraries(monde_cli PUBLIC CLOpts::clopts)

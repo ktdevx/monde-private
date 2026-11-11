@@ -4,8 +4,8 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "cli_args/args.h"
-#include "cli_args/args_internal.h"
+#include "clopts/clopts.h"
+#include "clopts_internal.h"
 #include "foundation/diag.h"
 #include "test_decl.h"
 

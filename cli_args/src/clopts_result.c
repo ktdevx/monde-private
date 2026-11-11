@@ -1,5 +1,5 @@
-#include "cli_args/args.h"
-#include "cli_args/args_internal.h"
+#include "clopts/clopts.h"
+#include "clopts_internal.h"
 
 #include <stdint.h>
 #include <stdlib.h>

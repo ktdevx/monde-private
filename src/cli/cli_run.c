@@ -5,8 +5,8 @@
 #include "cli/cli_internal.h"
 #include "cli/cli_report.h"
 
-#include "cli_args/args.h"
-#include "cli_args/args_help.h"
+#include "clopts/clopts.h"
+#include "clopts/help.h"
 #include "foundation/buf.h"
 #include "foundation/diag.h"
 
