@@ -1694,6 +1694,508 @@ NAOS_TEST(alias_with_percent_is_not_a_format_string)
                       "invalid argument declaration: invalid alias '-%s%n' of option '--name' in command 'prog run'");
 }
 
+/* 別名を含む名前の重複（1.8、17.12） */
+
+NAOS_TEST(alias_equal_to_earlier_long_name_is_duplicate)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[1].aliases = "frc,name";
+    check_single_error(&f.program,
+                       "invalid argument declaration: duplicate option '--name' in command 'prog run'");
+}
+
+NAOS_TEST(long_name_equal_to_earlier_alias_is_duplicate)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[0].aliases = "nm,force";
+    check_single_error(&f.program,
+                       "invalid argument declaration: duplicate option '--force' in command 'prog run'");
+}
+
+NAOS_TEST(same_alias_in_two_options_is_duplicate)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[0].aliases = "alt";
+    f.run_options[2].aliases = "label,alt";
+    check_single_error(&f.program,
+                       "invalid argument declaration: duplicate option '--alt' in command 'prog run'");
+}
+
+NAOS_TEST(alias_equal_to_own_long_name_is_duplicate)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[0].long_name = "output";
+    f.run_options[0].aliases = "output";
+    check_single_error(&f.program,
+                       "invalid argument declaration: duplicate option '--output' in command 'prog run'");
+}
+
+NAOS_TEST(alias_written_twice_is_duplicate)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[0].long_name = "output";
+    f.run_options[0].aliases = "out,out";
+    check_single_error(&f.program,
+                       "invalid argument declaration: duplicate option '--out' in command 'prog run'");
+}
+
+NAOS_TEST(duplicate_alias_with_percent_is_not_a_format_string)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[0].aliases = "%s%n";
+    f.run_options[1].aliases = "%s%n";
+    check_single_error(&f.program,
+                       "invalid argument declaration: duplicate option '--%s%n' in command 'prog run'");
+}
+
+NAOS_TEST(aliases_differing_in_length_or_case_are_not_duplicates)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[0].aliases = "nam,names,Name,out";
+    f.run_options[1].aliases = "outfile,ou,FORCE,tag";
+    check_valid(&f.program);
+}
+
+NAOS_TEST(alias_equal_to_ancestor_long_name_is_error)
+{
+    nest_fixture_t f;
+
+    nest_init(&f);
+    f.add_options[0].aliases = "verbose";
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--verbose' in command 'nest remote add' duplicates an option of command 'nest'");
+}
+
+NAOS_TEST(alias_equal_to_ancestor_alias_is_error)
+{
+    nest_fixture_t f;
+
+    nest_init(&f);
+    f.root_options[1].aliases = "cfg";
+    f.add_options[0].aliases = "yes,cfg";
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--cfg' in command 'nest remote add' duplicates an option of command 'nest'");
+}
+
+NAOS_TEST(long_name_equal_to_ancestor_alias_is_error)
+{
+    nest_fixture_t f;
+
+    nest_init(&f);
+    f.remote_options[0].aliases = "key,extra";
+    nest_add_option(&f, "extra", 'x');
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--extra' in command 'nest remote add' duplicates an option of command 'nest remote'");
+}
+
+NAOS_TEST(alias_equal_to_non_inherited_ancestor_long_name_is_error)
+{
+    nest_fixture_t f;
+
+    nest_init(&f);
+    f.remote_options[0].aliases = "dry-run";
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--dry-run' in command 'nest remote' duplicates an option of command 'nest'");
+}
+
+NAOS_TEST(alias_equal_to_non_inherited_ancestor_alias_is_error)
+{
+    nest_fixture_t f;
+
+    nest_init(&f);
+    f.root_options[2].aliases = "dry";
+    f.add_options[0].aliases = "dry";
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--dry' in command 'nest remote add' duplicates an option of command 'nest'");
+}
+
+NAOS_TEST(long_name_equal_to_non_inherited_ancestor_alias_is_error)
+{
+    nest_fixture_t f;
+
+    nest_init(&f);
+    f.root_options[2].aliases = "dry,force";
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--force' in command 'nest remote add' duplicates an option of command 'nest'");
+}
+
+NAOS_TEST(option_with_two_duplicated_aliases_is_one_error)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[2].aliases = "force,name";
+    check_single_error(&f.program,
+                       "invalid argument declaration: duplicate option '--force' in command 'prog run'");
+}
+
+NAOS_TEST(option_with_duplicated_long_name_and_alias_is_one_error)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[2].long_name = "name";
+    f.run_options[2].aliases = "force";
+    check_single_error(&f.program,
+                       "invalid argument declaration: duplicate option '--name' in command 'prog run'");
+}
+
+NAOS_TEST(option_duplicating_command_and_ancestor_names_is_one_error)
+{
+    nest_fixture_t f;
+
+    nest_init(&f);
+    nest_add_option(&f, "extra", 'x');
+    f.add_options[1].aliases = "verbose,force,config";
+    check_single_error(&f.program,
+                       "invalid argument declaration: duplicate option '--force' in command 'nest remote add'");
+}
+
+NAOS_TEST(option_with_two_aliases_of_ancestors_is_one_error)
+{
+    nest_fixture_t f;
+
+    nest_init(&f);
+    f.add_options[0].aliases = "token,verbose";
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--token' in command 'nest remote add' duplicates an option of command 'nest remote'");
+}
+
+NAOS_TEST(duplicated_aliases_in_two_options_are_two_errors)
+{
+    decl_fixture_t f;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
+
+    fixture_init(&f);
+    f.run_options[1].aliases = "name";
+    f.run_options[2].aliases = "force";
+
+    NAOS_CHECK_FALSE(clopts_decl_check(&f.program, &errors));
+    NAOS_REQUIRE_UINT_EQ(2, clopts_errors_count(&errors));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: duplicate option '--name' in command 'prog run'",
+                      clopts_errors_at(&errors, 0));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: duplicate option '--force' in command 'prog run'",
+                      clopts_errors_at(&errors, 1));
+    clopts_errors_free(&errors);
+}
+
+NAOS_TEST(rejected_aliases_are_not_compared_as_duplicates)
+{
+    decl_fixture_t f;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
+
+    /* 形か予約の誤りになる別名は、その誤りだけを報告し、重複としては数えない */
+    fixture_init(&f);
+    f.run_options[0].aliases = "help,-x";
+    f.run_options[1].aliases = "help,-x,-x";
+
+    NAOS_CHECK_FALSE(clopts_decl_check(&f.program, &errors));
+    NAOS_REQUIRE_UINT_EQ(5, clopts_errors_count(&errors));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: alias '--help' of option '--name' is reserved in command 'prog run'",
+                      clopts_errors_at(&errors, 0));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: invalid alias '-x' of option '--name' in command 'prog run'",
+                      clopts_errors_at(&errors, 1));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: alias '--help' of option '--force' is reserved in command 'prog run'",
+                      clopts_errors_at(&errors, 2));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: invalid alias '-x' of option '--force' in command 'prog run'",
+                      clopts_errors_at(&errors, 3));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: invalid alias '-x' of option '--force' in command 'prog run'",
+                      clopts_errors_at(&errors, 4));
+    clopts_errors_free(&errors);
+}
+
+NAOS_TEST(duplicate_is_reported_before_alias_form_errors)
+{
+    decl_fixture_t f;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
+
+    fixture_init(&f);
+    f.run_options[1].aliases = "a=b,name";
+
+    NAOS_CHECK_FALSE(clopts_decl_check(&f.program, &errors));
+    NAOS_REQUIRE_UINT_EQ(2, clopts_errors_count(&errors));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: duplicate option '--name' in command 'prog run'",
+                      clopts_errors_at(&errors, 0));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: invalid alias 'a=b' of option '--force' in command 'prog run'",
+                      clopts_errors_at(&errors, 1));
+    clopts_errors_free(&errors);
+}
+
+NAOS_TEST(aliases_are_not_compared_when_long_name_is_invalid)
+{
+    decl_fixture_t f;
+
+    fixture_init(&f);
+    f.run_options[1].long_name = "-force";
+    f.run_options[1].aliases = "name";
+    check_single_error(&f.program,
+                       "invalid argument declaration: invalid option name '-force' in command 'prog run'");
+}
+
+/* 別名を含む名前と否定の形との衝突（14.11、17.14） */
+
+/* run の --force を、否定できるフラグ --color（別名 colour）に書き換える */
+static void color_init(decl_fixture_t *f)
+{
+    fixture_init(f);
+    f->run_options[1].long_name = "color";
+    f->run_options[1].short_name = 'c';
+    f->run_options[1].negatable = true;
+    f->run_options[1].aliases = "colour";
+}
+
+NAOS_TEST(long_name_negating_alias_of_negatable_flag_is_error)
+{
+    decl_fixture_t f;
+
+    color_init(&f);
+    f.run_options[2].long_name = "no-colour";
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--no-colour' conflicts with negatable flag '--colour' in command 'prog run'");
+}
+
+NAOS_TEST(alias_negating_long_name_of_negatable_flag_is_error)
+{
+    decl_fixture_t f;
+
+    color_init(&f);
+    f.run_options[2].aliases = "label,no-color";
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--no-color' conflicts with negatable flag '--color' in command 'prog run'");
+}
+
+NAOS_TEST(alias_negating_alias_of_negatable_flag_is_error)
+{
+    decl_fixture_t f;
+
+    color_init(&f);
+    f.run_options[2].aliases = "no-colour";
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--no-colour' conflicts with negatable flag '--colour' in command 'prog run'");
+}
+
+NAOS_TEST(alias_negating_name_of_later_negatable_flag_is_error)
+{
+    decl_fixture_t f;
+
+    color_init(&f);
+    f.run_options[0].aliases = "no-colour";
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--no-colour' conflicts with negatable flag '--colour' in command 'prog run'");
+}
+
+NAOS_TEST(negatable_flag_with_its_own_negated_alias_is_error)
+{
+    decl_fixture_t f;
+
+    color_init(&f);
+    f.run_options[1].aliases = "no-color";
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--no-color' conflicts with negatable flag '--color' in command 'prog run'");
+}
+
+NAOS_TEST(negatable_flag_with_negated_form_of_its_own_alias_is_error)
+{
+    decl_fixture_t f;
+
+    color_init(&f);
+    f.run_options[1].aliases = "no-colour,colour";
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--no-colour' conflicts with negatable flag '--colour' in command 'prog run'");
+}
+
+NAOS_TEST(option_with_two_conflicting_names_is_one_error)
+{
+    decl_fixture_t f;
+
+    color_init(&f);
+    f.run_options[2].long_name = "no-color";
+    f.run_options[2].aliases = "no-colour";
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--no-color' conflicts with negatable flag '--color' in command 'prog run'");
+}
+
+NAOS_TEST(negated_alias_in_descendant_of_negatable_flag_is_error)
+{
+    nest_fixture_t f;
+
+    nest_init(&f);
+    f.root_options[0].negatable = true;
+    f.add_options[0].aliases = "no-verbose";
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--no-verbose' in command 'nest remote add' conflicts with negatable flag '--verbose' of command 'nest'");
+}
+
+NAOS_TEST(negated_name_in_descendant_of_alias_of_negatable_flag_is_error)
+{
+    nest_fixture_t f;
+
+    nest_init(&f);
+    f.root_options[0].negatable = true;
+    f.root_options[0].aliases = "chatty";
+    nest_add_option(&f, "no-chatty", '\0');
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--no-chatty' in command 'nest remote add' conflicts with negatable flag '--chatty' of command 'nest'");
+}
+
+NAOS_TEST(negated_alias_in_descendant_of_alias_of_non_inherited_negatable_flag_is_error)
+{
+    nest_fixture_t f;
+
+    nest_init(&f);
+    f.root_options[2].negatable = true;
+    f.root_options[2].aliases = "dry";
+    f.remote_options[0].aliases = "key,no-dry";
+    check_single_error(&f.program,
+                       "invalid argument declaration: option '--no-dry' in command 'nest remote' conflicts with negatable flag '--dry' of command 'nest'");
+}
+
+NAOS_TEST(negatable_flag_in_descendant_of_negated_alias_is_error)
+{
+    nest_fixture_t f;
+
+    nest_init(&f);
+    f.root_options[1].aliases = "no-force";
+    f.add_options[0].negatable = true;
+    check_single_error(&f.program,
+                       "invalid argument declaration: negatable flag '--force' in command 'nest remote add' conflicts with option '--no-force' of command 'nest'");
+}
+
+NAOS_TEST(alias_of_negatable_flag_in_descendant_of_negated_name_is_error)
+{
+    nest_fixture_t f;
+
+    nest_init(&f);
+    f.root_options[2].long_name = "no-push";
+    f.add_options[0].negatable = true;
+    f.add_options[0].aliases = "push";
+    check_single_error(&f.program,
+                       "invalid argument declaration: negatable flag '--push' in command 'nest remote add' conflicts with option '--no-push' of command 'nest'");
+}
+
+NAOS_TEST(alias_of_negatable_flag_in_descendant_of_non_inherited_negated_alias_is_error)
+{
+    nest_fixture_t f;
+
+    nest_init(&f);
+    f.root_options[2].aliases = "no-push";
+    f.add_options[0].negatable = true;
+    f.add_options[0].aliases = "yes,push";
+    check_single_error(&f.program,
+                       "invalid argument declaration: negatable flag '--push' in command 'nest remote add' conflicts with option '--no-push' of command 'nest'");
+}
+
+NAOS_TEST(duplicate_and_conflict_of_one_option_are_two_errors)
+{
+    nest_fixture_t f;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
+
+    /* 祖先との重複 1 件と、衝突 1 件 */
+    nest_init(&f);
+    f.root_options[0].negatable = true;
+    f.add_options[0].aliases = "config,no-verbose";
+
+    NAOS_CHECK_FALSE(clopts_decl_check(&f.program, &errors));
+    NAOS_REQUIRE_UINT_EQ(2, clopts_errors_count(&errors));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: option '--config' in command 'nest remote add' duplicates an option of command 'nest'",
+                      clopts_errors_at(&errors, 0));
+    NAOS_CHECK_STR_EQ("invalid argument declaration: option '--no-verbose' in command 'nest remote add' conflicts with negatable flag '--verbose' of command 'nest'",
+                      clopts_errors_at(&errors, 1));
+    clopts_errors_free(&errors);
+}
+
+/* 別名の重複と衝突の境界（17.12、17.14） */
+
+NAOS_TEST(non_negatable_flag_and_negated_alias_are_valid)
+{
+    decl_fixture_t f;
+    nest_fixture_t n;
+
+    color_init(&f);
+    f.run_options[1].negatable = false;
+    f.run_options[2].aliases = "no-color,no-colour";
+    check_valid(&f.program);
+
+    /* 否定できないフラグ自身の別名でも、祖先と子孫の間でも妥当 */
+    color_init(&f);
+    f.run_options[1].negatable = false;
+    f.run_options[1].aliases = "colour,no-color";
+    check_valid(&f.program);
+
+    nest_init(&n);
+    n.root_options[0].aliases = "chatty";
+    n.add_options[0].aliases = "no-verbose,no-chatty";
+    check_valid(&n.program);
+}
+
+NAOS_TEST(negated_aliases_that_match_no_negatable_name_are_valid)
+{
+    decl_fixture_t f;
+
+    /* no-colo、no-colours、No-color は、color と colour のどちらの否定の形でもない */
+    color_init(&f);
+    f.run_options[0].aliases = "no-colo,no-colours,No-color,nocolor";
+    f.run_options[1].aliases = "colour,no-x";
+    check_valid(&f.program);
+}
+
+NAOS_TEST(same_alias_in_sibling_commands_is_valid)
+{
+    decl_fixture_t f;
+    nest_fixture_t n;
+    clopts_option_t list_options[1];
+    clopts_option_t remove_options[1];
+
+    /* set_option が設定しないメンバを 0 にしておく */
+    memset(list_options, 0, sizeof list_options);
+    memset(remove_options, 0, sizeof remove_options);
+
+    fixture_init(&f);
+    f.run_options[0].aliases = "alt,nm";
+    set_option(&list_options[0], "all", 'a', CLOPTS_FLAG, NULL, NULL);
+    list_options[0].aliases = "alt,name";
+    f.commands[1].options = list_options;
+    f.commands[1].option_count = 1;
+    check_valid(&f.program);
+
+    nest_init(&n);
+    n.add_options[0].aliases = "yes";
+    set_option(&remove_options[0], "purge", 'p', CLOPTS_FLAG, NULL, NULL);
+    remove_options[0].aliases = "yes,force";
+    n.remote_commands[1].options = remove_options;
+    n.remote_commands[1].option_count = 1;
+    check_valid(&n.program);
+}
+
+NAOS_TEST(negatable_flag_and_negated_alias_in_sibling_commands_are_valid)
+{
+    decl_fixture_t f;
+    clopts_option_t list_options[1];
+
+    memset(list_options, 0, sizeof list_options);
+
+    color_init(&f);
+    set_option(&list_options[0], "plain", 'p', CLOPTS_FLAG, NULL, NULL);
+    list_options[0].aliases = "no-color,no-colour";
+    f.commands[1].options = list_options;
+    f.commands[1].option_count = 1;
+    check_valid(&f.program);
+}
+
 NAOS_SUITE(decl,
     NAOS_ADD_TEST(tool_declaration_is_valid),
     NAOS_ADD_TEST(fixture_declaration_is_valid),
@@ -1825,5 +2327,44 @@ NAOS_SUITE(decl,
     NAOS_ADD_TEST(aliases_are_checked_when_long_name_is_invalid),
     NAOS_ADD_TEST(aliases_are_checked_when_long_name_is_null_or_reserved),
     NAOS_ADD_TEST(alias_error_in_nested_command_shows_path),
-    NAOS_ADD_TEST(alias_with_percent_is_not_a_format_string)
+    NAOS_ADD_TEST(alias_with_percent_is_not_a_format_string),
+    NAOS_ADD_TEST(alias_equal_to_earlier_long_name_is_duplicate),
+    NAOS_ADD_TEST(long_name_equal_to_earlier_alias_is_duplicate),
+    NAOS_ADD_TEST(same_alias_in_two_options_is_duplicate),
+    NAOS_ADD_TEST(alias_equal_to_own_long_name_is_duplicate),
+    NAOS_ADD_TEST(alias_written_twice_is_duplicate),
+    NAOS_ADD_TEST(duplicate_alias_with_percent_is_not_a_format_string),
+    NAOS_ADD_TEST(aliases_differing_in_length_or_case_are_not_duplicates),
+    NAOS_ADD_TEST(alias_equal_to_ancestor_long_name_is_error),
+    NAOS_ADD_TEST(alias_equal_to_ancestor_alias_is_error),
+    NAOS_ADD_TEST(long_name_equal_to_ancestor_alias_is_error),
+    NAOS_ADD_TEST(alias_equal_to_non_inherited_ancestor_long_name_is_error),
+    NAOS_ADD_TEST(alias_equal_to_non_inherited_ancestor_alias_is_error),
+    NAOS_ADD_TEST(long_name_equal_to_non_inherited_ancestor_alias_is_error),
+    NAOS_ADD_TEST(option_with_two_duplicated_aliases_is_one_error),
+    NAOS_ADD_TEST(option_with_duplicated_long_name_and_alias_is_one_error),
+    NAOS_ADD_TEST(option_duplicating_command_and_ancestor_names_is_one_error),
+    NAOS_ADD_TEST(option_with_two_aliases_of_ancestors_is_one_error),
+    NAOS_ADD_TEST(duplicated_aliases_in_two_options_are_two_errors),
+    NAOS_ADD_TEST(rejected_aliases_are_not_compared_as_duplicates),
+    NAOS_ADD_TEST(duplicate_is_reported_before_alias_form_errors),
+    NAOS_ADD_TEST(aliases_are_not_compared_when_long_name_is_invalid),
+    NAOS_ADD_TEST(long_name_negating_alias_of_negatable_flag_is_error),
+    NAOS_ADD_TEST(alias_negating_long_name_of_negatable_flag_is_error),
+    NAOS_ADD_TEST(alias_negating_alias_of_negatable_flag_is_error),
+    NAOS_ADD_TEST(alias_negating_name_of_later_negatable_flag_is_error),
+    NAOS_ADD_TEST(negatable_flag_with_its_own_negated_alias_is_error),
+    NAOS_ADD_TEST(negatable_flag_with_negated_form_of_its_own_alias_is_error),
+    NAOS_ADD_TEST(option_with_two_conflicting_names_is_one_error),
+    NAOS_ADD_TEST(negated_alias_in_descendant_of_negatable_flag_is_error),
+    NAOS_ADD_TEST(negated_name_in_descendant_of_alias_of_negatable_flag_is_error),
+    NAOS_ADD_TEST(negated_alias_in_descendant_of_alias_of_non_inherited_negatable_flag_is_error),
+    NAOS_ADD_TEST(negatable_flag_in_descendant_of_negated_alias_is_error),
+    NAOS_ADD_TEST(alias_of_negatable_flag_in_descendant_of_negated_name_is_error),
+    NAOS_ADD_TEST(alias_of_negatable_flag_in_descendant_of_non_inherited_negated_alias_is_error),
+    NAOS_ADD_TEST(duplicate_and_conflict_of_one_option_are_two_errors),
+    NAOS_ADD_TEST(non_negatable_flag_and_negated_alias_are_valid),
+    NAOS_ADD_TEST(negated_aliases_that_match_no_negatable_name_are_valid),
+    NAOS_ADD_TEST(same_alias_in_sibling_commands_is_valid),
+    NAOS_ADD_TEST(negatable_flag_and_negated_alias_in_sibling_commands_are_valid)
 )

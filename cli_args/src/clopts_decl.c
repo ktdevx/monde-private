@@ -53,32 +53,6 @@ static bool is_negatable_flag(const clopts_option_t *option)
     return (option->kind == CLOPTS_FLAG) && option->negatable;
 }
 
-/* name が "no-" の後に base を続けた名前なら true */
-static bool is_negated_name(const char *name, const char *base)
-{
-    return (name != NULL) && (base != NULL) && (strncmp(name, "no-", 3) == 0)
-           && (strcmp(name + 3, base) == 0);
-}
-
-/*
- * a と b のどちらかが否定できるフラグで、もう一方の長い名前が "no-" + その長い名前なら、
- * 否定できるフラグの方を返す。衝突しなければ NULL
- */
-static const clopts_option_t *negation_conflict(const clopts_option_t *a, const clopts_option_t *b)
-{
-    if (is_negatable_flag(a) && is_negated_name(b->long_name, a->long_name))
-    {
-        return a;
-    }
-
-    if (is_negatable_flag(b) && is_negated_name(a->long_name, b->long_name))
-    {
-        return b;
-    }
-
-    return NULL;
-}
-
 /* 名前の 1 つ。NUL で終わるとは限らない（別名はカンマ区切りの文字列の一部を指す） */
 typedef struct clopts_name
 {
@@ -142,6 +116,123 @@ static int name_precision(size_t len)
 static bool name_is(const clopts_name_t *name, const char *text)
 {
     return (strlen(text) == name->len) && (memcmp(text, name->bytes, name->len) == 0);
+}
+
+/* 2 つの名前がバイト単位で完全に一致するなら true */
+static bool names_same(const clopts_name_t *a, const clopts_name_t *b)
+{
+    return (a->len == b->len) && (memcmp(a->bytes, b->bytes, a->len) == 0);
+}
+
+/* name が "no-" の後に base を続けた名前なら true */
+static bool is_negated_name(const clopts_name_t *name, const clopts_name_t *base)
+{
+    return (name->len >= 3) && (name->len - 3 == base->len)
+           && (memcmp(name->bytes, "no-", 3) == 0)
+           && (memcmp(name->bytes + 3, base->bytes, base->len) == 0);
+}
+
+/* 別名が、長い名前として受け付ける形（空でない、先頭が '-' でない、'=' を含まない）なら true */
+static bool alias_has_valid_form(const clopts_name_t *alias)
+{
+    return (alias->len != 0) && (alias->bytes[0] != '-')
+           && (memchr(alias->bytes, '=', alias->len) == NULL);
+}
+
+/* 別名が、予約された長い名前（help、version）なら true */
+static bool alias_is_reserved(const clopts_name_t *alias)
+{
+    return name_is(alias, "help") || name_is(alias, "version");
+}
+
+/*
+ * option の n 番目の名前 name（option_name_at で得たもの）を、重複と衝突の比較に加えるなら true。
+ * 長い名前は、NULL でなければ加える（改訂前と同じ）。別名は、形と予約の検査（17.13）を通るものだけを
+ * 加える。形か予約の誤りになる別名は、その誤りだけを報告し、重複と衝突の相手にもしない
+ */
+static bool name_is_compared(const clopts_option_t *option, size_t n, const clopts_name_t *name)
+{
+    if (n == 0)
+    {
+        return option->long_name != NULL;
+    }
+
+    return alias_has_valid_form(name) && !alias_is_reserved(name);
+}
+
+/* option の名前（長い名前か別名）のどれかが name と一致するなら true */
+static bool option_has_name(const clopts_option_t *option, const clopts_name_t *name)
+{
+    clopts_name_t other;
+    size_t m;
+
+    for (m = 0; option_name_at(option, m, &other); ++m)
+    {
+        if (name_is_compared(option, m, &other) && names_same(&other, name))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/*
+ * flag が否定できるフラグで、その名前（長い名前か別名）<n> と、other の名前 no-<n> の組があるなら、
+ * 最初の組の <n> を *base に入れて true。flag と other が同じオプションでもよい
+ * （同じオプションの名前の間の衝突。17.14）
+ */
+static bool negated_pair(const clopts_option_t *flag, const clopts_option_t *other,
+                         clopts_name_t *base)
+{
+    clopts_name_t name;
+    clopts_name_t negated;
+    size_t n;
+    size_t m;
+
+    if (!is_negatable_flag(flag))
+    {
+        return false;
+    }
+
+    for (n = 0; option_name_at(flag, n, &name); ++n)
+    {
+        if (!name_is_compared(flag, n, &name))
+        {
+            continue;
+        }
+
+        for (m = 0; option_name_at(other, m, &negated); ++m)
+        {
+            if (name_is_compared(other, m, &negated) && is_negated_name(&negated, &name))
+            {
+                *base = name;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+/*
+ * a と b のどちらかが否定できるフラグで、その名前 <n> に対して、もう一方に名前 no-<n> があるなら、
+ * 否定できるフラグの方を返し、<n> を *base に入れる。衝突しなければ NULL
+ */
+static const clopts_option_t *negation_conflict(const clopts_option_t *a, const clopts_option_t *b,
+                                                clopts_name_t *base)
+{
+    if (negated_pair(a, b, base))
+    {
+        return a;
+    }
+
+    if (negated_pair(b, a, base))
+    {
+        return b;
+    }
+
+    return NULL;
 }
 
 /* カンマ区切りのリストに空の項目（空文字列、先頭・末尾のカンマ、",,"）があるなら true */
@@ -242,8 +333,11 @@ static const char *frame_path(decl_frame_t *frame)
     return clopts_buf_cstr(&frame->path);
 }
 
-/* frame の祖先（frame 自身を除く）で、長い名前が name のオプションを持つ最も近い段。なければ NULL */
-static decl_frame_t *find_ancestor_long(const decl_frame_t *frame, const char *name)
+/*
+ * frame の祖先（frame 自身を除く）で、名前（長い名前か別名）が name のオプションを持つ最も近い段。
+ * なければ NULL
+ */
+static decl_frame_t *find_ancestor_long(const decl_frame_t *frame, const clopts_name_t *name)
 {
     decl_frame_t *ancestor;
     size_t i;
@@ -252,7 +346,7 @@ static decl_frame_t *find_ancestor_long(const decl_frame_t *frame, const char *n
     {
         for (i = 0; i < ancestor->command->option_count; ++i)
         {
-            if (names_equal(ancestor->command->options[i].long_name, name))
+            if (option_has_name(&ancestor->command->options[i], name))
             {
                 return ancestor;
             }
@@ -264,11 +358,11 @@ static decl_frame_t *find_ancestor_long(const decl_frame_t *frame, const char *n
 
 /*
  * frame の祖先（frame 自身を除く）で、option と否定の形の名前が衝突するオプションを持つ最も近い段。
- * 見つかれば、そのオプションを *found に入れる。なければ NULL
+ * 見つかれば、そのオプションを *found に、衝突した否定できるフラグの名前を *base に入れる。なければ NULL
  */
 static decl_frame_t *find_ancestor_negation(const decl_frame_t *frame,
                                             const clopts_option_t *option,
-                                            const clopts_option_t **found)
+                                            const clopts_option_t **found, clopts_name_t *base)
 {
     decl_frame_t *ancestor;
     size_t i;
@@ -277,7 +371,7 @@ static decl_frame_t *find_ancestor_negation(const decl_frame_t *frame,
     {
         for (i = 0; i < ancestor->command->option_count; ++i)
         {
-            if (negation_conflict(option, &ancestor->command->options[i]) != NULL)
+            if (negation_conflict(option, &ancestor->command->options[i], base) != NULL)
             {
                 *found = &ancestor->command->options[i];
                 return ancestor;
@@ -289,51 +383,56 @@ static decl_frame_t *find_ancestor_negation(const decl_frame_t *frame,
 }
 
 /*
- * frame のコマンドの index 番目のオプションについて、否定できるフラグ <name> と
- * 長い名前 no-<name> の衝突を、同じコマンドの前のオプションと祖先のオプションとの間で検査する（14.11）。
- * 祖先の側のオプションが引き継ぐものかどうかは問わない（1.8 と同じ）
+ * frame のコマンドの index 番目のオプションについて、否定できるフラグの名前 <n>（長い名前か別名）と
+ * 名前 no-<n> の衝突を、同じコマンドの前のオプション、同じオプションの名前どうし、祖先のオプションとの
+ * 間で検査する（14.11、17.14）。祖先の側のオプションが引き継ぐものかどうかは問わない（1.8 と同じ）。
+ * 報告は最初の 1 件だけ
  */
 static void check_negation_conflict(decl_check_t *check, decl_frame_t *frame, size_t index)
 {
     const clopts_command_t *command = frame->command;
     const clopts_option_t *option = &command->options[index];
     const clopts_option_t *other = NULL;
-    const clopts_option_t *negatable;
+    clopts_name_t base;
     decl_frame_t *ancestor;
+    int len;
     size_t j;
 
-    for (j = 0; j < index; ++j)
+    /* j == index は、同じオプションの名前どうしの組 */
+    for (j = 0; j <= index; ++j)
     {
-        negatable = negation_conflict(option, &command->options[j]);
-        if (negatable != NULL)
+        if (negation_conflict(option, &command->options[j], &base) != NULL)
         {
+            len = name_precision(base.len);
             clopts_errors_add(check->errors,
-                              DECL_PREFIX "option '--no-%s' conflicts with negatable flag '--%s' in command '%s'",
-                              negatable->long_name, negatable->long_name, frame_path(frame));
+                              DECL_PREFIX "option '--no-%.*s' conflicts with negatable flag '--%.*s' in command '%s'",
+                              len, base.bytes, len, base.bytes, frame_path(frame));
             check->ok = false;
             return;
         }
     }
 
-    ancestor = find_ancestor_negation(frame, option, &other);
+    ancestor = find_ancestor_negation(frame, option, &other, &base);
     if (ancestor == NULL)
     {
         return;
     }
 
+    len = name_precision(base.len);
+
     /* 否定できるフラグが子孫の側（このコマンド）にあるか、祖先の側にあるかで文面を分ける */
-    if (negation_conflict(option, other) == option)
+    if (negation_conflict(option, other, &base) == option)
     {
         clopts_errors_add(check->errors,
-                          DECL_PREFIX "negatable flag '--%s' in command '%s' conflicts with option '--no-%s' of command '%s'",
-                          option->long_name, frame_path(frame), option->long_name,
+                          DECL_PREFIX "negatable flag '--%.*s' in command '%s' conflicts with option '--no-%.*s' of command '%s'",
+                          len, base.bytes, frame_path(frame), len, base.bytes,
                           frame_path(ancestor));
     }
     else
     {
         clopts_errors_add(check->errors,
-                          DECL_PREFIX "option '--no-%s' in command '%s' conflicts with negatable flag '--%s' of command '%s'",
-                          other->long_name, frame_path(frame), other->long_name,
+                          DECL_PREFIX "option '--no-%.*s' in command '%s' conflicts with negatable flag '--%.*s' of command '%s'",
+                          len, base.bytes, frame_path(frame), len, base.bytes,
                           frame_path(ancestor));
     }
 
@@ -398,13 +497,91 @@ static void check_command_name(decl_check_t *check, decl_frame_t *frame, size_t 
     }
 }
 
-/* frame のコマンドの index 番目のオプションの長い名前を検査する */
+/*
+ * frame のコマンドの index 番目のオプションの名前（長い名前と別名）のうち、同じコマンドの前の
+ * オプションの名前か、同じオプションの前の名前と重複する最初の 1 つを *found に入れて true（1.8、17.12）
+ */
+static bool find_duplicate_in_command(const clopts_command_t *command, size_t index,
+                                      clopts_name_t *found)
+{
+    const clopts_option_t *option = &command->options[index];
+    clopts_name_t name;
+    clopts_name_t earlier;
+    size_t n;
+    size_t m;
+    size_t j;
+
+    for (n = 0; option_name_at(option, n, &name); ++n)
+    {
+        if (!name_is_compared(option, n, &name))
+        {
+            continue;
+        }
+
+        for (j = 0; j < index; ++j)
+        {
+            if (option_has_name(&command->options[j], &name))
+            {
+                *found = name;
+                return true;
+            }
+        }
+
+        /* 同じオプションの前の名前（元の名前と、前に書いた別名） */
+        for (m = 0; m < n; ++m)
+        {
+            if (option_name_at(option, m, &earlier) && name_is_compared(option, m, &earlier)
+                && names_same(&earlier, &name))
+            {
+                *found = name;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+/*
+ * frame のコマンドの index 番目のオプションの名前（長い名前と別名）のうち、祖先のオプションの名前と
+ * 重複する最初の 1 つを *found に入れ、そのオプションを持つ最も近い祖先の段を返す。なければ NULL
+ */
+static decl_frame_t *find_duplicate_in_ancestors(const decl_frame_t *frame, size_t index,
+                                                 clopts_name_t *found)
+{
+    const clopts_option_t *option = &frame->command->options[index];
+    clopts_name_t name;
+    decl_frame_t *ancestor;
+    size_t n;
+
+    for (n = 0; option_name_at(option, n, &name); ++n)
+    {
+        if (!name_is_compared(option, n, &name))
+        {
+            continue;
+        }
+
+        ancestor = find_ancestor_long(frame, &name);
+        if (ancestor != NULL)
+        {
+            *found = name;
+            return ancestor;
+        }
+    }
+
+    return NULL;
+}
+
+/*
+ * frame のコマンドの index 番目のオプションの長い名前の形と予約を検査し、続けて、長い名前と別名を
+ * 合わせた名前の重複と、否定の形との衝突を検査する。重複と衝突の報告は、それぞれ最初の 1 件だけ
+ */
 static void check_long_name(decl_check_t *check, decl_frame_t *frame, size_t index)
 {
     const clopts_command_t *command = frame->command;
     const char *name = command->options[index].long_name;
+    clopts_name_t duplicate;
     decl_frame_t *ancestor;
-    size_t j;
 
     if (is_empty(name) || (name[0] == '-') || (strchr(name, '=') != NULL))
     {
@@ -424,25 +601,23 @@ static void check_long_name(decl_check_t *check, decl_frame_t *frame, size_t ind
         return;
     }
 
-    for (j = 0; j < index; ++j)
+    if (find_duplicate_in_command(command, index, &duplicate))
     {
-        if (names_equal(command->options[j].long_name, name))
-        {
-            clopts_errors_add(check->errors,
-                              DECL_PREFIX "duplicate option '--%s' in command '%s'", name,
-                              frame_path(frame));
-            check->ok = false;
-            return;
-        }
+        clopts_errors_add(check->errors,
+                          DECL_PREFIX "duplicate option '--%.*s' in command '%s'",
+                          name_precision(duplicate.len), duplicate.bytes, frame_path(frame));
+        check->ok = false;
+        return;
     }
 
     /* 祖先のオプションとは、引き継ぐかどうかによらず重複できない（1.8） */
-    ancestor = find_ancestor_long(frame, name);
+    ancestor = find_duplicate_in_ancestors(frame, index, &duplicate);
     if (ancestor != NULL)
     {
         clopts_errors_add(check->errors,
-                          DECL_PREFIX "option '--%s' in command '%s' duplicates an option of command '%s'",
-                          name, frame_path(frame), frame_path(ancestor));
+                          DECL_PREFIX "option '--%.*s' in command '%s' duplicates an option of command '%s'",
+                          name_precision(duplicate.len), duplicate.bytes, frame_path(frame),
+                          frame_path(ancestor));
         check->ok = false;
     }
 
@@ -464,8 +639,7 @@ static void check_aliases(decl_check_t *check, decl_frame_t *frame, size_t index
         int len = name_precision(alias.len);
 
         /* 長い名前と同じ形の条件: 空、先頭が '-'、'=' を含む */
-        if ((alias.len == 0) || (alias.bytes[0] == '-')
-            || (memchr(alias.bytes, '=', alias.len) != NULL))
+        if (!alias_has_valid_form(&alias))
         {
             clopts_errors_add(check->errors,
                               DECL_PREFIX "invalid alias '%.*s' of option '--%s' in command '%s'",
@@ -474,7 +648,7 @@ static void check_aliases(decl_check_t *check, decl_frame_t *frame, size_t index
             continue;
         }
 
-        if (name_is(&alias, "help") || name_is(&alias, "version"))
+        if (alias_is_reserved(&alias))
         {
             clopts_errors_add(check->errors,
                               DECL_PREFIX "alias '--%.*s' of option '--%s' is reserved in command '%s'",
