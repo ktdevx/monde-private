@@ -46,6 +46,38 @@ static bool name_matches(const char *name, const char *bytes, size_t name_len)
     return (strlen(name) == name_len) && (memcmp(name, bytes, name_len) == 0);
 }
 
+/* option が否定できるフラグなら true */
+static bool is_negatable_flag(const clopts_option_t *option)
+{
+    return (option->kind == CLOPTS_FLAG) && option->negatable;
+}
+
+/* name が "no-" の後に base を続けた名前なら true */
+static bool is_negated_name(const char *name, const char *base)
+{
+    return (name != NULL) && (base != NULL) && (strncmp(name, "no-", 3) == 0)
+           && (strcmp(name + 3, base) == 0);
+}
+
+/*
+ * a と b のどちらかが否定できるフラグで、もう一方の長い名前が "no-" + その長い名前なら、
+ * 否定できるフラグの方を返す。衝突しなければ NULL
+ */
+static const clopts_option_t *negation_conflict(const clopts_option_t *a, const clopts_option_t *b)
+{
+    if (is_negatable_flag(a) && is_negated_name(b->long_name, a->long_name))
+    {
+        return a;
+    }
+
+    if (is_negatable_flag(b) && is_negated_name(a->long_name, b->long_name))
+    {
+        return b;
+    }
+
+    return NULL;
+}
+
 /* カンマ区切りのリストに空の項目（空文字列、先頭・末尾のカンマ、",,"）があるなら true */
 static bool has_empty_item(const char *list)
 {
@@ -164,6 +196,84 @@ static decl_frame_t *find_ancestor_long(const decl_frame_t *frame, const char *n
     return NULL;
 }
 
+/*
+ * frame の祖先（frame 自身を除く）で、option と否定の形の名前が衝突するオプションを持つ最も近い段。
+ * 見つかれば、そのオプションを *found に入れる。なければ NULL
+ */
+static decl_frame_t *find_ancestor_negation(const decl_frame_t *frame,
+                                            const clopts_option_t *option,
+                                            const clopts_option_t **found)
+{
+    decl_frame_t *ancestor;
+    size_t i;
+
+    for (ancestor = frame->parent; ancestor != NULL; ancestor = ancestor->parent)
+    {
+        for (i = 0; i < ancestor->command->option_count; ++i)
+        {
+            if (negation_conflict(option, &ancestor->command->options[i]) != NULL)
+            {
+                *found = &ancestor->command->options[i];
+                return ancestor;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+/*
+ * frame のコマンドの index 番目のオプションについて、否定できるフラグ <name> と
+ * 長い名前 no-<name> の衝突を、同じコマンドの前のオプションと祖先のオプションとの間で検査する（14.11）。
+ * 祖先の側のオプションが引き継ぐものかどうかは問わない（1.8 と同じ）
+ */
+static void check_negation_conflict(decl_check_t *check, decl_frame_t *frame, size_t index)
+{
+    const clopts_command_t *command = frame->command;
+    const clopts_option_t *option = &command->options[index];
+    const clopts_option_t *other = NULL;
+    const clopts_option_t *negatable;
+    decl_frame_t *ancestor;
+    size_t j;
+
+    for (j = 0; j < index; ++j)
+    {
+        negatable = negation_conflict(option, &command->options[j]);
+        if (negatable != NULL)
+        {
+            clopts_errors_add(check->errors,
+                              DECL_PREFIX "option '--no-%s' conflicts with negatable flag '--%s' in command '%s'",
+                              negatable->long_name, negatable->long_name, frame_path(frame));
+            check->ok = false;
+            return;
+        }
+    }
+
+    ancestor = find_ancestor_negation(frame, option, &other);
+    if (ancestor == NULL)
+    {
+        return;
+    }
+
+    /* 否定できるフラグが子孫の側（このコマンド）にあるか、祖先の側にあるかで文面を分ける */
+    if (negation_conflict(option, other) == option)
+    {
+        clopts_errors_add(check->errors,
+                          DECL_PREFIX "negatable flag '--%s' in command '%s' conflicts with option '--no-%s' of command '%s'",
+                          option->long_name, frame_path(frame), option->long_name,
+                          frame_path(ancestor));
+    }
+    else
+    {
+        clopts_errors_add(check->errors,
+                          DECL_PREFIX "option '--no-%s' in command '%s' conflicts with negatable flag '--%s' of command '%s'",
+                          other->long_name, frame_path(frame), other->long_name,
+                          frame_path(ancestor));
+    }
+
+    check->ok = false;
+}
+
 /* frame の祖先（frame 自身を除く）で、短い名前が short_name のオプションを持つ最も近い段。なければ NULL */
 static decl_frame_t *find_ancestor_short(const decl_frame_t *frame, char short_name)
 {
@@ -269,6 +379,8 @@ static void check_long_name(decl_check_t *check, decl_frame_t *frame, size_t ind
                           name, frame_path(frame), frame_path(ancestor));
         check->ok = false;
     }
+
+    check_negation_conflict(check, frame, index);
 }
 
 /* frame のコマンドの index 番目のオプションの短い名前を検査する */
@@ -332,6 +444,24 @@ static void check_option(decl_check_t *check, decl_frame_t *frame, size_t index)
 
     check_long_name(check, frame, index);
     check_short_name(check, frame, index);
+
+    /* 否定の形はフラグだけに許す（14.10） */
+    if (option->negatable && (option->kind != CLOPTS_FLAG))
+    {
+        clopts_errors_add(check->errors,
+                          DECL_PREFIX "option '--%s' cannot be negatable in command '%s'",
+                          shown(name), frame_path(frame));
+        check->ok = false;
+    }
+
+    /* 既定で有効は否定できるフラグだけに許す（14.16） */
+    if (option->default_enabled && !is_negatable_flag(option))
+    {
+        clopts_errors_add(check->errors,
+                          DECL_PREFIX "option '--%s' must be a negatable flag to be enabled by default in command '%s'",
+                          shown(name), frame_path(frame));
+        check->ok = false;
+    }
 
     if (option->kind == CLOPTS_FLAG)
     {
