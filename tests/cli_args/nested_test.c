@@ -4,6 +4,8 @@
 #include <string.h>
 
 #include "cli_args/args.h"
+#include "cli_args/args_help.h"
+#include "foundation/buf.h"
 #include "foundation/diag.h"
 #include "test_decl.h"
 
@@ -68,6 +70,90 @@ static void check_status(const nested_run_t *run, mnd_args_status_t status, size
     NAOS_CHECK_UINT_EQ(depth, mnd_args_depth(&run->result));
     NAOS_CHECK_PTR_EQ(command, mnd_args_command(&run->result));
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run->diags));
+}
+
+/*
+ * ヘルプの期待する文面。設計の書式から手で導いたもの。列の揃えは段落ごとに左列の最大幅を求め、
+ * 説明を 2 + 最大幅 + 2 バイト目から始める
+ */
+
+/*
+ * ルートコマンド: オプションがあるので使い方の行の経路の直後に " [<options>]"。
+ * Commands: 最大幅は "remote" の 6。Options: 最大幅は "-c, --config <FILE>" の 19
+ */
+static const char expected_root_help[] =
+    "Usage: nest [<options>] <command> [<options>] [<arguments>]\n"
+    "\n"
+    "A sample tool with nested commands.\n"
+    "\n"
+    "Commands:\n"
+    "  remote  Manage remotes\n"
+    "  status  Show the status\n"
+    "  help    Show help for a command\n"
+    "\n"
+    "Options:\n"
+    "  -v, --verbose        Print more details\n"
+    "  -c, --config <FILE>  Read settings from FILE (default: nest.cfg)\n"
+    "      --dry-run        Show what would be done\n"
+    "  -h, --help           Show this help\n"
+    "      --version        Show version information\n"
+    "\n"
+    "Run 'nest <command> --help' for help on a command.\n";
+
+/*
+ * 子を持つ 2 段目のコマンド: 自分のオプションの後にルートの引き継ぐオプション（--dry-run は出ない）。
+ * --version の行はない。Options: 最大幅は "    --tags <TAG>[,<TAG>...]" の 27
+ */
+static const char expected_remote_help[] =
+    "Usage: nest remote [<options>] <command> [<options>] [<arguments>]\n"
+    "\n"
+    "Manage remotes\n"
+    "\n"
+    "Commands:\n"
+    "  add     Add a remote\n"
+    "  remove  Remove a remote\n"
+    "  help    Show help for a command\n"
+    "\n"
+    "Options:\n"
+    "  -t, --token <TOKEN>          Access token (required)\n"
+    "      --tags <TAG>[,<TAG>...]  Tags to attach\n"
+    "  -v, --verbose                Print more details\n"
+    "  -c, --config <FILE>          Read settings from FILE (default: nest.cfg)\n"
+    "  -h, --help                   Show this help\n"
+    "\n"
+    "Run 'nest remote <command> --help' for help on a command.\n";
+
+/* 位置引数もオプションも持たない末端コマンド: Arguments: の段落を出さず、引き継いだオプションを並べる */
+static const char expected_status_help[] =
+    "Usage: nest status [<options>]\n"
+    "\n"
+    "Show the status\n"
+    "\n"
+    "Options:\n"
+    "  -v, --verbose        Print more details\n"
+    "  -c, --config <FILE>  Read settings from FILE (default: nest.cfg)\n"
+    "  -h, --help           Show this help\n";
+
+/* 生成した文面を期待する文面とバイト単位で比べる */
+static void check_text(const char *expected, const mnd_buf_t *buf)
+{
+    NAOS_CHECK_STR_EQ(expected, mnd_buf_cstr(buf));
+    NAOS_CHECK_MEM_EQ(expected, strlen(expected), mnd_buf_cstr(buf), buf->len);
+}
+
+/* 解析結果の経路のヘルプを生成し、期待する文面と比べる。2 回生成して同じ文面になることも確かめる（9.9） */
+static void check_help_text(const nested_run_t *run, const char *expected)
+{
+    mnd_buf_t first = MND_BUF_INIT;
+    mnd_buf_t second = MND_BUF_INIT;
+
+    NAOS_REQUIRE_TRUE(mnd_args_format_help(&run->result, &first));
+    NAOS_REQUIRE_TRUE(mnd_args_format_help(&run->result, &second));
+    check_text(expected, &first);
+    NAOS_CHECK_MEM_EQ(first.data, first.len, second.data, second.len);
+
+    mnd_buf_free(&first);
+    mnd_buf_free(&second);
 }
 
 /*
@@ -316,6 +402,77 @@ NAOS_TEST(error_on_remote_add_before_help_is_add_help)
     run_free(&run);
 }
 
+/* ヘルプと案内の文面（2.4、7.3、9.1、9.2、9.4、9.5、9.9） */
+
+NAOS_TEST(root_help_text_matches_expected_text)
+{
+    static const char *const tokens[] = {"nest", "--help"};
+    nested_run_t run;
+
+    run_parse(&run, 2, tokens);
+    check_status(&run, MND_ARGS_HELP, 1, test_nest_program.root);
+    check_help_text(&run, expected_root_help);
+    run_free(&run);
+}
+
+/* 子コマンドの未指定の結果からも、同じ子を持つコマンドのヘルプを生成できる（2.4） */
+NAOS_TEST(remote_help_text_matches_expected_text)
+{
+    static const char *const no_command[] = {"nest", "remote"};
+    static const char *const long_help[] = {"nest", "remote", "--help"};
+    nested_run_t run;
+
+    run_parse(&run, 2, no_command);
+    check_status(&run, MND_ARGS_NO_COMMAND, 2, test_nest_remote);
+    check_help_text(&run, expected_remote_help);
+    run_free(&run);
+
+    run_parse(&run, 3, long_help);
+    check_status(&run, MND_ARGS_HELP, 2, test_nest_remote);
+    check_help_text(&run, expected_remote_help);
+    run_free(&run);
+}
+
+NAOS_TEST(status_help_text_matches_expected_text)
+{
+    static const char *const tokens[] = {"nest", "status", "--help"};
+    nested_run_t run;
+
+    run_parse(&run, 3, tokens);
+    check_status(&run, MND_ARGS_HELP, 2, test_nest_status);
+    check_help_text(&run, expected_status_help);
+    run_free(&run);
+}
+
+NAOS_TEST(usage_hint_has_remote_path)
+{
+    static const char *const tokens[] = {"nest", "remote", "bogus"};
+    nested_run_t run;
+    mnd_buf_t buf = MND_BUF_INIT;
+
+    run_parse(&run, 3, tokens);
+    check_usage_error(&run, test_nest_remote, "nest remote: unknown command 'bogus'");
+    NAOS_REQUIRE_TRUE(mnd_args_format_usage_hint(&run.result, &buf));
+    check_text("Run 'nest remote --help' for usage.\n", &buf);
+
+    mnd_buf_free(&buf);
+    run_free(&run);
+}
+
+NAOS_TEST(path_has_all_levels)
+{
+    static const char *const tokens[] = {"nest", "remote", "add", "n"};
+    nested_run_t run;
+    mnd_buf_t buf = MND_BUF_INIT;
+
+    run_parse(&run, 4, tokens);
+    NAOS_REQUIRE_TRUE(mnd_args_format_path(&run.result, &buf));
+    check_text("nest remote add", &buf);
+
+    mnd_buf_free(&buf);
+    run_free(&run);
+}
+
 NAOS_SUITE(nested,
     NAOS_ADD_TEST(remote_add_path_has_three_levels),
     NAOS_ADD_TEST(remote_remove_path_has_three_levels),
@@ -334,5 +491,10 @@ NAOS_SUITE(nested,
     NAOS_ADD_TEST(help_word_extra_argument_after_leaf_has_root_prefix),
     NAOS_ADD_TEST(help_word_error_under_remote_has_remote_prefix),
     NAOS_ADD_TEST(unknown_command_under_remote_before_help_is_reported),
-    NAOS_ADD_TEST(error_on_remote_add_before_help_is_add_help)
+    NAOS_ADD_TEST(error_on_remote_add_before_help_is_add_help),
+    NAOS_ADD_TEST(root_help_text_matches_expected_text),
+    NAOS_ADD_TEST(remote_help_text_matches_expected_text),
+    NAOS_ADD_TEST(status_help_text_matches_expected_text),
+    NAOS_ADD_TEST(usage_hint_has_remote_path),
+    NAOS_ADD_TEST(path_has_all_levels)
 )

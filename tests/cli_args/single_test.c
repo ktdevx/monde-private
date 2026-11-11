@@ -4,6 +4,8 @@
 #include <string.h>
 
 #include "cli_args/args.h"
+#include "cli_args/args_help.h"
+#include "foundation/buf.h"
 #include "foundation/diag.h"
 #include "test_decl.h"
 
@@ -67,6 +69,32 @@ static void check_status(const single_run_t *run, mnd_args_status_t status)
     NAOS_CHECK_UINT_EQ(1, mnd_args_depth(&run->result));
     NAOS_CHECK_PTR_EQ(test_single_program.root, mnd_args_command(&run->result));
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run->diags));
+}
+
+/*
+ * ルートコマンド（末端コマンド）のヘルプの期待する文面。設計の書式から手で導いたもの。
+ * Options: 左列の最大幅は "-k, --keys <KEY>[,<KEY>...]" の 27。ルートコマンドなので --version の行がある
+ */
+static const char expected_single_help[] =
+    "Usage: single [<options>] [<FILE>...]\n"
+    "\n"
+    "A sample tool without subcommands.\n"
+    "\n"
+    "Arguments:\n"
+    "  <FILE>  Files to process\n"
+    "\n"
+    "Options:\n"
+    "  -o, --output <FILE>          Write the result to FILE\n"
+    "  -v, --verbose                Print more details\n"
+    "  -k, --keys <KEY>[,<KEY>...]  Keys to include\n"
+    "  -h, --help                   Show this help\n"
+    "      --version                Show version information\n";
+
+/* 生成した文面を期待する文面とバイト単位で比べる */
+static void check_text(const char *expected, const mnd_buf_t *buf)
+{
+    NAOS_CHECK_STR_EQ(expected, mnd_buf_cstr(buf));
+    NAOS_CHECK_MEM_EQ(expected, strlen(expected), mnd_buf_cstr(buf), buf->len);
 }
 
 /* 使い方のエラーで、期待するメッセージの診断がちょうど 1 件だけ追加されたことを確かめる（7.2、7.4） */
@@ -346,6 +374,56 @@ NAOS_TEST(missing_value_has_root_prefix)
     run_free(&run);
 }
 
+/* ヘルプと案内の文面（7.3、9.1、9.3、9.4、9.9） */
+
+NAOS_TEST(help_text_matches_expected_text)
+{
+    static const char *const tokens[] = {"single", "--help"};
+    single_run_t run;
+    mnd_buf_t buf = MND_BUF_INIT;
+
+    run_parse(&run, 2, tokens);
+    check_status(&run, MND_ARGS_HELP);
+    NAOS_REQUIRE_TRUE(mnd_args_format_help(&run.result, &buf));
+    check_text(expected_single_help, &buf);
+
+    mnd_buf_free(&buf);
+    run_free(&run);
+}
+
+NAOS_TEST(help_text_is_identical_when_generated_twice)
+{
+    static const char *const tokens[] = {"single", "--help"};
+    single_run_t run;
+    mnd_buf_t first = MND_BUF_INIT;
+    mnd_buf_t second = MND_BUF_INIT;
+
+    run_parse(&run, 2, tokens);
+    NAOS_REQUIRE_TRUE(mnd_args_format_help(&run.result, &first));
+    NAOS_REQUIRE_TRUE(mnd_args_format_help(&run.result, &second));
+    NAOS_CHECK_UINT_GT(first.len, 0);
+    NAOS_CHECK_MEM_EQ(first.data, first.len, second.data, second.len);
+
+    mnd_buf_free(&first);
+    mnd_buf_free(&second);
+    run_free(&run);
+}
+
+NAOS_TEST(usage_hint_has_root_path)
+{
+    static const char *const tokens[] = {"single", "--bad"};
+    single_run_t run;
+    mnd_buf_t buf = MND_BUF_INIT;
+
+    run_parse(&run, 2, tokens);
+    check_usage_error(&run, "single: unknown option '--bad'");
+    NAOS_REQUIRE_TRUE(mnd_args_format_usage_hint(&run.result, &buf));
+    check_text("Run 'single --help' for usage.\n", &buf);
+
+    mnd_buf_free(&buf);
+    run_free(&run);
+}
+
 NAOS_SUITE(single,
     NAOS_ADD_TEST(no_arguments_is_ok_without_positionals),
     NAOS_ADD_TEST(argc_zero_is_ok),
@@ -366,5 +444,8 @@ NAOS_SUITE(single,
     NAOS_ADD_TEST(unknown_short_option_has_root_prefix),
     NAOS_ADD_TEST(version_with_value_takes_no_value),
     NAOS_ADD_TEST(flag_with_value_takes_no_value),
-    NAOS_ADD_TEST(missing_value_has_root_prefix)
+    NAOS_ADD_TEST(missing_value_has_root_prefix),
+    NAOS_ADD_TEST(help_text_matches_expected_text),
+    NAOS_ADD_TEST(help_text_is_identical_when_generated_twice),
+    NAOS_ADD_TEST(usage_hint_has_root_path)
 )

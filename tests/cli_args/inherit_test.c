@@ -5,6 +5,8 @@
 #include <string.h>
 
 #include "cli_args/args.h"
+#include "cli_args/args_help.h"
+#include "foundation/buf.h"
 #include "foundation/diag.h"
 #include "test_decl.h"
 
@@ -437,6 +439,50 @@ NAOS_TEST(required_check_passes_when_all_levels_are_set)
     run_free(&run);
 }
 
+/*
+ * 引き継いだオプションのヘルプ（9.5、9.6、9.7、9.8）。期待する文面は設計の書式から手で導いたもの。
+ * Options: は add のオプション、remote の引き継ぐオプション、ルートの引き継ぐオプション、-h, --help の順。
+ * 引き継がない --dry-run と、ルートコマンドでないので --version は出ない。
+ * 左列の最大幅は "    --tags <TAG>[,<TAG>...]" の 27
+ */
+static const char expected_remote_add_help[] =
+    "Usage: nest remote add [<options>] <NAME> <URL>\n"
+    "\n"
+    "Add a remote\n"
+    "\n"
+    "Arguments:\n"
+    "  <NAME>  Name of the remote\n"
+    "  <URL>   URL of the remote\n"
+    "\n"
+    "Options:\n"
+    "  -f, --force                  Overwrite an existing remote\n"
+    "  -t, --token <TOKEN>          Access token (required)\n"
+    "      --tags <TAG>[,<TAG>...]  Tags to attach\n"
+    "  -v, --verbose                Print more details\n"
+    "  -c, --config <FILE>          Read settings from FILE (default: nest.cfg)\n"
+    "  -h, --help                   Show this help\n";
+
+NAOS_TEST(remote_add_help_lists_inherited_options_in_order)
+{
+    static const char *const tokens[] = {"nest", "remote", "add", "--help"};
+    inherit_run_t run;
+    mnd_buf_t first = MND_BUF_INIT;
+    mnd_buf_t second = MND_BUF_INIT;
+
+    run_parse(&run, 4, tokens);
+    NAOS_CHECK_INT_EQ(MND_ARGS_HELP, run.status);
+    NAOS_CHECK_PTR_EQ(test_nest_remote_add, mnd_args_command(&run.result));
+    NAOS_REQUIRE_TRUE(mnd_args_format_help(&run.result, &first));
+    NAOS_REQUIRE_TRUE(mnd_args_format_help(&run.result, &second));
+    NAOS_CHECK_STR_EQ(expected_remote_add_help, mnd_buf_cstr(&first));
+    NAOS_CHECK_MEM_EQ(expected_remote_add_help, strlen(expected_remote_add_help), first.data, first.len);
+    NAOS_CHECK_MEM_EQ(first.data, first.len, second.data, second.len);
+
+    mnd_buf_free(&first);
+    mnd_buf_free(&second);
+    run_free(&run);
+}
+
 NAOS_SUITE(inherit,
     NAOS_ADD_TEST(inherited_flag_before_remote),
     NAOS_ADD_TEST(inherited_flag_after_remote),
@@ -461,5 +507,6 @@ NAOS_SUITE(inherit,
     NAOS_ADD_TEST(required_check_starts_at_level_zero),
     NAOS_ADD_TEST(required_check_follows_declaration_order_in_level),
     NAOS_ADD_TEST(required_check_reaches_last_level),
-    NAOS_ADD_TEST(required_check_passes_when_all_levels_are_set)
+    NAOS_ADD_TEST(required_check_passes_when_all_levels_are_set),
+    NAOS_ADD_TEST(remote_add_help_lists_inherited_options_in_order)
 )
