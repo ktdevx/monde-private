@@ -7,7 +7,7 @@
 #include "foundation/diag.h"
 #include "test_decl.h"
 
-/* サブコマンドより前の振り分け（2.x、8.x）と、解析の入口（1.6、7.5、7.6） */
+/* ルートコマンドから始まる走査での子コマンドの選択（2.x、8.x）と、解析の入口（1.6、7.5、7.6） */
 
 #define DISPATCH_MAX_ARGS 8
 #define DISPATCH_MAX_LEN 32
@@ -230,14 +230,90 @@ NAOS_TEST(short_option_before_command_is_unknown)
     run_free(&run);
 }
 
-NAOS_TEST(double_dash_before_command_is_unknown_option)
+/* オプションの形の規則は子コマンドの選択前にも同じように適用する（3.5、3.6、4.5） */
+
+NAOS_TEST(unknown_long_option_with_value_shows_name_only)
+{
+    static const char *const tokens[] = {"tool", "--foo=bar"};
+    dispatch_run_t run;
+
+    run_init(&run);
+    run_parse(&run, 2, tokens);
+    check_usage_error(&run, "tool: unknown option '--foo'");
+    check_path(&run.result, NULL);
+    run_free(&run);
+}
+
+NAOS_TEST(help_with_value_takes_no_value)
+{
+    static const char *const tokens[] = {"tool", "--help=1"};
+    dispatch_run_t run;
+
+    run_init(&run);
+    run_parse(&run, 2, tokens);
+    check_usage_error(&run, "tool: option '--help' does not take a value");
+    check_path(&run.result, NULL);
+    run_free(&run);
+}
+
+NAOS_TEST(version_with_value_takes_no_value)
+{
+    static const char *const tokens[] = {"tool", "--version=1"};
+    dispatch_run_t run;
+
+    run_init(&run);
+    run_parse(&run, 2, tokens);
+    check_usage_error(&run, "tool: option '--version' does not take a value");
+    check_path(&run.result, NULL);
+    run_free(&run);
+}
+
+NAOS_TEST(short_option_cluster_before_command_shows_first_letter)
+{
+    static const char *const tokens[] = {"tool", "-xy", "build"};
+    dispatch_run_t run;
+
+    run_init(&run);
+    run_parse(&run, 3, tokens);
+    check_usage_error(&run, "tool: unknown option '-x'");
+    check_path(&run.result, NULL);
+    run_free(&run);
+}
+
+NAOS_TEST(non_ascii_short_option_before_command_is_unknown)
+{
+    static const char *const tokens[] = {"tool", "-\xE6\x97\xA5"};
+    dispatch_run_t run;
+
+    run_init(&run);
+    run_parse(&run, 2, tokens);
+    check_usage_error(&run, "tool: unknown option '-\xE6\x97\xA5'");
+    check_path(&run.result, NULL);
+    run_free(&run);
+}
+
+/* 子を持つコマンドでの "--"（2.4、2.5） */
+
+NAOS_TEST(double_dash_then_command_is_unexpected)
 {
     static const char *const tokens[] = {"tool", "--", "build"};
     dispatch_run_t run;
 
     run_init(&run);
     run_parse(&run, 3, tokens);
-    check_usage_error(&run, "tool: unknown option '--'");
+    check_usage_error(&run, "tool: unexpected argument 'build'");
+    check_path(&run.result, NULL);
+    run_free(&run);
+}
+
+NAOS_TEST(double_dash_alone_is_no_command)
+{
+    static const char *const tokens[] = {"tool", "--"};
+    dispatch_run_t run;
+
+    run_init(&run);
+    run_parse(&run, 2, tokens);
+    check_status(&run, MND_ARGS_NO_COMMAND, NULL);
     run_free(&run);
 }
 
@@ -362,6 +438,54 @@ NAOS_TEST(version_ignores_later_tokens)
     run_free(&run);
 }
 
+NAOS_TEST(version_with_extra_argument_is_version)
+{
+    static const char *const tokens[] = {"tool", "--version", "x"};
+    dispatch_run_t run;
+
+    run_init(&run);
+    run_parse(&run, 3, tokens);
+    check_status(&run, MND_ARGS_VERSION, NULL);
+    run_free(&run);
+}
+
+NAOS_TEST(help_before_command_is_root_help)
+{
+    static const char *const tokens[] = {"tool", "--help", "build"};
+    dispatch_run_t run;
+
+    run_init(&run);
+    run_parse(&run, 3, tokens);
+    check_status(&run, MND_ARGS_HELP, NULL);
+    run_free(&run);
+}
+
+/* 子コマンドの選択後の --version は未知のオプション（8.9） */
+
+NAOS_TEST(version_after_command_is_unknown_option)
+{
+    static const char *const tokens[] = {"tool", "build", "--version"};
+    dispatch_run_t run;
+
+    run_init(&run);
+    run_parse(&run, 3, tokens);
+    check_usage_error(&run, "tool build: unknown option '--version'");
+    check_path(&run.result, test_tool_build);
+    run_free(&run);
+}
+
+NAOS_TEST(version_with_value_after_command_is_unknown_option)
+{
+    static const char *const tokens[] = {"tool", "build", "--version=1"};
+    dispatch_run_t run;
+
+    run_init(&run);
+    run_parse(&run, 3, tokens);
+    check_usage_error(&run, "tool build: unknown option '--version'");
+    check_path(&run.result, test_tool_build);
+    run_free(&run);
+}
+
 /* 宣言の誤り（1.6）: 引数列を読まずに返す */
 
 static const mnd_args_command_t dispatch_bad_commands[] = {
@@ -464,7 +588,13 @@ NAOS_SUITE(dispatch,
     NAOS_ADD_TEST(single_dash_is_unknown_command),
     NAOS_ADD_TEST(option_before_command_is_unknown),
     NAOS_ADD_TEST(short_option_before_command_is_unknown),
-    NAOS_ADD_TEST(double_dash_before_command_is_unknown_option),
+    NAOS_ADD_TEST(unknown_long_option_with_value_shows_name_only),
+    NAOS_ADD_TEST(help_with_value_takes_no_value),
+    NAOS_ADD_TEST(version_with_value_takes_no_value),
+    NAOS_ADD_TEST(short_option_cluster_before_command_shows_first_letter),
+    NAOS_ADD_TEST(non_ascii_short_option_before_command_is_unknown),
+    NAOS_ADD_TEST(double_dash_then_command_is_unexpected),
+    NAOS_ADD_TEST(double_dash_alone_is_no_command),
     NAOS_ADD_TEST(no_arguments_is_no_command),
     NAOS_ADD_TEST(argc_zero_is_no_command),
     NAOS_ADD_TEST(long_help_ignores_later_tokens),
@@ -475,6 +605,10 @@ NAOS_SUITE(dispatch,
     NAOS_ADD_TEST(help_word_with_two_arguments),
     NAOS_ADD_TEST(help_word_with_two_known_commands),
     NAOS_ADD_TEST(version_ignores_later_tokens),
+    NAOS_ADD_TEST(version_with_extra_argument_is_version),
+    NAOS_ADD_TEST(help_before_command_is_root_help),
+    NAOS_ADD_TEST(version_after_command_is_unknown_option),
+    NAOS_ADD_TEST(version_with_value_after_command_is_unknown_option),
     NAOS_ADD_TEST(invalid_declaration_is_decl_error_without_reading_argv),
     NAOS_ADD_TEST(invalid_declaration_with_tokens),
     NAOS_ADD_TEST(result_is_reset_between_parses)

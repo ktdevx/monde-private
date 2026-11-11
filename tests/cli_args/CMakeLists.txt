@@ -10,5 +10,6 @@ monde_add_module_tests(cli_args
     positional_test.c
     errors_test.c
     help_test.c
+    single_test.c
     argv_test.c
 )

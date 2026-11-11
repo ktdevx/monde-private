@@ -9,7 +9,7 @@
 #include <stddef.h>
 #include <string.h>
 
-/* 保留した使い方の誤りの種類（「メッセージ」の節の表の、サブコマンドの選択後の場面） */
+/* 保留した使い方の誤りの種類（「メッセージ」の節の表の場面） */
 typedef enum mnd_args_error_kind
 {
     MND_ARGS_ERR_UNKNOWN_OPTION,     /* unknown option '<arg>' */
@@ -18,7 +18,9 @@ typedef enum mnd_args_error_kind
     MND_ARGS_ERR_EMPTY_ITEM,         /* option '<arg>' has an empty item in '<value>' */
     MND_ARGS_ERR_MISSING_ARGUMENT,   /* missing argument <NAME> */
     MND_ARGS_ERR_UNEXPECTED,         /* unexpected argument '<token>' */
-    MND_ARGS_ERR_MISSING_REQUIRED    /* missing required option '--<name>' */
+    MND_ARGS_ERR_MISSING_REQUIRED,   /* missing required option '--<name>' */
+    MND_ARGS_ERR_UNKNOWN_COMMAND,    /* unknown command '<token>' */
+    MND_ARGS_ERR_HELP_TOO_MANY       /* too many arguments for 'help' */
 } mnd_args_error_kind_t;
 
 /*
@@ -36,7 +38,7 @@ typedef struct mnd_args_pending
 } mnd_args_pending_t;
 
 /*
- * 走査の状態。サブコマンドを選択した後のトークンを左から順に見る。
+ * 走査の状態。ルートコマンドを選択した状態から、トークンを左から順に見る。
  * 選択中のコマンドは結果の最後の段から得る
  */
 typedef struct mnd_args_scan
@@ -173,6 +175,14 @@ static mnd_args_status_t report_pending(mnd_args_scan_t *scan)
         mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
                      "%s: missing required option '--%.*s'", prefix, len, pending->arg);
         break;
+    case MND_ARGS_ERR_UNKNOWN_COMMAND:
+        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0, "%s: unknown command '%.*s'",
+                     prefix, len, pending->arg);
+        break;
+    case MND_ARGS_ERR_HELP_TOO_MANY:
+        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
+                     "%s: too many arguments for 'help'", prefix);
+        break;
     }
 
     mnd_buf_free(&path);
@@ -209,8 +219,20 @@ static mnd_args_status_t scan_record_value(mnd_args_scan_t *scan, mnd_args_ref_t
     return MND_ARGS_OK;
 }
 
+/* 選択中のコマンドがルートコマンドなら true */
+static bool root_is_selected(const mnd_args_scan_t *scan)
+{
+    return scan->result->level_count == 1;
+}
+
+/* 選択中のコマンドが子を持つなら true */
+static bool has_children(const mnd_args_scan_t *scan)
+{
+    return mnd_args_command(scan->result)->command_count > 0;
+}
+
 /*
- * "--" で始まるトークンを処理する（3.1〜3.7、8.2）。
+ * "--" で始まるトークンを処理する（3.1〜3.7、8.2、8.8、8.9）。
  * 戻り値が MND_ARGS_OK なら走査を続け、それ以外なら走査を終える
  */
 static mnd_args_status_t scan_long(mnd_args_scan_t *scan, const char *token)
@@ -229,6 +251,17 @@ static mnd_args_status_t scan_long(mnd_args_scan_t *scan, const char *token)
         }
 
         return finish(scan->result, MND_ARGS_HELP);
+    }
+
+    /* --version はルートコマンドが選択中の間だけバージョンの要求で、それ以外は未知のオプション */
+    if ((name_len == 7) && (memcmp(name, "version", 7) == 0) && root_is_selected(scan))
+    {
+        if (equals != NULL)
+        {
+            return scan_error(scan, MND_ARGS_ERR_TAKES_NO_VALUE, token, arg_len, NULL);
+        }
+
+        return finish(scan->result, MND_ARGS_VERSION);
     }
 
     if (!mnd_args_find_long(scan->result, name, name_len, &ref))
@@ -340,10 +373,103 @@ static mnd_args_status_t scan_positional(mnd_args_scan_t *scan, const char *toke
 }
 
 /*
- * サブコマンドの後のトークンを末尾まで走査する。
- * "--" は終端とし、以降のトークンはすべて位置引数とする（6.3）。
- * "--" で始まるほかのトークンは長いオプション、"-" に 1 文字以上が続くトークンは短いオプションとして処理する。
- * "-" 単独と "-" で始まらないトークンは位置引数として記録する（4.7、6.1）。
+ * 子を持つコマンドの走査中に見た "help" の語を処理する（8.4〜8.6）。
+ * 改訂前と同じく、後続のトークンは子コマンド名 1 つまでとする
+ */
+static mnd_args_status_t scan_help_word(mnd_args_scan_t *scan, const char *token)
+{
+    const mnd_args_command_t *command;
+    const char *name;
+
+    if (scan->next >= scan->argc)
+    {
+        return finish(scan->result, MND_ARGS_HELP);
+    }
+
+    if (scan->argc - scan->next > 1)
+    {
+        return scan_error(scan, MND_ARGS_ERR_HELP_TOO_MANY, token, strlen(token), NULL);
+    }
+
+    name = scan->argv[scan->next];
+    scan->next++;
+
+    command = mnd_args_find_child(mnd_args_command(scan->result), name, strlen(name));
+    if (command == NULL)
+    {
+        return scan_error(scan, MND_ARGS_ERR_UNKNOWN_COMMAND, name, strlen(name), NULL);
+    }
+
+    if (!mnd_args_result_push(scan->result, command))
+    {
+        return out_of_memory(scan->result, scan->diags);
+    }
+
+    return finish(scan->result, MND_ARGS_HELP);
+}
+
+/*
+ * オプションでない引数を処理する（2.2、2.3、2.6、6.1、8.7）。末端コマンドでは位置引数とし、
+ * 子を持つコマンドでは "help" の語か子コマンド名として解釈する
+ */
+static mnd_args_status_t scan_operand(mnd_args_scan_t *scan, const char *token)
+{
+    const mnd_args_command_t *command;
+
+    if (!has_children(scan))
+    {
+        return scan_positional(scan, token);
+    }
+
+    if (strcmp(token, "help") == 0)
+    {
+        return scan_help_word(scan, token);
+    }
+
+    command = mnd_args_find_child(mnd_args_command(scan->result), token, strlen(token));
+    if (command == NULL)
+    {
+        return scan_error(scan, MND_ARGS_ERR_UNKNOWN_COMMAND, token, strlen(token), NULL);
+    }
+
+    if (!mnd_args_result_push(scan->result, command))
+    {
+        return out_of_memory(scan->result, scan->diags);
+    }
+
+    return MND_ARGS_OK;
+}
+
+/*
+ * "--" を処理する（2.4、2.5、6.3）。末端コマンドでは終端とし、以降のトークンをすべて位置引数にする。
+ * 子を持つコマンドでは、次のトークンがあれば余分な引数とし、なければ走査を終える
+ */
+static mnd_args_status_t scan_terminator(mnd_args_scan_t *scan)
+{
+    const char *token;
+
+    if (!has_children(scan))
+    {
+        scan->terminated = true;
+        return MND_ARGS_OK;
+    }
+
+    if (scan->next >= scan->argc)
+    {
+        return MND_ARGS_OK;
+    }
+
+    token = scan->argv[scan->next];
+    scan->next++;
+
+    return scan_error(scan, MND_ARGS_ERR_UNEXPECTED, token, strlen(token), NULL);
+}
+
+/*
+ * 選択中のコマンドの宣言で、トークンを末尾まで左から順に走査する（2.1）。
+ * "--" は scan_terminator、"--" で始まるほかのトークンは長いオプション、
+ * "-" に 1 文字以上が続くトークンは短いオプションとして処理する。
+ * "-" 単独と "-" で始まらないトークンはオプションでない引数とする（4.7）。
  * 戻り値が MND_ARGS_OK なら末尾に到達した。MND_ARGS_USAGE_ERROR なら最初の誤りを保留して止まった
  */
 static mnd_args_status_t scan_tokens(mnd_args_scan_t *scan)
@@ -362,8 +488,7 @@ static mnd_args_status_t scan_tokens(mnd_args_scan_t *scan)
         }
         else if ((token[0] == '-') && (token[1] == '-') && (token[2] == '\0'))
         {
-            scan->terminated = true;
-            status = MND_ARGS_OK;
+            status = scan_terminator(scan);
         }
         else if ((token[0] == '-') && (token[1] == '-'))
         {
@@ -375,7 +500,7 @@ static mnd_args_status_t scan_tokens(mnd_args_scan_t *scan)
         }
         else
         {
-            status = scan_positional(scan, token);
+            status = scan_operand(scan, token);
         }
 
         if (status != MND_ARGS_OK)
@@ -458,8 +583,9 @@ static mnd_args_status_t post_check(mnd_args_scan_t *scan)
 }
 
 /*
- * サブコマンドの後のトークンを走査し、状態を決める（「走査の後の検査と優先順位」の節）。
- * 使い方の誤りの診断は、ヘルプの要求がないと決まってから 1 件だけ追加する
+ * トークンを走査し、状態を決める（「走査の後の検査と優先順位」の節）。
+ * 使い方の誤りの診断は、ヘルプの要求がないと決まってから 1 件だけ追加する。
+ * 回復走査は、改訂前と同じく子コマンドの選択後に末端コマンドで検出した誤りだけで行う（8.3、8.10）
  */
 static mnd_args_status_t scan_command(mnd_args_scan_t *scan)
 {
@@ -468,7 +594,7 @@ static mnd_args_status_t scan_command(mnd_args_scan_t *scan)
     status = scan_tokens(scan);
     if (status == MND_ARGS_USAGE_ERROR)
     {
-        if (recover_help(scan))
+        if (!root_is_selected(scan) && !has_children(scan) && recover_help(scan))
         {
             return finish(scan->result, MND_ARGS_HELP);
         }
@@ -479,6 +605,12 @@ static mnd_args_status_t scan_command(mnd_args_scan_t *scan)
     if (status != MND_ARGS_OK)
     {
         return status;
+    }
+
+    /* 子を持つコマンドで引数列が終わった（2.4） */
+    if (has_children(scan))
+    {
+        return finish(scan->result, MND_ARGS_NO_COMMAND);
     }
 
     status = post_check(scan);
@@ -496,73 +628,10 @@ static mnd_args_status_t scan_command(mnd_args_scan_t *scan)
     return finish(scan->result, status);
 }
 
-/* サブコマンドを新しい段として選択し、残りのトークンを走査する */
-static mnd_args_status_t select_command(const mnd_args_program_t *program,
-                                        const mnd_args_command_t *command, int argc,
-                                        char *const *argv, mnd_args_result_t *result,
-                                        mnd_diag_list_t *diags)
-{
-    mnd_args_scan_t scan;
-
-    if (!mnd_args_result_push(result, command))
-    {
-        return out_of_memory(result, diags);
-    }
-
-    scan.program = program;
-    scan.argc = argc;
-    scan.argv = argv;
-    scan.next = 2;
-    scan.terminated = false;
-    scan.result = result;
-    scan.diags = diags;
-    memset(&scan.pending, 0, sizeof scan.pending);
-
-    return scan_command(&scan);
-}
-
-/* "help" の後のトークンを振り分ける（8.1、8.3、8.4） */
-static mnd_args_status_t dispatch_help(const mnd_args_program_t *program, int argc,
-                                       char *const *argv, mnd_args_result_t *result,
-                                       mnd_diag_list_t *diags)
-{
-    const mnd_args_command_t *command;
-    const char *name;
-
-    if (argc <= 2)
-    {
-        return finish(result, MND_ARGS_HELP);
-    }
-
-    if (argc > 3)
-    {
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0, "%s: too many arguments for 'help'",
-                     program->name);
-        return finish(result, MND_ARGS_USAGE_ERROR);
-    }
-
-    name = argv[2];
-    command = mnd_args_find_child(program->root, name, strlen(name));
-    if (command == NULL)
-    {
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0, "%s: unknown command '%s'",
-                     program->name, name);
-        return finish(result, MND_ARGS_USAGE_ERROR);
-    }
-
-    if (!mnd_args_result_push(result, command))
-    {
-        return out_of_memory(result, diags);
-    }
-
-    return finish(result, MND_ARGS_HELP);
-}
-
 mnd_args_status_t mnd_args_parse(const mnd_args_program_t *program, int argc, char *const *argv,
                                  mnd_args_result_t *result, mnd_diag_list_t *diags)
 {
-    const mnd_args_command_t *command;
-    const char *first;
+    mnd_args_scan_t scan;
 
     mnd_args_result_free(result);
 
@@ -578,43 +647,14 @@ mnd_args_status_t mnd_args_parse(const mnd_args_program_t *program, int argc, ch
         return out_of_memory(result, diags);
     }
 
-    if (argc <= 1)
-    {
-        return finish(result, MND_ARGS_NO_COMMAND);
-    }
+    scan.program = program;
+    scan.argc = argc;
+    scan.argv = argv;
+    scan.next = 1;
+    scan.terminated = false;
+    scan.result = result;
+    scan.diags = diags;
+    memset(&scan.pending, 0, sizeof scan.pending);
 
-    first = argv[1];
-    if ((strcmp(first, "--help") == 0) || (strcmp(first, "-h") == 0))
-    {
-        return finish(result, MND_ARGS_HELP);
-    }
-
-    if (strcmp(first, "--version") == 0)
-    {
-        return finish(result, MND_ARGS_VERSION);
-    }
-
-    if (strcmp(first, "help") == 0)
-    {
-        return dispatch_help(program, argc, argv, result, diags);
-    }
-
-    command = mnd_args_find_child(program->root, first, strlen(first));
-    if (command != NULL)
-    {
-        return select_command(program, command, argc, argv, result, diags);
-    }
-
-    if ((first[0] == '-') && (first[1] != '\0'))
-    {
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0, "%s: unknown option '%s'",
-                     program->name, first);
-    }
-    else
-    {
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0, "%s: unknown command '%s'",
-                     program->name, first);
-    }
-
-    return finish(result, MND_ARGS_USAGE_ERROR);
+    return scan_command(&scan);
 }

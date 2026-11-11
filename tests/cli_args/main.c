@@ -8,6 +8,7 @@ NAOS_DECLARE_SUITE(values);
 NAOS_DECLARE_SUITE(positional);
 NAOS_DECLARE_SUITE(errors);
 NAOS_DECLARE_SUITE(help);
+NAOS_DECLARE_SUITE(single);
 NAOS_DECLARE_SUITE(argv);
 
 NAOS_MAIN(
@@ -19,5 +20,6 @@ NAOS_MAIN(
     NAOS_ADD_SUITE(positional),
     NAOS_ADD_SUITE(errors),
     NAOS_ADD_SUITE(help),
+    NAOS_ADD_SUITE(single),
     NAOS_ADD_SUITE(argv)
 )

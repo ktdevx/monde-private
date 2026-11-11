@@ -19,4 +19,12 @@ extern const mnd_args_command_t *const test_tool_build;
 extern const mnd_args_command_t *const test_tool_copy;
 extern const mnd_args_command_t *const test_tool_cat;
 
+/*
+ * テスト専用の架空のプログラム "single"（バージョン 2.0）の宣言。サブコマンドを持たず、
+ * ルートコマンドが末端コマンドである。
+ *   --output/-o <FILE>（値）、--verbose/-v（フラグ）、--keys/-k <KEY>（リスト）。
+ *   位置引数 FILE（0 個以上、上限なし）
+ */
+extern const mnd_args_program_t test_single_program;
+
 #endif
