@@ -1125,5 +1125,5 @@ void clopts_result_set_flag(clopts_result_t *result, clopts_ref_t ref, bool enab
 ### Migration Strategy
 
 - 互換の層は要らない。公開の型へのメンバーの追加は末尾で、既存の利用側のソースは変えずにビルドできる。
-- `clopts_result_set_flag` の引数の追加は内部の関数の変更で、公開の API には影響しない。呼び出し元は `clopts_parse.c` の肯定の形の 2 か所と、内部の関数を直接使う `cli_args/tests/values_test.c` の 3 か所である。`values_test.c` には引数 `true` を足すだけで、テストの意味と期待値は変えない。型と ResultStore を先に変え、続けて Parser を変える。DeclCheck と HelpFormatter は、型の変更の後なら互いに独立に進められる。
+- `clopts_result_set_flag` の引数の追加は内部の関数の変更で、公開の API には影響しない。呼び出し元は `clopts_parse.c` の肯定の形の 2 か所と否定の形の 1 か所（追加）、内部の関数を直接使う `cli_args/tests/values_test.c` の 3 か所である。`values_test.c` には引数 `true` を足すだけで、テストの意味と期待値は変えない。型と ResultStore を先に変え、続けて Parser を変える。DeclCheck と HelpFormatter は、型の変更の後なら互いに独立に進められる。
 - CLOpts のバージョンは、公開の型の変更を表すために 0.2.0 に上げる。番号を書く場所は `cli_args/CMakeLists.txt` の `project(CLOpts VERSION ...)` だけで、パッケージの検証はこの値を使う。Monde のバージョンは変えない。
