@@ -86,7 +86,7 @@
   - _Boundary: BuildDef, CLOptsCompilerOptions, CLOptsNaos, MondeCLOpts_
   - _Requirements: 1.2, 1.3, 2.1, 2.2, 2.4, 2.5, 2.7, 2.8, 3.2, 5.1, 5.2, 5.3, 5.5, 5.6, 5.7, 5.8, 6.8, 7.6, 7.9_
 
-- [ ] 4.2 CLOpts ディレクトリの単独性を検査するテストを加える
+- [x] 4.2 CLOpts ディレクトリの単独性を検査するテストを加える
   - CLOpts ディレクトリのソース、ヘッダ、ビルド定義、README を走査し、Monde の名前、Monde の共通部品のパス、ディレクトリの外を指す相対パスがあれば、ファイル名と行を報告して失敗するスクリプトを用意する
   - CLOpts のテストとして登録する
   - 完了時: 検査のテストが成功する。CLOpts のソースに Monde の接頭辞を持つ名前を 1 つ一時的に加えると失敗し、該当の行を報告する（確認後に元に戻す）
@@ -148,3 +148,4 @@
 - 2.2: 整形の関数は `mnd_args_format_*` が確保した文字列を返し、解放は `mnd_args_text_free`（3.1 の改名で `clopts_text_free`）。Windows の UTF-16 変換は Linux では実際にはコンパイルしていないので、Windows の CI で確かめる
 - 2.4: 橋渡しの 5 件を加え、Monde の CTest の全件は 1511 件（1494 + 2.1 の 12 件 + 橋渡しの 5 件）。`src/monde/main.c` は橋渡しのために `cli/cli_clopts.h` を取り込む
 - 4.1: 公開ヘッダの `$<INSTALL_INTERFACE:...>` はタスク 4.3 で加える。Monde は `cmake/MondeCLOpts.cmake` で `CLOPTS_*` を通常の変数として設定し、CMP0077（NEW）で `option()` に効かせている
+- 4.2: 単独性の検査 `clopts_check.isolation` は、`CMakeCache.txt` を含むディレクトリ（`cli_args/` の中に置いたビルドディレクトリ）を走査しない（設計にない、生成物による誤検出を避けるための除外）。README には `monde_`、`MONDE_`、`monde::`、`foundation/`、`../` を書けない

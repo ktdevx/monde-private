@@ -23,3 +23,10 @@ naos_add_executable(clopts_tests
 )
 target_include_directories(clopts_tests PRIVATE "${CLOpts_SOURCE_DIR}/src")
 clopts_apply_compile_options(clopts_tests)
+
+# 単独性の検査: cli_args/ の中に Monde の名前、Monde の共通部品のパス、ディレクトリの外を指す
+# 相対パスがないことを確かめる
+add_test(NAME clopts_check.isolation
+  COMMAND "${CMAKE_COMMAND}" "-DROOT=${CLOpts_SOURCE_DIR}" -P "${CMAKE_CURRENT_SOURCE_DIR}/isolation_check.cmake"
+)
+set_tests_properties(clopts_check.isolation PROPERTIES LABELS clopts)
