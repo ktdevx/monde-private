@@ -6,7 +6,7 @@
  * モジュール内部のヘッダ（src/cli/ と tests/cli/ だけが include する）
  */
 
-#include "cli_args/args.h"
+#include "clopts/clopts.h"
 #include "foundation/diag.h"
 #include "po_merge/merge.h"
 #include "tu/tu.h"
@@ -24,10 +24,10 @@ void mnd_cli_report_diags(FILE *err, const mnd_diag_list_t *diags);
 
 /*
  * 使い方のエラー。diags の診断を、result の経路の文字列 "<path>: " の接頭辞を除いて
- * "monde: error: <message>" の形で書き、続けて mnd_args_format_usage_hint の案内（経路の最後のコマンドの案内）を書く。
- * result は mnd_args_parse が MND_ARGS_USAGE_ERROR を返したものであること
+ * "monde: error: <message>" の形で書き、続けて clopts_format_usage_hint の案内（経路の最後のコマンドの案内）を書く。
+ * result は clopts_parse が CLOPTS_USAGE_ERROR を返したものであること
  */
-void mnd_cli_report_usage_error(FILE *err, const mnd_args_result_t *result, const mnd_diag_list_t *diags);
+void mnd_cli_report_usage_error(FILE *err, const clopts_result_t *result, const mnd_diag_list_t *diags);
 
 /* 統計と情報。quiet なら何も書かない */
 void mnd_cli_report_extract(FILE *err, bool quiet, size_t messages);

@@ -18,6 +18,7 @@ monde_add_module_tests(cli
     update_test.c
     translate_test.c
     roundtrip_test.c
+    clopts_bridge_test.c
   DEFINITIONS
     "MONDE_CLI_TEST_WORK_DIR=\"${MONDE_CLI_TEST_WORK_DIR}\""
     "MND_MD_SPEC_FILE=\"${PROJECT_SOURCE_DIR}/tests/data/commonmark/spec.txt\""

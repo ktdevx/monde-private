@@ -7,7 +7,7 @@
 #include "cli/cli_report.h"
 #include "cli/cli_time.h"
 
-#include "cli_args/args.h"
+#include "clopts/clopts.h"
 #include "foundation/buf.h"
 #include "foundation/diag.h"
 #include "po/po.h"
@@ -30,7 +30,7 @@
  */
 static bool resolve_language(mnd_cli_ctx_t *ctx, mnd_cli_language_t *language)
 {
-    const char *explicit_code = mnd_args_value(ctx->result, MND_CLI_OPT_LANGUAGE);
+    const char *explicit_code = clopts_value(ctx->result, MND_CLI_OPT_LANGUAGE);
     size_t before = mnd_diag_list_count(ctx->diags);
     bool dropped_before = ctx->diags->dropped;
     size_t after;
@@ -63,8 +63,8 @@ static bool initialize(const mnd_cli_ctx_t *ctx, mnd_po_catalog_t *catalog, cons
 
 bool mnd_cli_cmd_init(mnd_cli_ctx_t *ctx)
 {
-    const char *template_path = mnd_args_positional_at(ctx->result, 0);
-    const char *output_path = mnd_args_value(ctx->result, MND_CLI_OPT_OUTPUT);
+    const char *template_path = clopts_positional_at(ctx->result, 0);
+    const char *output_path = clopts_value(ctx->result, MND_CLI_OPT_OUTPUT);
     mnd_cli_language_t language = { NULL, NULL };
     mnd_cli_input_t input = MND_CLI_INPUT_INIT;
     mnd_po_write_options_t write_options = MND_PO_WRITE_OPTIONS_INIT;
@@ -77,7 +77,7 @@ bool mnd_cli_cmd_init(mnd_cli_ctx_t *ctx)
 
     if (ok)
     {
-        write_options.no_wrap = mnd_args_flag(ctx->result, MND_CLI_OPT_NO_WRAP);
+        write_options.no_wrap = clopts_flag(ctx->result, MND_CLI_OPT_NO_WRAP);
         write_options.eol = mnd_cli_choose_eol(&input.eol);
 
         /* 診断のパスは指定されたパスのまま（標準入力は "-"） */

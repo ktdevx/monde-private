@@ -4,7 +4,10 @@
  */
 
 #include "cli/cli.h"
-#include "cli_args/args_argv.h"
+#include "cli/cli_clopts.h"
+#include "clopts/argv.h"
+#include "clopts/errors.h"
+#include "foundation/diag.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -39,7 +42,8 @@ static void report_argv_error(const mnd_diag_list_t *diags)
 
 int main(int argc, char **argv)
 {
-    mnd_args_argv_t args = MND_ARGS_ARGV_INIT;
+    clopts_argv_t args = CLOPTS_ARGV_INIT;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
     mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
     mnd_cli_env_t env = { NULL, NULL, NULL, MONDE_VERSION, NULL, NULL };
     int status;
@@ -52,14 +56,17 @@ int main(int argc, char **argv)
 #endif
 
     /* Windows では UTF-16 のコマンドラインから UTF-8 に変換した引数列を得る */
-    if (!mnd_args_argv_get(argc, argv, &args, &diags))
+    if (!clopts_argv_get(argc, argv, &args, &errors))
     {
+        /* 取得のエラーを診断に移し、現在と同じ形で報告する */
+        mnd_cli_clopts_errors_to_diags(&errors, &diags);
+        clopts_errors_free(&errors);
         report_argv_error(&diags);
         mnd_diag_list_free(&diags);
-        mnd_args_argv_free(&args);
+        clopts_argv_free(&args);
         return MND_CLI_EXIT_FAILURE;
     }
-    mnd_diag_list_free(&diags);
+    clopts_errors_free(&errors);
 
     /* getenv と now は NULL（実際の環境変数と現在時刻を使う） */
     env.in = stdin;
@@ -67,6 +74,6 @@ int main(int argc, char **argv)
     env.err = stderr;
     status = mnd_cli_run(&env, args.argc, args.argv);
 
-    mnd_args_argv_free(&args);
+    clopts_argv_free(&args);
     return status;
 }

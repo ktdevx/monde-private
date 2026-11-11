@@ -6,7 +6,8 @@
 
 #include "cli/cli_commands.h"
 #include "cli/cli_report.h"
-#include "cli_args/args.h"
+#include "clopts/clopts.h"
+#include "clopts/errors.h"
 #include "foundation/buf.h"
 #include "foundation/diag.h"
 #include "po_merge/merge.h"
@@ -62,15 +63,15 @@ static bool report_close_read(FILE *fp, const char *name, mnd_buf_t *out)
  * mnd_cli_program で解析し、経路が "monde" または "monde <command>" の解析結果を result に作る。
  * argv は解析結果より長く保持するため static にする
  */
-static void report_usage_result(const char *command, mnd_args_result_t *result)
+static void report_usage_result(const char *command, clopts_result_t *result)
 {
     static char arg0[] = "monde";
     static char arg1[32];
     static char bogus[] = "--report-bogus";
-    static mnd_args_program_t program;
+    static clopts_program_t program;
     char *argv[4];
     int argc = 0;
-    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
 
     program = mnd_cli_program(TEST_CLI_VERSION);
     argv[argc++] = arg0;
@@ -83,9 +84,9 @@ static void report_usage_result(const char *command, mnd_args_result_t *result)
     argv[argc++] = bogus;
     argv[argc] = NULL;
 
-    NAOS_REQUIRE_INT_EQ((int)MND_ARGS_USAGE_ERROR, (int)mnd_args_parse(&program, argc, argv, result, &diags));
-    NAOS_REQUIRE_UINT_EQ((command != NULL) ? 2 : 1, mnd_args_depth(result));
-    mnd_diag_list_free(&diags);
+    NAOS_REQUIRE_INT_EQ((int)CLOPTS_USAGE_ERROR, (int)clopts_parse(&program, argc, argv, result, &errors));
+    NAOS_REQUIRE_UINT_EQ((command != NULL) ? 2 : 1, clopts_depth(result));
+    clopts_errors_free(&errors);
 }
 
 /* 診断の 3 形式（パスと行、パスのみ、どちらもなし）と警告が、渡された順に 1 件 1 行で出る（9.1〜9.4） */
@@ -191,7 +192,7 @@ NAOS_TEST(report_diags_dropped_without_items)
 NAOS_TEST(report_usage_error_with_command)
 {
     static const char *const name = "report_usage_error_with_command";
-    mnd_args_result_t result = MND_ARGS_RESULT_INIT;
+    clopts_result_t result = CLOPTS_RESULT_INIT;
     mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
     mnd_buf_t text = MND_BUF_INIT;
     FILE *fp;
@@ -210,14 +211,14 @@ NAOS_TEST(report_usage_error_with_command)
 
     mnd_buf_free(&text);
     mnd_diag_list_free(&diags);
-    mnd_args_result_free(&result);
+    clopts_result_free(&result);
 }
 
 /* 使い方のエラー: サブコマンドが決まらないときは全体の案内。パスがあっても "monde:" で始める（1.6） */
 NAOS_TEST(report_usage_error_without_command)
 {
     static const char *const name = "report_usage_error_without_command";
-    mnd_args_result_t result = MND_ARGS_RESULT_INIT;
+    clopts_result_t result = CLOPTS_RESULT_INIT;
     mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
     mnd_buf_t text = MND_BUF_INIT;
     FILE *fp;
@@ -238,14 +239,14 @@ NAOS_TEST(report_usage_error_without_command)
 
     mnd_buf_free(&text);
     mnd_diag_list_free(&diags);
-    mnd_args_result_free(&result);
+    clopts_result_free(&result);
 }
 
 /* 使い方のエラー: cli-args の "<program> <command>: " と "<program>: " の接頭辞を除いて書く（1.6） */
 NAOS_TEST(report_usage_error_strips_cli_args_prefix_with_command)
 {
     static const char *const name = "report_usage_error_strips_prefix_with_command";
-    mnd_args_result_t result = MND_ARGS_RESULT_INIT;
+    clopts_result_t result = CLOPTS_RESULT_INIT;
     mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
     mnd_buf_t text = MND_BUF_INIT;
     FILE *fp;
@@ -266,14 +267,14 @@ NAOS_TEST(report_usage_error_strips_cli_args_prefix_with_command)
 
     mnd_buf_free(&text);
     mnd_diag_list_free(&diags);
-    mnd_args_result_free(&result);
+    clopts_result_free(&result);
 }
 
 /* 使い方のエラー: サブコマンドが決まらないときは "<program>: " だけを除く（1.6） */
 NAOS_TEST(report_usage_error_strips_cli_args_prefix_without_command)
 {
     static const char *const name = "report_usage_error_strips_prefix_without_command";
-    mnd_args_result_t result = MND_ARGS_RESULT_INIT;
+    clopts_result_t result = CLOPTS_RESULT_INIT;
     mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
     mnd_buf_t text = MND_BUF_INIT;
     FILE *fp;
@@ -292,14 +293,14 @@ NAOS_TEST(report_usage_error_strips_cli_args_prefix_without_command)
 
     mnd_buf_free(&text);
     mnd_diag_list_free(&diags);
-    mnd_args_result_free(&result);
+    clopts_result_free(&result);
 }
 
 /* 使い方のエラー: 接頭辞が一致しないメッセージ（別のサブコマンド名、コロンなし）はそのまま書く */
 NAOS_TEST(report_usage_error_keeps_unmatched_prefix)
 {
     static const char *const name = "report_usage_error_keeps_unmatched_prefix";
-    mnd_args_result_t result = MND_ARGS_RESULT_INIT;
+    clopts_result_t result = CLOPTS_RESULT_INIT;
     mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
     mnd_buf_t text = MND_BUF_INIT;
     FILE *fp;
@@ -322,7 +323,7 @@ NAOS_TEST(report_usage_error_keeps_unmatched_prefix)
 
     mnd_buf_free(&text);
     mnd_diag_list_free(&diags);
-    mnd_args_result_free(&result);
+    clopts_result_free(&result);
 }
 
 /* extract / init / 言語の出どころ / update の統計の書式（5.6、8.1〜8.3、8.8） */

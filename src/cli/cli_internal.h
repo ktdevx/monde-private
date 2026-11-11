@@ -8,7 +8,7 @@
 
 #include "cli/cli.h"
 #include "cli/cli_commands.h"
-#include "cli_args/args.h"
+#include "clopts/clopts.h"
 #include "foundation/diag.h"
 
 #include <stdbool.h>
@@ -17,7 +17,7 @@
 typedef struct mnd_cli_ctx
 {
     const mnd_cli_env_t *env;          /* 実行環境 */
-    const mnd_args_result_t *result;   /* 引数の解析結果（MND_ARGS_OK） */
+    const clopts_result_t *result;   /* 引数の解析結果（CLOPTS_OK） */
     mnd_diag_list_t *diags;            /* 診断の一覧。ハンドラの成否にかかわらず Run が表示する */
     bool quiet;                        /* --quiet: 統計と情報を抑止する */
     bool usage_error;                  /* 失敗が使い方のエラーなら true（Run は 1 ではなく 2 を返す） */

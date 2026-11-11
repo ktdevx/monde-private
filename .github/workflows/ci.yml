@@ -67,3 +67,67 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
+
+  # CLOpts（cli_args/）が単独で構成・ビルド・テストできることを確かめる。
+  # cli_args/ を作業ツリーの外（runner.temp）へ複製し、その複製だけを構成するので、
+  # cli_args/ の外のファイルへの参照があれば構成かビルドが失敗する。
+  # インストール後の find_package の検証と単独性の検査は CTest に含まれる
+  clopts-standalone:
+    name: clopts-standalone (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # 1 環境の失敗で他の環境を中断しない
+      fail-fast: false
+      matrix:
+        include:
+          - name: msvc
+            os: windows-latest
+          - name: mingw-w64
+            os: windows-latest
+            msys2: true
+            configure-args: -G Ninja
+          - name: apple-clang
+            os: macos-latest
+          - name: gcc
+            os: ubuntu-latest
+            cc: gcc
+          - name: clang
+            os: ubuntu-latest
+            cc: clang
+    defaults:
+      run:
+        shell: ${{ matrix.msys2 && 'msys2 {0}' || 'bash' }}
+    env:
+      # 空のときは CMake が無視し、既定のコンパイラを使う
+      CC: ${{ matrix.cc }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # git は FetchContent による Naos の取得に使う
+      - if: matrix.msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+
+      # 複製先のパスは Windows では D:\a\_temp の形になる。シェルで変換せずに済むよう、
+      # 引用符で囲んで CMake に渡し、以降の手順は working-directory で複製の中から実行する
+      - name: Copy CLOpts outside the workspace
+        run: cmake -E copy_directory cli_args "${{ runner.temp }}/clopts-standalone"
+
+      - name: Configure
+        working-directory: ${{ runner.temp }}/clopts-standalone
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.configure-args }}
+
+      - name: Build
+        working-directory: ${{ runner.temp }}/clopts-standalone
+        run: cmake --build build --config Release
+
+      - name: Test
+        working-directory: ${{ runner.temp }}/clopts-standalone
+        run: ctest --test-dir build -C Release --output-on-failure

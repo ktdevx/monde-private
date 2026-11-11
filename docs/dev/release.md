@@ -8,10 +8,11 @@
 | --- | --- |
 | [`CMakeLists.txt`](../../CMakeLists.txt) | バージョン番号を書く唯一の場所（`project(monde VERSION X.Y.Z ...)`）。`monde --version` の表示はここから決まる |
 | [`.github/workflows/release.yml`](../../.github/workflows/release.yml) | リリースのワークフロー（`check`、`build`、`publish` の 3 ジョブ） |
-| [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) | main への push と pull request で動く CI（5 環境のビルドとテスト） |
+| [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) | main への push と pull request で動く CI（5 環境のビルドとテストと、引数パーサ CLOpts の単独構成の検証） |
 | [`tools/release/check_version.cmake`](../../tools/release/check_version.cmake) | タグとビルド構成のバージョンの一致を確かめる |
 | [`tools/release/verify_package.cmake`](../../tools/release/verify_package.cmake) | 実行ファイルと配布アーカイブを確かめる |
 | [`cmake/MondePackage.cmake`](../../cmake/MondePackage.cmake) | 配布物の定義（install の規則と CPack の設定、`MONDE_RELEASE_TARGET`） |
+| [`cmake/MondeCLOpts.cmake`](../../cmake/MondeCLOpts.cmake) | 引数パーサ CLOpts（[`cli_args/`](../../cli_args/)）の取り込みの定義。`CLOPTS_INSTALL=OFF` にして、CLOpts のヘッダ、ライブラリ、パッケージ構成ファイルを配布物に入れない。CLOpts のバージョンは `cli_args/CMakeLists.txt` にあり、Monde のバージョンとは別 |
 | [`THIRD_PARTY_NOTICES`](../../THIRD_PARTY_NOTICES) | 実行ファイルに取り込んだ第三者の素材の索引。配布物に同梱し、`verify_package.cmake` が期待する同梱物をここから組み立てる |
 | [`licenses/`](../../licenses/) | 素材ごとの著作権表示とライセンスの全文（`licenses/<ID>.txt`）。ディレクトリごと配布物に同梱する |
 | [`tests/docs/`](../../tests/docs/) | ドキュメントと素材の表示の検査（`ctest -L docs`） |

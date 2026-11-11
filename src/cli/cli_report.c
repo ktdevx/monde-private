@@ -2,8 +2,7 @@
 
 #include "cli/cli_report.h"
 
-#include "cli_args/args_help.h"
-#include "foundation/buf.h"
+#include "clopts/help.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -104,19 +103,14 @@ static const char *strip_usage_prefix(const char *message, const char *path, con
 }
 
 /* 使い方のエラーはパスと行を付けず "monde: <severity>: <message>" で書き、最後に cli-args の案内を 1 行書く（1.6） */
-void mnd_cli_report_usage_error(FILE *err, const mnd_args_result_t *result, const mnd_diag_list_t *diags)
+void mnd_cli_report_usage_error(FILE *err, const clopts_result_t *result, const mnd_diag_list_t *diags)
 {
-    mnd_buf_t path = MND_BUF_INIT;
-    mnd_buf_t hint = MND_BUF_INIT;
-    const char *path_text = NULL;
+    char *path_text = clopts_format_path(result);  /* NULL（メモリ不足）なら経路の接頭辞を除かない */
+    char *hint;
     const char *program = NULL;
     size_t count = mnd_diag_list_count(diags);
     size_t i;
 
-    if (mnd_args_format_path(result, &path))
-    {
-        path_text = mnd_buf_cstr(&path);
-    }
     if (result->program != NULL)
     {
         program = result->program->name;
@@ -131,16 +125,17 @@ void mnd_cli_report_usage_error(FILE *err, const mnd_args_result_t *result, cons
     }
     write_dropped(err, diags);
 
-    if (mnd_args_format_usage_hint(result, &hint))
+    hint = clopts_format_usage_hint(result);
+    if (hint != NULL)
     {
-        fwrite(mnd_buf_cstr(&hint), 1, hint.len, err);
+        fwrite(hint, 1, strlen(hint), err);
     }
     else
     {
         fprintf(err, "%s: error: %s\n", REPORT_PROGRAM, "out of memory");
     }
-    mnd_buf_free(&hint);
-    mnd_buf_free(&path);
+    clopts_text_free(hint);
+    clopts_text_free(path_text);
 }
 
 void mnd_cli_report_extract(FILE *err, bool quiet, size_t messages)

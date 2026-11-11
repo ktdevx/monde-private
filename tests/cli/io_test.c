@@ -5,9 +5,11 @@
 #include "test_util.h"
 
 #include "cli/cli.h"
+#include "cli/cli_clopts.h"
 #include "cli/cli_commands.h"
 #include "cli/cli_io.h"
-#include "cli_args/args.h"
+#include "clopts/clopts.h"
+#include "clopts/errors.h"
 #include "foundation/buf.h"
 #include "foundation/diag.h"
 #include "foundation/eol.h"
@@ -465,12 +467,13 @@ typedef struct io_argv
     int argc;
 } io_argv_t;
 
-/* NULL で終わる tokens を copy に複製して mnd_cli_program で解析し、MND_ARGS_OK を確かめる */
-static void io_parse(const char *const *tokens, io_argv_t *copy, mnd_args_result_t *result)
+/* NULL で終わる tokens を copy に複製して mnd_cli_program で解析し、CLOPTS_OK を確かめる */
+static void io_parse(const char *const *tokens, io_argv_t *copy, clopts_result_t *result)
 {
-    mnd_args_program_t program = mnd_cli_program(TEST_CLI_VERSION);
+    clopts_program_t program = mnd_cli_program(TEST_CLI_VERSION);
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
     mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
-    mnd_args_status_t status;
+    clopts_status_t status;
 
     copy->argc = 0;
     while (tokens[copy->argc] != NULL)
@@ -483,10 +486,12 @@ static void io_parse(const char *const *tokens, io_argv_t *copy, mnd_args_result
     }
     copy->argv[copy->argc] = NULL;
 
-    status = mnd_args_parse(&program, copy->argc, copy->argv, result, &diags);
+    status = clopts_parse(&program, copy->argc, copy->argv, result, &errors);
+    mnd_cli_clopts_errors_to_diags(&errors, &diags);
+    clopts_errors_free(&errors);
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
     mnd_diag_list_free(&diags);
-    NAOS_REQUIRE_INT_EQ(MND_ARGS_OK, status);
+    NAOS_REQUIRE_INT_EQ(CLOPTS_OK, status);
 }
 
 /* 位置引数の "-" が 1 つ以下なら成功し、診断を加えない。-o - は位置引数ではないので数えない（2.4、2.5） */
@@ -495,10 +500,10 @@ NAOS_TEST(io_check_stdin_once_accepts_single_dash)
     static const char *const one_dash[] = { "monde", "translate", "-", "ja.po", "-o", "-", NULL };
     static const char *const no_dash[] = { "monde", "update", "new.pot", "old.po", NULL };
     io_argv_t copy;
-    mnd_args_result_t result;
+    clopts_result_t result;
     mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
 
-    mnd_args_result_init(&result);
+    clopts_result_init(&result);
     io_parse(one_dash, &copy, &result);
     NAOS_CHECK_TRUE(mnd_cli_check_stdin_once(&result, &diags));
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
@@ -507,7 +512,7 @@ NAOS_TEST(io_check_stdin_once_accepts_single_dash)
     NAOS_CHECK_TRUE(mnd_cli_check_stdin_once(&result, &diags));
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
 
-    mnd_args_result_free(&result);
+    clopts_result_free(&result);
     mnd_diag_list_free(&diags);
 }
 
@@ -516,18 +521,18 @@ NAOS_TEST(io_check_stdin_once_rejects_duplicate_dash)
 {
     static const char *const two_dashes[] = { "monde", "update", "-", "-", NULL };
     io_argv_t copy;
-    mnd_args_result_t result;
+    clopts_result_t result;
     mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
     const mnd_diag_t *diag;
 
-    mnd_args_result_init(&result);
+    clopts_result_init(&result);
     io_parse(two_dashes, &copy, &result);
     NAOS_CHECK_FALSE(mnd_cli_check_stdin_once(&result, &diags));
     check_single_error(&diags, NULL);
     diag = mnd_diag_list_at(&diags, 0);
     NAOS_CHECK_NOT_NULL(strstr(diag->message, "standard input ('-') can be used only once"));
 
-    mnd_args_result_free(&result);
+    clopts_result_free(&result);
     mnd_diag_list_free(&diags);
 }
 

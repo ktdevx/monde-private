@@ -1,0 +1,565 @@
+#include <naos/naos.h>
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <string.h>
+
+#include "clopts/clopts.h"
+#include "clopts_internal.h"
+#include "clopts/errors.h"
+#include "test_decl.h"
+
+/*
+ * ResultStore の書き込み関数を直接使うテスト。経路は tool（段 0）と子コマンド（段 1）の 2 段。
+ * test_tool_build のオプションの添字: 0 output、1 keys、2 level、3 verbose、4 quiet
+ */
+#define VALUES_BUILD_LEVEL 1
+#define VALUES_OUTPUT build_ref(0)
+#define VALUES_KEYS build_ref(1)
+#define VALUES_LEVEL build_ref(2)
+#define VALUES_VERBOSE build_ref(3)
+
+/* 段 1 の build のオプションの位置 */
+static clopts_ref_t build_ref(size_t index)
+{
+    clopts_ref_t ref;
+
+    ref.level = VALUES_BUILD_LEVEL;
+    ref.index = index;
+    return ref;
+}
+
+/* ルートコマンドと command の 2 段の経路を作る */
+static void begin_command(clopts_result_t *result, const clopts_command_t *command)
+{
+    clopts_result_init(result);
+    result->program = &test_tool_program;
+    NAOS_REQUIRE_TRUE(clopts_result_push(result, test_tool_program.root));
+    NAOS_REQUIRE_TRUE(clopts_result_push(result, command));
+}
+
+static void begin_build(clopts_result_t *result)
+{
+    begin_command(result, test_tool_build);
+}
+
+NAOS_TEST(init_is_empty_and_free_is_repeatable)
+{
+    clopts_result_t result = CLOPTS_RESULT_INIT;
+
+    clopts_result_free(&result);
+    clopts_result_free(&result);
+    NAOS_CHECK_TRUE(result.status == CLOPTS_NO_COMMAND);
+    NAOS_CHECK_NULL(clopts_command(&result));
+    NAOS_CHECK_UINT_EQ(0, clopts_depth(&result));
+    NAOS_CHECK_NULL(result.levels);
+    NAOS_CHECK_UINT_EQ(0, clopts_positional_count(&result));
+    NAOS_CHECK_FALSE(clopts_is_set(&result, "output"));
+    NAOS_CHECK_NULL(clopts_value(&result, "output"));
+
+    begin_build(&result);
+    NAOS_CHECK_PTR_EQ(test_tool_build, clopts_command(&result));
+    NAOS_REQUIRE_UINT_EQ(2, clopts_depth(&result));
+    NAOS_CHECK_NOT_NULL(result.levels[VALUES_BUILD_LEVEL].values);
+    NAOS_CHECK_TRUE(clopts_result_append_list(&result, VALUES_KEYS, "x,y", true) == CLOPTS_OK);
+    NAOS_CHECK_TRUE(clopts_result_add_positional(&result, "src"));
+    clopts_result_free(&result);
+    NAOS_CHECK_TRUE(result.status == CLOPTS_NO_COMMAND);
+    NAOS_CHECK_NULL(clopts_command(&result));
+    NAOS_CHECK_UINT_EQ(0, clopts_depth(&result));
+    NAOS_CHECK_NULL(result.levels);
+    NAOS_CHECK_NULL(result.positionals);
+    NAOS_CHECK_UINT_EQ(0, result.positional_count);
+    NAOS_CHECK_UINT_EQ(0, result.positional_cap);
+    clopts_result_free(&result);
+    NAOS_CHECK_NULL(clopts_command(&result));
+}
+
+NAOS_TEST(begin_without_options_succeeds)
+{
+    clopts_result_t result;
+
+    begin_command(&result, test_tool_cat);
+    NAOS_CHECK_PTR_EQ(test_tool_cat, clopts_command(&result));
+    NAOS_CHECK_FALSE(clopts_is_set(&result, "output"));
+    NAOS_CHECK_UINT_EQ(0, clopts_list_count(&result, "keys"));
+    clopts_result_free(&result);
+}
+
+NAOS_TEST(list_splits_on_comma)
+{
+    clopts_result_t result;
+
+    begin_build(&result);
+    NAOS_REQUIRE_TRUE(clopts_result_append_list(&result, VALUES_KEYS, "a,b", true) == CLOPTS_OK);
+    NAOS_REQUIRE_UINT_EQ(2, clopts_list_count(&result, "keys"));
+    NAOS_CHECK_STR_EQ("a", clopts_list_at(&result, "keys", 0));
+    NAOS_CHECK_STR_EQ("b", clopts_list_at(&result, "keys", 1));
+    NAOS_CHECK_NULL(clopts_list_at(&result, "keys", 2));
+    NAOS_CHECK_TRUE(clopts_is_set(&result, "keys"));
+    clopts_result_free(&result);
+}
+
+NAOS_TEST(list_keeps_whitespace_in_items)
+{
+    clopts_result_t result;
+
+    begin_build(&result);
+    NAOS_REQUIRE_TRUE(clopts_result_append_list(&result, VALUES_KEYS, " a , b", true) == CLOPTS_OK);
+    NAOS_REQUIRE_UINT_EQ(2, clopts_list_count(&result, "keys"));
+    NAOS_CHECK_STR_EQ(" a ", clopts_list_at(&result, "keys", 0));
+    NAOS_CHECK_STR_EQ(" b", clopts_list_at(&result, "keys", 1));
+    clopts_result_free(&result);
+}
+
+NAOS_TEST(list_rejects_empty_items_without_adding)
+{
+    static const char *const bad[] = { "", ",a", "a,", "a,,b", "," };
+    clopts_result_t result;
+    size_t i;
+
+    begin_build(&result);
+    NAOS_REQUIRE_TRUE(clopts_result_append_list(&result, VALUES_KEYS, "x", true) == CLOPTS_OK);
+    for (i = 0; i < (sizeof(bad) / sizeof(bad[0])); i++)
+    {
+        NAOS_CHECK_TRUE(clopts_result_append_list(&result, VALUES_KEYS, bad[i], true)
+                        == CLOPTS_USAGE_ERROR);
+        NAOS_CHECK_UINT_EQ(1, clopts_list_count(&result, "keys"));
+    }
+
+    NAOS_CHECK_STR_EQ("x", clopts_list_at(&result, "keys", 0));
+    clopts_result_free(&result);
+
+    begin_build(&result);
+    NAOS_CHECK_TRUE(clopts_result_append_list(&result, VALUES_KEYS, "a,,b", true)
+                    == CLOPTS_USAGE_ERROR);
+    NAOS_CHECK_UINT_EQ(0, clopts_list_count(&result, "keys"));
+    NAOS_CHECK_FALSE(clopts_is_set(&result, "keys"));
+    clopts_result_free(&result);
+}
+
+NAOS_TEST(two_appends_concatenate)
+{
+    clopts_result_t result;
+
+    begin_build(&result);
+    NAOS_REQUIRE_TRUE(clopts_result_append_list(&result, VALUES_KEYS, "a,b", true) == CLOPTS_OK);
+    NAOS_REQUIRE_TRUE(clopts_result_append_list(&result, VALUES_KEYS, "c", true) == CLOPTS_OK);
+    NAOS_REQUIRE_UINT_EQ(3, clopts_list_count(&result, "keys"));
+    NAOS_CHECK_STR_EQ("a", clopts_list_at(&result, "keys", 0));
+    NAOS_CHECK_STR_EQ("b", clopts_list_at(&result, "keys", 1));
+    NAOS_CHECK_STR_EQ("c", clopts_list_at(&result, "keys", 2));
+    clopts_result_free(&result);
+}
+
+NAOS_TEST(list_grows_past_initial_capacity)
+{
+    clopts_result_t result;
+    size_t i;
+
+    begin_build(&result);
+    for (i = 0; i < 40; i++)
+    {
+        NAOS_REQUIRE_TRUE(clopts_result_append_list(&result, VALUES_KEYS, "p,q", true) == CLOPTS_OK);
+    }
+
+    NAOS_REQUIRE_UINT_EQ(80, clopts_list_count(&result, "keys"));
+    NAOS_CHECK_STR_EQ("p", clopts_list_at(&result, "keys", 78));
+    NAOS_CHECK_STR_EQ("q", clopts_list_at(&result, "keys", 79));
+    clopts_result_free(&result);
+}
+
+NAOS_TEST(value_later_wins_and_points_at_argument)
+{
+    char first[] = "one";
+    char second[] = "two";
+    clopts_result_t result;
+
+    begin_build(&result);
+    clopts_result_set_value(&result, VALUES_LEVEL, first);
+    clopts_result_set_value(&result, VALUES_LEVEL, second);
+    NAOS_CHECK_PTR_EQ(second, clopts_value(&result, "level"));
+    NAOS_CHECK_STR_EQ("two", clopts_value(&result, "level"));
+    NAOS_CHECK_TRUE(clopts_is_set(&result, "level"));
+    NAOS_CHECK_FALSE(clopts_is_set(&result, "output"));
+    NAOS_CHECK_NULL(clopts_value(&result, "output"));
+    clopts_result_free(&result);
+}
+
+NAOS_TEST(flag_is_recorded)
+{
+    clopts_result_t result;
+
+    begin_build(&result);
+    NAOS_CHECK_FALSE(clopts_flag(&result, "verbose"));
+    clopts_result_set_flag(&result, VALUES_VERBOSE);
+    clopts_result_set_flag(&result, VALUES_VERBOSE);
+    NAOS_CHECK_TRUE(clopts_flag(&result, "verbose"));
+    NAOS_CHECK_TRUE(clopts_is_set(&result, "verbose"));
+    NAOS_CHECK_FALSE(clopts_flag(&result, "quiet"));
+    clopts_result_free(&result);
+}
+
+NAOS_TEST(defaults_apply_when_not_set)
+{
+    clopts_result_t result;
+
+    begin_build(&result);
+    NAOS_REQUIRE_TRUE(clopts_result_apply_defaults(&result) == CLOPTS_OK);
+    NAOS_REQUIRE_UINT_EQ(2, clopts_list_count(&result, "keys"));
+    NAOS_CHECK_STR_EQ("a", clopts_list_at(&result, "keys", 0));
+    NAOS_CHECK_STR_EQ("b", clopts_list_at(&result, "keys", 1));
+    NAOS_CHECK_FALSE(clopts_is_set(&result, "keys"));
+    NAOS_CHECK_STR_EQ("1", clopts_value(&result, "level"));
+    NAOS_CHECK_PTR_EQ(test_tool_build->options[VALUES_LEVEL.index].default_value,
+                      clopts_value(&result, "level"));
+    NAOS_CHECK_FALSE(clopts_is_set(&result, "level"));
+    NAOS_CHECK_NULL(clopts_value(&result, "output"));
+    NAOS_CHECK_FALSE(clopts_flag(&result, "verbose"));
+    clopts_result_free(&result);
+}
+
+NAOS_TEST(explicit_values_suppress_defaults)
+{
+    clopts_result_t result;
+
+    begin_build(&result);
+    NAOS_REQUIRE_TRUE(clopts_result_append_list(&result, VALUES_KEYS, "z", true) == CLOPTS_OK);
+    clopts_result_set_value(&result, VALUES_LEVEL, "3");
+    NAOS_REQUIRE_TRUE(clopts_result_apply_defaults(&result) == CLOPTS_OK);
+    NAOS_REQUIRE_UINT_EQ(1, clopts_list_count(&result, "keys"));
+    NAOS_CHECK_STR_EQ("z", clopts_list_at(&result, "keys", 0));
+    NAOS_CHECK_TRUE(clopts_is_set(&result, "keys"));
+    NAOS_CHECK_STR_EQ("3", clopts_value(&result, "level"));
+    NAOS_CHECK_TRUE(clopts_is_set(&result, "level"));
+    clopts_result_free(&result);
+}
+
+NAOS_TEST(positionals_point_at_arguments)
+{
+    char first[] = "in.txt";
+    char second[] = "out.txt";
+    clopts_result_t result;
+
+    begin_command(&result, test_tool_cat);
+    NAOS_REQUIRE_TRUE(clopts_result_add_positional(&result, first));
+    NAOS_REQUIRE_TRUE(clopts_result_add_positional(&result, second));
+    NAOS_REQUIRE_UINT_EQ(2, clopts_positional_count(&result));
+    NAOS_CHECK_PTR_EQ(first, clopts_positional_at(&result, 0));
+    NAOS_CHECK_PTR_EQ(second, clopts_positional_at(&result, 1));
+    NAOS_CHECK_NULL(clopts_positional_at(&result, 2));
+    clopts_result_free(&result);
+}
+
+NAOS_TEST(undeclared_names_return_empty)
+{
+    clopts_result_t result;
+
+    begin_build(&result);
+    clopts_result_set_flag(&result, VALUES_VERBOSE);
+    NAOS_REQUIRE_TRUE(clopts_result_apply_defaults(&result) == CLOPTS_OK);
+    NAOS_CHECK_FALSE(clopts_is_set(&result, "missing"));
+    NAOS_CHECK_FALSE(clopts_flag(&result, "missing"));
+    NAOS_CHECK_NULL(clopts_value(&result, "missing"));
+    NAOS_CHECK_UINT_EQ(0, clopts_list_count(&result, "missing"));
+    NAOS_CHECK_NULL(clopts_list_at(&result, "missing", 0));
+    NAOS_CHECK_FALSE(clopts_flag(&result, "verb"));
+    NAOS_CHECK_FALSE(clopts_flag(&result, "Verbose"));
+    clopts_result_free(&result);
+}
+
+NAOS_TEST(inputs_are_not_modified_and_bytes_are_kept)
+{
+    char list_arg[] = "\xC3\xA9t\xC3\xA9,\xE6\x97\xA5\xE6\x9C\xAC";
+    char value_arg[] = "\xE5\x80\xA4";
+    char bad_arg[] = "a,,b";
+    clopts_result_t result;
+
+    begin_build(&result);
+    NAOS_REQUIRE_TRUE(clopts_result_append_list(&result, VALUES_KEYS, list_arg, true) == CLOPTS_OK);
+    clopts_result_set_value(&result, VALUES_OUTPUT, value_arg);
+    NAOS_CHECK_TRUE(clopts_result_append_list(&result, VALUES_KEYS, bad_arg, true)
+                    == CLOPTS_USAGE_ERROR);
+    NAOS_REQUIRE_UINT_EQ(2, clopts_list_count(&result, "keys"));
+    NAOS_CHECK_STR_EQ("\xC3\xA9t\xC3\xA9", clopts_list_at(&result, "keys", 0));
+    NAOS_CHECK_STR_EQ("\xE6\x97\xA5\xE6\x9C\xAC", clopts_list_at(&result, "keys", 1));
+    NAOS_CHECK_STR_EQ("\xE5\x80\xA4", clopts_value(&result, "output"));
+    clopts_result_free(&result);
+
+    NAOS_CHECK_STR_EQ("\xC3\xA9t\xC3\xA9,\xE6\x97\xA5\xE6\x9C\xAC", list_arg);
+    NAOS_CHECK_STR_EQ("\xE5\x80\xA4", value_arg);
+    NAOS_CHECK_STR_EQ("a,,b", bad_arg);
+}
+
+/*
+ * 解析を経由するテスト（5.1〜5.6）。引数列は書き換え可能な領域にコピーして渡し、
+ * 解析の後に内容が変わっていないことを確かめる（10.5）
+ */
+#define VALUES_MAX_ARGS 10
+#define VALUES_MAX_LEN 32
+
+typedef struct values_run
+{
+    char storage[VALUES_MAX_ARGS][VALUES_MAX_LEN];
+    char *argv[VALUES_MAX_ARGS + 1];
+    clopts_result_t result;
+    clopts_errors_t errors;
+    clopts_status_t status;
+} values_run_t;
+
+static void run_parse(values_run_t *run, int argc, const char *const *tokens)
+{
+    int i;
+
+    memset(run, 0, sizeof *run);
+    clopts_result_init(&run->result);
+    clopts_errors_init(&run->errors);
+
+    NAOS_REQUIRE_TRUE(argc <= VALUES_MAX_ARGS);
+    for (i = 0; i < argc; i++)
+    {
+        NAOS_REQUIRE_TRUE(strlen(tokens[i]) < VALUES_MAX_LEN);
+        strcpy(run->storage[i], tokens[i]);
+        run->argv[i] = run->storage[i];
+    }
+    run->argv[argc] = NULL;
+
+    run->status = clopts_parse(&test_tool_program, argc, run->argv, &run->result, &run->errors);
+    NAOS_CHECK_INT_EQ(run->status, run->result.status);
+
+    for (i = 0; i < argc; i++)
+    {
+        NAOS_CHECK_PTR_EQ(run->storage[i], run->argv[i]);
+        NAOS_CHECK_STR_EQ(tokens[i], run->argv[i]);
+    }
+    NAOS_CHECK_NULL(run->argv[argc]);
+}
+
+static void run_free(values_run_t *run)
+{
+    clopts_result_free(&run->result);
+    clopts_errors_free(&run->errors);
+}
+
+static void check_ok(const values_run_t *run)
+{
+    NAOS_CHECK_INT_EQ(CLOPTS_OK, run->status);
+    NAOS_CHECK_PTR_EQ(test_tool_build, clopts_command(&run->result));
+    NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&run->errors));
+}
+
+static void check_usage_error(const values_run_t *run, const char *expected)
+{
+    const char *message;
+
+    NAOS_CHECK_INT_EQ(CLOPTS_USAGE_ERROR, run->status);
+    NAOS_REQUIRE_UINT_EQ(1, clopts_errors_count(&run->errors));
+    message = clopts_errors_at(&run->errors, 0);
+    NAOS_CHECK_STR_EQ(expected, message);
+}
+
+NAOS_TEST(parse_list_items_keep_whitespace)
+{
+    static const char *const tokens[] = {"tool", "build", "x", "--output", "y", "--keys", " a , b"};
+    values_run_t run;
+
+    run_parse(&run, 7, tokens);
+    check_ok(&run);
+    NAOS_REQUIRE_UINT_EQ(2, clopts_list_count(&run.result, "keys"));
+    NAOS_CHECK_STR_EQ(" a ", clopts_list_at(&run.result, "keys", 0));
+    NAOS_CHECK_STR_EQ(" b", clopts_list_at(&run.result, "keys", 1));
+    run_free(&run);
+}
+
+NAOS_TEST(parse_repeated_list_concatenates)
+{
+    static const char *const tokens[] = {"tool", "build", "x", "--output", "y",
+                                         "--keys", "a", "--keys=b,c"};
+    values_run_t run;
+
+    run_parse(&run, 8, tokens);
+    check_ok(&run);
+    NAOS_REQUIRE_UINT_EQ(3, clopts_list_count(&run.result, "keys"));
+    NAOS_CHECK_STR_EQ("a", clopts_list_at(&run.result, "keys", 0));
+    NAOS_CHECK_STR_EQ("b", clopts_list_at(&run.result, "keys", 1));
+    NAOS_CHECK_STR_EQ("c", clopts_list_at(&run.result, "keys", 2));
+    NAOS_CHECK_TRUE(clopts_is_set(&run.result, "keys"));
+    run_free(&run);
+}
+
+NAOS_TEST(parse_repeated_list_concatenates_short_and_long)
+{
+    static const char *const tokens[] = {"tool", "build", "x", "-o", "y",
+                                         "-k", "a", "--keys", "b,c"};
+    values_run_t run;
+
+    run_parse(&run, 9, tokens);
+    check_ok(&run);
+    NAOS_REQUIRE_UINT_EQ(3, clopts_list_count(&run.result, "keys"));
+    NAOS_CHECK_STR_EQ("a", clopts_list_at(&run.result, "keys", 0));
+    NAOS_CHECK_STR_EQ("b", clopts_list_at(&run.result, "keys", 1));
+    NAOS_CHECK_STR_EQ("c", clopts_list_at(&run.result, "keys", 2));
+    NAOS_CHECK_TRUE(clopts_is_set(&run.result, "keys"));
+    run_free(&run);
+}
+
+NAOS_TEST(parse_rejects_empty_list_value)
+{
+    static const char *const tokens[] = {"tool", "build", "x", "--output", "y", "--keys="};
+    values_run_t run;
+
+    run_parse(&run, 6, tokens);
+    check_usage_error(&run, "tool build: option '--keys' has an empty item in ''");
+    run_free(&run);
+}
+
+NAOS_TEST(parse_rejects_empty_list_items)
+{
+    static const char *const tokens[] = {"tool", "build", "x", "--output", "y", "--keys", "a,,b"};
+    values_run_t run;
+
+    run_parse(&run, 7, tokens);
+    check_usage_error(&run, "tool build: option '--keys' has an empty item in 'a,,b'");
+    run_free(&run);
+}
+
+NAOS_TEST(parse_rejects_leading_and_trailing_commas)
+{
+    static const char *const leading[] = {"tool", "build", "x", "--output", "y", "--keys=,a"};
+    static const char *const trailing[] = {"tool", "build", "x", "--output", "y", "--keys", "a,"};
+    values_run_t run;
+
+    run_parse(&run, 6, leading);
+    check_usage_error(&run, "tool build: option '--keys' has an empty item in ',a'");
+    run_free(&run);
+
+    run_parse(&run, 7, trailing);
+    check_usage_error(&run, "tool build: option '--keys' has an empty item in 'a,'");
+    run_free(&run);
+}
+
+NAOS_TEST(parse_value_later_wins)
+{
+    static const char *const tokens[] = {"tool", "build", "x", "--output", "y",
+                                         "--level", "2", "--level", "3"};
+    values_run_t run;
+
+    run_parse(&run, 9, tokens);
+    check_ok(&run);
+    NAOS_CHECK_PTR_EQ(run.argv[8], clopts_value(&run.result, "level"));
+    NAOS_CHECK_STR_EQ("3", clopts_value(&run.result, "level"));
+    run_free(&run);
+}
+
+NAOS_TEST(parse_repeated_flag_is_accepted)
+{
+    static const char *const tokens[] = {"tool", "build", "--verbose", "x", "--verbose",
+                                         "--output", "y"};
+    values_run_t run;
+
+    run_parse(&run, 7, tokens);
+    check_ok(&run);
+    NAOS_CHECK_TRUE(clopts_flag(&run.result, "verbose"));
+    NAOS_CHECK_TRUE(clopts_is_set(&run.result, "verbose"));
+    run_free(&run);
+}
+
+NAOS_TEST(parse_repeated_short_flag_is_accepted)
+{
+    static const char *const tokens[] = {"tool", "build", "-v", "x", "-v", "-o", "y"};
+    values_run_t run;
+
+    run_parse(&run, 7, tokens);
+    check_ok(&run);
+    NAOS_CHECK_TRUE(clopts_flag(&run.result, "verbose"));
+    NAOS_CHECK_TRUE(clopts_is_set(&run.result, "verbose"));
+    run_free(&run);
+}
+
+NAOS_TEST(parse_defaults_are_not_explicit)
+{
+    static const char *const tokens[] = {"tool", "build", "x", "--output", "y"};
+    values_run_t run;
+
+    run_parse(&run, 5, tokens);
+    check_ok(&run);
+    NAOS_REQUIRE_UINT_EQ(2, clopts_list_count(&run.result, "keys"));
+    NAOS_CHECK_STR_EQ("a", clopts_list_at(&run.result, "keys", 0));
+    NAOS_CHECK_STR_EQ("b", clopts_list_at(&run.result, "keys", 1));
+    NAOS_CHECK_FALSE(clopts_is_set(&run.result, "keys"));
+    NAOS_CHECK_STR_EQ("1", clopts_value(&run.result, "level"));
+    NAOS_CHECK_FALSE(clopts_is_set(&run.result, "level"));
+    NAOS_CHECK_FALSE(clopts_flag(&run.result, "verbose"));
+    NAOS_CHECK_FALSE(clopts_is_set(&run.result, "verbose"));
+    NAOS_CHECK_TRUE(clopts_is_set(&run.result, "output"));
+    run_free(&run);
+}
+
+NAOS_TEST(parse_explicit_values_are_explicit)
+{
+    static const char *const tokens[] = {"tool", "build", "x", "--output", "y",
+                                         "--keys", "a,b", "--level", "1"};
+    values_run_t run;
+
+    run_parse(&run, 9, tokens);
+    check_ok(&run);
+    NAOS_REQUIRE_UINT_EQ(2, clopts_list_count(&run.result, "keys"));
+    NAOS_CHECK_STR_EQ("a", clopts_list_at(&run.result, "keys", 0));
+    NAOS_CHECK_STR_EQ("b", clopts_list_at(&run.result, "keys", 1));
+    NAOS_CHECK_TRUE(clopts_is_set(&run.result, "keys"));
+    NAOS_CHECK_PTR_EQ(run.argv[8], clopts_value(&run.result, "level"));
+    NAOS_CHECK_TRUE(clopts_is_set(&run.result, "level"));
+    run_free(&run);
+}
+
+/*
+ * 非 ASCII の UTF-8 を値・リスト値の項目・位置引数に渡し、同じバイト列が返ることを確かめる。
+ * 値と位置引数は引数の文字列そのものを指す（1.7、10.1、10.5）
+ */
+NAOS_TEST(parse_keeps_non_ascii_utf8_bytes)
+{
+    static const char *const tokens[] = {"tool", "build", "-o", "\xE5\x87\xBA\xE5\x8A\x9B",
+                                         "-k", "\xE6\x97\xA5,\xE6\x9C\xAC", "\xC3\xA9t\xC3\xA9"};
+    values_run_t run;
+
+    run_parse(&run, 7, tokens);
+    check_ok(&run);
+    NAOS_CHECK_PTR_EQ(run.argv[3], clopts_value(&run.result, "output"));
+    NAOS_CHECK_STR_EQ("\xE5\x87\xBA\xE5\x8A\x9B", clopts_value(&run.result, "output"));
+    NAOS_REQUIRE_UINT_EQ(2, clopts_list_count(&run.result, "keys"));
+    NAOS_CHECK_STR_EQ("\xE6\x97\xA5", clopts_list_at(&run.result, "keys", 0));
+    NAOS_CHECK_STR_EQ("\xE6\x9C\xAC", clopts_list_at(&run.result, "keys", 1));
+    NAOS_REQUIRE_UINT_EQ(1, clopts_positional_count(&run.result));
+    NAOS_CHECK_PTR_EQ(run.argv[6], clopts_positional_at(&run.result, 0));
+    NAOS_CHECK_STR_EQ("\xC3\xA9t\xC3\xA9", clopts_positional_at(&run.result, 0));
+    run_free(&run);
+}
+
+NAOS_SUITE(values,
+    NAOS_ADD_TEST(init_is_empty_and_free_is_repeatable),
+    NAOS_ADD_TEST(begin_without_options_succeeds),
+    NAOS_ADD_TEST(list_splits_on_comma),
+    NAOS_ADD_TEST(list_keeps_whitespace_in_items),
+    NAOS_ADD_TEST(list_rejects_empty_items_without_adding),
+    NAOS_ADD_TEST(two_appends_concatenate),
+    NAOS_ADD_TEST(list_grows_past_initial_capacity),
+    NAOS_ADD_TEST(value_later_wins_and_points_at_argument),
+    NAOS_ADD_TEST(flag_is_recorded),
+    NAOS_ADD_TEST(defaults_apply_when_not_set),
+    NAOS_ADD_TEST(explicit_values_suppress_defaults),
+    NAOS_ADD_TEST(positionals_point_at_arguments),
+    NAOS_ADD_TEST(undeclared_names_return_empty),
+    NAOS_ADD_TEST(inputs_are_not_modified_and_bytes_are_kept),
+    NAOS_ADD_TEST(parse_list_items_keep_whitespace),
+    NAOS_ADD_TEST(parse_repeated_list_concatenates),
+    NAOS_ADD_TEST(parse_repeated_list_concatenates_short_and_long),
+    NAOS_ADD_TEST(parse_rejects_empty_list_value),
+    NAOS_ADD_TEST(parse_rejects_empty_list_items),
+    NAOS_ADD_TEST(parse_rejects_leading_and_trailing_commas),
+    NAOS_ADD_TEST(parse_value_later_wins),
+    NAOS_ADD_TEST(parse_repeated_flag_is_accepted),
+    NAOS_ADD_TEST(parse_repeated_short_flag_is_accepted),
+    NAOS_ADD_TEST(parse_defaults_are_not_explicit),
+    NAOS_ADD_TEST(parse_explicit_values_are_explicit),
+    NAOS_ADD_TEST(parse_keeps_non_ascii_utf8_bytes)
+)

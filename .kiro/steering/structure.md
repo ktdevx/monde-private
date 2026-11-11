@@ -4,7 +4,8 @@
 
 ## Organization Philosophy
 
-**部品（モジュール）単位の構成**。再利用できる部品ごとに 1 つのディレクトリと 1 つの CMake ライブラリターゲットを持ち、ソースとテストを同じモジュール名で対にする。依存は下位の部品へ向かう一方向とし、汎用部品から Monde 固有の部品（`translation-units`、CLI）へ依存しない。
+**部品（モジュール）単位の構成**。再利用できる部品ごとに 1 つのディレクトリと 1 つの CMake ライブラリターゲットを持ち、ソースとテストを同じモジュール名で対にする。依存は下位の部品へ向かう一方向とし、汎用部品から Monde 固有の部品（`translation-units`、CLI）へ依存しない。  
+例外として、コマンドライン引数パーサ CLOpts は「リポジトリ内にある独立したライブラリ」として、ルートの `cli_args/` に置く（下の「[リポジトリ内の独立したライブラリ（CLOpts）](#リポジトリ内の独立したライブラリclopts)」）。
 
 ## Directory Patterns
 
@@ -13,13 +14,23 @@
 **Purpose**: 1 つの部品の実装とヘッダ。1 モジュール = 1 静的ライブラリターゲット（`monde_add_module` で作る）。  
 **Example**: `src/foundation/`（共通ユーティリティ）、`src/po/`（PO の読み書き）、`src/markdown/`（CommonMark パーサ）
 
+### リポジトリ内の独立したライブラリ（CLOpts）
+**Location**: `cli_args/`（ライブラリ、公開ヘッダ、テスト、ビルド定義、パッケージ定義、README、LICENSE をすべてこの下に置く）  
+**Purpose**: コマンドライン引数パーサ CLOpts。将来は別リポジトリで管理する前提で、このディレクトリだけで構成・ビルド・テスト・インストールができる独立した CMake プロジェクト `project(CLOpts)` とする。`src/<module>/` の配置、`mnd_` の接頭辞、`monde_add_module` の規約の**例外**で、ほかのモジュールをこの形にしない。  
+- **配置**: 公開ヘッダは `cli_args/include/clopts/`（`clopts.h`、`errors.h`、`argv.h`、`help.h`）、実装と内部ヘッダは `cli_args/src/`、テストは `cli_args/tests/`、ビルド用のモジュールは `cli_args/cmake/`（`CLOptsCompilerOptions.cmake`、`CLOptsNaos.cmake`、`CLOptsConfig.cmake.in`）。`cli_args/` の中から、その外にあるファイル（`src/`、`tests/`、ルートの `cmake/`）を参照しない。
+- **命名**: 関数・型は `clopts_`、マクロ・列挙値・ヘッダガード・CMake のオプションは `CLOPTS_` で始める。`mnd_` / `MND_` / `monde_` / `MONDE_` は使わない。取り込みは `#include "clopts/clopts.h"` の形。ターゲットは `clopts`、リンクには別名 `CLOpts::clopts` を使う。テスト実行ファイルは `clopts_tests`、CTest のラベルは `clopts`。
+- **依存の向き**: Monde → CLOpts の一方向だけ。CLOpts は C 標準ライブラリと（Windows では）`windows.h` と `shell32` 以外に依存せず、foundation を含む Monde のどの部品にも依存しない。単独性はテスト `clopts_check.isolation` が検査する。
+- **エラーの返し方**: CLOpts は foundation の診断を使わず、エラーメッセージの列 `clopts_errors_t` で返す。Monde 側は `src/cli/cli_clopts.[ch]` の `mnd_cli_clopts_errors_to_diags` で `mnd_diag_list_t` に変換してから、ほかの診断と同じ経路で報告する。整形の関数は確保した文字列を返し、`clopts_text_free` で解放する。
+- **取り込みの定義の場所**: Monde がどう CLOpts を入手するかは `cmake/MondeCLOpts.cmake` の 1 か所だけに書く（`CLOPTS_BUILD_TESTS=${BUILD_TESTING}`、`CLOPTS_INSTALL=OFF`、`CLOPTS_WARNINGS_AS_ERRORS=ON` を設定して `add_subdirectory`）。ほかのファイルは `CLOpts::clopts` という名前だけに依存する。別リポジトリへ切り離した後は、このファイルを `FetchContent` か `find_package(CLOpts)` に差し替える。
+- **バージョン**: `cli_args/CMakeLists.txt` の `project(CLOpts VERSION ...)` に書く。Monde のバージョンとは独立している。CLOpts のインストール規則は Monde の配布物に含めない（`CLOPTS_INSTALL=OFF`）。
+
 ### 製品の実行ファイル
 **Location**: `src/monde/`  
 **Purpose**: 実行ファイル `monde` の `main`。CLI の処理はライブラリ `monde::cli`（`src/cli/`）に置き、ここでは環境の組み立てと入口の呼び出しだけを行う。`monde_add_executable` で作り、バージョンは `project` の VERSION からコンパイル定義 `MONDE_VERSION` で渡す。
 
 ### モジュールのテスト
 **Location**: `tests/<module>/`  
-**Purpose**: 対応するモジュールの Naos テスト。`monde_add_module_tests` で CTest に登録する。  
+**Purpose**: 対応するモジュールの Naos テスト。`monde_add_module_tests` で CTest に登録する。CLOpts のテストは `tests/` ではなく `cli_args/tests/` に置き、CLOpts 自身のビルド定義が登録する（Monde の構成でも `ctest -L clopts` で実行される）。  
 **Example**: `tests/foundation/` は `src/foundation/` をテストする  
 **Exception**: `src/` に対応するモジュールを持たないテストディレクトリは次の 2 つだけ。
 - `tests/toolchain/`: ビルド構成（警告・VLA のエラー化、MSVC のオプション）そのものを検証する。CTest のラベルは `toolchain`。
@@ -27,7 +38,7 @@
 
 ### ビルド構成
 **Location**: `CMakeLists.txt`、`cmake/`  
-**Purpose**: コンパイラオプション（`monde_apply_compile_options`）、ターゲット作成関数（`monde_add_module` / `monde_add_module_tests` / `monde_add_executable`）、Naos の取得。オプションやターゲットの作り方はここに集約し、各モジュールの `CMakeLists.txt` では個別に設定しない。  
+**Purpose**: コンパイラオプション（`monde_apply_compile_options`）、ターゲット作成関数（`monde_add_module` / `monde_add_module_tests` / `monde_add_executable`）、Naos の取得（`cmake/MondeNaos.cmake`）、CLOpts の取り込み（`cmake/MondeCLOpts.cmake`）。オプションやターゲットの作り方はここに集約し、各モジュールの `CMakeLists.txt` では個別に設定しない。  
 **Package**: `cmake/MondePackage.cmake` は配布物の唯一の定義（install の規則と CPack の設定）。アーカイブ `monde-X.Y.Z-<os>-<arch>` に入れるのは実行ファイル、`LICENSE`、`README.md`、`THIRD_PARTY_NOTICES` と `licenses/`（ディレクトリごと）だけで、対象名は `MONDE_RELEASE_TARGET` で上書きできる。バージョン番号を書く場所はルートの `CMakeLists.txt` の `project(monde VERSION ...)` だけ。
 
 ### 取り込んだ素材の表示
@@ -54,7 +65,7 @@
 
 ### CI とリリースのワークフロー
 **Location**: `.github/workflows/`  
-**Purpose**: `ci.yml` は main への push と pull request で動くビルドとテスト。`release.yml` はそれとは別のリリースのワークフローで、`vX.Y.Z` のタグの push または手動起動（入力 `tag`）で動き、`check`（タグとバージョンの一致）→ `build`（4 対象のビルド、`--version` とアーカイブの検証）→ `publish`（`SHA256SUMS` を作り GitHub Releases に添付）の 3 ジョブからなる。リリースの変更で `ci.yml` を変えない。
+**Purpose**: `ci.yml` は main への push と pull request で動くビルドとテスト（ジョブ `build-and-test`）と、`cli_args/` を作業ツリーの外へ複製して CLOpts を単独で構成・ビルド・テストするジョブ `clopts-standalone`（どちらも 5 環境）。`release.yml` はそれとは別のリリースのワークフローで、`vX.Y.Z` のタグの push または手動起動（入力 `tag`）で動き、`check`（タグとバージョンの一致）→ `build`（4 対象のビルド、`--version` とアーカイブの検証）→ `publish`（`SHA256SUMS` を作り GitHub Releases に添付）の 3 ジョブからなる。リリースの変更で `ci.yml` を変えない。
 
 ### 仕様とプロジェクトメモリ
 **Location**: `.kiro/specs/<feature>/`、`.kiro/steering/`  
@@ -69,7 +80,8 @@
   - 関数: `mnd_<短縮名>_<動作>`（例: `mnd_buf_append`、`mnd_diag_list_at`）。型名の `_t` は関数名に含めない（`mnd_buf_t_append` としない）。
   - 型: `typedef` で定義し、型名の末尾に `_t` を付ける。構造体・列挙のタグ名は `_t` を除いた同じ名前にする（例: `typedef struct mnd_buf { ... } mnd_buf_t;`、`typedef enum mnd_severity { ... } mnd_severity_t;`）。
   - マクロ・列挙値: `MND_<短縮名>_`（例: `MND_BUF_INIT`、`MND_SEVERITY_ERROR`）。`_T` は含めない。
-  - 短縮名は各モジュールの設計で決め、既存のものと重複させない。foundation が予約済み: `buf`、`diag`、`severity`、`utf8`、`eol`、`span`、`slice`、`source`、`file`、`wide`（ほかにマクロ `MND_PRINTF_LIKE` も foundation が使用している）。cli_args が予約済み: `args`、po-format が予約済み: `po`、po-merge が予約済み: `merge`、markdown が予約済み: `md`、yaml-front-matter が予約済み: `yaml`、translation-units が予約済み: `tu`、monde-cli が予約済み: `cli`
+  - CLOpts（`cli_args/`）はこの規則の例外で、`mnd_` の代わりに `clopts_` / `CLOPTS_` を使う（上の「リポジトリ内の独立したライブラリ（CLOpts）」）。
+  - 短縮名は各モジュールの設計で決め、既存のものと重複させない。foundation が予約済み: `buf`、`diag`、`severity`、`utf8`、`eol`、`span`、`slice`、`source`、`file`、`wide`（ほかにマクロ `MND_PRINTF_LIKE` も foundation が使用している）。po-format が予約済み: `po`、po-merge が予約済み: `merge`、markdown が予約済み: `md`、yaml-front-matter が予約済み: `yaml`、translation-units が予約済み: `tu`、monde-cli が予約済み: `cli`
 - **ヘッダガード**: `MONDE_<MODULE>_<FILE>_H`（例: `MONDE_FOUNDATION_BUF_H`）。
 - **モジュール内部の関数**: `static` にしてファイル外に公開しない。
 
@@ -82,6 +94,7 @@
 
 - include の基点は `src/`。`monde_add_module` がこれを PUBLIC で公開するため、リンクしたモジュールのヘッダはそのまま include できる。
 - 各モジュールの公開ヘッダは、依存する他のモジュールからのみ include する。依存関係は `monde_add_module(<module> ... DEPENDS <module>...)` で明示する。
+- CLOpts の公開ヘッダは `CLOpts::clopts` にリンクして `#include "clopts/clopts.h"`（`errors.h`、`argv.h`、`help.h` も同じ形）で取り込む。`cli_args/src/` の内部ヘッダは Monde から取り込まない。`monde_add_module` の `DEPENDS` は `monde::<module>` 専用なので、CLOpts へのリンクは `target_link_libraries(... PUBLIC CLOpts::clopts)` で別に書く。
 
 ## 新しいモジュールの追加手順
 
@@ -93,10 +106,10 @@
 
 ## Code Organization Principles
 
-- **依存は一方向**: foundation ← 汎用パーサ（cli-args、po-format、markdown-parser、yaml-front-matter）← po-merge / translation-units ← monde-cli。逆向きの依存や、パーサ同士の横の依存を作らない。
+- **依存は一方向**: foundation ← 汎用パーサ（po-format、markdown-parser、yaml-front-matter）← po-merge / translation-units ← monde-cli。引数パーサ CLOpts は foundation にも依存せず、monde-cli（と `src/monde/`）だけが CLOpts に依存する。逆向きの依存や、パーサ同士の横の依存を作らない。
 - **共有する型は下位に置く**: ソース範囲や PO エントリのように複数の部品が使う型は、それを定義する下位の部品（foundation、po-format）に置き、上位で再定義しない。
 - **I/O は境界に寄せる**: パーサや再構成器はメモリ上のバッファを入力・出力とし、ファイルの読み書きは foundation の共通部品と CLI 層が担う。これにより部品を単体でテストしやすくする。
-- **エラーは診断として返す**: 部品は直接 `stderr` に書いたり `exit` したりせず、foundation の診断の仕組みで呼び出し側に返す。メッセージの表示と終了コードの決定は CLI 層が行う。
+- **エラーは診断として返す**: 部品は直接 `stderr` に書いたり `exit` したりせず、foundation の診断の仕組みで呼び出し側に返す。メッセージの表示と終了コードの決定は CLI 層が行う。CLOpts だけは独自のエラーの列 `clopts_errors_t` で返し、CLI 層が診断に変換する。
 
 ---
 _Document patterns, not file trees. New files following patterns shouldn't require updates_

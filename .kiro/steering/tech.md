@@ -6,16 +6,17 @@
 
 ```
 monde-cli（サブコマンドのディスパッチ、ファイル入出力、統計表示）
-  ├─ cli-args            汎用の引数パーサ
+  ├─ CLOpts（cli_args/）  汎用の引数パーサ（独立ライブラリ。foundation にも依存しない）
   ├─ po-merge ── po-format   PO の読み書きとマージ
   └─ translation-units   翻訳単位の抽出と再構成（Monde 固有）
         ├─ markdown-parser     ソース範囲を保持する CommonMark パーサ
         ├─ yaml-front-matter   フロントマター検出と YAML サブセット
         └─ po-format
-foundation（UTF-8 入出力、改行検出、バッファ、ソース範囲、診断）← 全部品が依存
+foundation（UTF-8 入出力、改行検出、バッファ、ソース範囲、診断）← CLOpts 以外の全部品が依存
 ```
 
 - **汎用部品は Monde を知らない**: 引数・PO・YAML・Markdown のパーサは単体でテストでき、Monde 固有の知識は `translation-units` と `monde-cli` の 2 か所にだけ置く。
+- **CLOpts はリポジトリ内の独立ライブラリ**: 引数パーサ CLOpts（`cli_args/`、CMake のターゲット `CLOpts::clopts`、公開名 `clopts_*` / `CLOPTS_*`）は、将来の別リポジトリへの切り離しに備えて、Monde の部品（foundation を含む）に依存しない独立した CMake プロジェクトにしている。単独で構成・ビルド・テストでき、`install` と `find_package(CLOpts)` にも対応する。エラーは `clopts_errors_t` で返し、`src/cli/cli_clopts.[ch]` が Monde の診断に変換する。Monde への取り込みは `cmake/MondeCLOpts.cmake` の 1 か所で定義する。配置と命名の規約は `structure.md`。
 - **範囲置換による再構成（中核の方式）**: パーサは各要素のソース範囲（バイトオフセット・行番号）を保持する。翻訳時は原文バッファをコピーし、翻訳対象の範囲だけを訳文で置き換える。構文木から Markdown を再生成しない。
 - **方言の差し替え**: Markdown パーサは方言インターフェースを持ち、次の版で GFM を追加できる形にする。
 
@@ -31,7 +32,7 @@ foundation（UTF-8 入出力、改行検出、バッファ、ソース範囲、�
 
 - **実行時の外部依存はゼロ**。Markdown、YAML、PO、コマンドライン引数のパーサはすべて自前で実装する。C 標準ライブラリと、Windows の場合は Win32 API のみを使う。
 - **実行時の依存と、バイナリに取り込む素材を区別する**。「実行時の外部依存はゼロ」は実行時に必要な共有ライブラリなどの話で、変えない。実行ファイルに取り込む第三者の素材（生成したデータの表、取り込んだソース、静的にリンクするライブラリ）は、許容型のライセンス（MIT、BSD、`Unicode-3.0` など）のものに限り、同じ変更でリポジトリの直下の `THIRD_PARTY_NOTICES`（索引）と `licenses/<ID>.txt`（素材ごとの著作権表示とライセンスの全文）に登録し、取り込んだ先のファイルの先頭のコメントに ID の行 ` * THIRD_PARTY_NOTICES: <ID>` を置く（`ctest -L docs` の `docs_check.notices` が対応を検査する。手順は `docs/dev/release.md`）。現在の素材は Unicode Character Database 15.0.0（`Unicode-3.0`）と WHATWG の `entities.json`（`BSD-3-Clause`）。コピーレフト（GPL、CC-BY-SA など。`spec.txt` は CC-BY-SA 4.0）の素材はテスト専用にとどめ、実行ファイルに取り込まない。
-- **Naos はテスト専用**。pre-1.0 のため、FetchContent でタグ `v0.4.0` に固定して取り込む（`cmake/MondeNaos.cmake` の 1 か所で管理）。`BUILD_TESTING=OFF` では取得しない。
+- **Naos はテスト専用**。pre-1.0 のため、FetchContent でタグ `v0.4.0` に固定して取り込む。Monde は `cmake/MondeNaos.cmake` で管理する。CLOpts は単独で構成できるように自分の `cli_args/cmake/CLOptsNaos.cmake` を持ち、同じ版に固定する（版を変えるときは 2 つのファイルを同時に変える）。Monde の構成では先に `MondeNaos` が取得し、CLOpts はそれを使うので、Naos の取得は 1 回だけになる。`BUILD_TESTING=OFF`（CLOpts の単独構成では `CLOPTS_BUILD_TESTS=OFF`）では取得しない。
 
 ## Development Standards
 
@@ -63,7 +64,7 @@ foundation（UTF-8 入出力、改行検出、バッファ、ソース範囲、�
 - マージの挙動は `msgmerge` を基準にする。
 
 ### Testing
-- 各部品（`tests/<module>/`）ごとに Naos の単体テストを持ち、CTest から実行する。
+- 各部品（`tests/<module>/`）ごとに Naos の単体テストを持ち、CTest から実行する。CLOpts のテストは `cli_args/tests/` にあり、Monde の構成でも登録される（ラベル `clopts`）。
 - **受け入れ基準**: CommonMark spec 0.31.2 の全テストケースで「extract → translate（翻訳なし）」の結果が原文とバイト単位で一致すること（データ駆動テスト）。
 - spec.txt は CC-BY-SA 4.0 のため、無改変のまま独立したディレクトリにライセンス表記を添えて置くか、テスト時に取得する。リリース成果物には含めない。
 - 性能目標は特に設けない。
@@ -87,13 +88,14 @@ cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```
 - 製品だけをビルドする（Naos を取得しない）: 構成時に `-DBUILD_TESTING=OFF`
-- 1 部品のテストだけ実行する: `ctest ... -L <module>`（ビルド構成の自己検証は `-L toolchain`）
+- 1 部品のテストだけ実行する: `ctest ... -L <module>`（ビルド構成の自己検証は `-L toolchain`、CLOpts のテストは `-L clopts`、ドキュメントの照合は `-L docs`）
+- CLOpts だけを単独で構成・ビルド・テストする: `cmake -S cli_args -B build-clopts` の後、同じ 2 行（`cmake --build`、`ctest`）。インストール後の利用の検証（`clopts_package.find_package`）は単独構成でだけ登録される
 - オフラインで構成する: `-DFETCHCONTENT_SOURCE_DIR_NAOS=<ローカルの Naos>`
 
 ## Key Technical Decisions
 
 - **範囲置換方式を採用**: 構文木からの再生成は記号や空行を正規化してしまい、バイト単位の保持を満たせない。行ベースの簡易処理では CommonMark のラウンドトリップを満たせない。
-- **部品別分割**: 部品ごとに境界とテストを明確にし、パーサ群を並行して開発できるようにする。初版では部品を内部モジュールとして扱い、公開 API の互換性は保証しない。
+- **部品別分割**: 部品ごとに境界とテストを明確にし、パーサ群を並行して開発できるようにする。初版では部品を内部モジュールとして扱い、公開 API の互換性は保証しない。例外は CLOpts で、ライブラリとしての公開 API を持ち、バージョンは `cli_args/CMakeLists.txt` の `project(CLOpts VERSION ...)` で Monde とは別に管理する。
 - **言語の使い分け**: CLI のメッセージ・コード内識別子は英語、ドキュメントと spec は日本語。
 
 ---
