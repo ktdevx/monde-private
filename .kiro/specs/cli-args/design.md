@@ -931,7 +931,7 @@ cli_args/
 ├── src/
 │   ├── clopts_internal.h         # 変更: clopts_find_negated を加える。clopts_result_set_flag に bool enabled の引数を加える
 │   ├── clopts_decl.c             # 変更: 否定に関する宣言の検査（14.10、14.11、14.16）、clopts_find_negated
-│   ├── clopts_result.c           # 変更: enabled の初期化と記録、既定で有効の適用、clopts_flag が enabled を返す
+│   ├── clopts_result.c           # 変更: enabled の記録と解放時の初期化、既定で有効の適用、clopts_flag が enabled を返す
 │   ├── clopts_parse.c            # 変更: scan_long に否定の形の照合を加える。フラグの記録に enabled を渡す
 │   └── clopts_help.c             # 変更: 左列の幅の計算と出力に "[no-]" を加える。説明に " (default: on)" を加える
 └── tests/
@@ -940,10 +940,11 @@ cli_args/
     ├── test_decl.h               # 変更: 架空のプログラム neg の宣言
     ├── test_decl.c               # 変更: 同上の定義
     ├── negate_test.c             # 新規: スイート negate（14.1〜14.9、14.12、14.15、14.17）
-    └── decl_test.c               # 変更: 否定に関する宣言の誤り（14.10、14.11、14.16）
+    ├── decl_test.c               # 変更: 否定に関する宣言の誤り（14.10、14.11、14.16）
+    └── values_test.c             # 変更: clopts_result_set_flag の呼び出し 3 か所に引数 true を足す（期待値は変えない）
 ```
 
-変更しないファイル: `cli_args/src/clopts_argv.c`、`clopts_buf.[ch]`、`clopts_errors.c`、`cli_args/cmake/`、`cli_args/tests/` のほかのスイート（14.13 の検証として、期待値を変えずに通す）、`src/`、`tests/`、`docs/`、`.github/`。
+変更しないファイル: `cli_args/src/clopts_argv.c`、`clopts_buf.[ch]`、`clopts_errors.c`、`cli_args/cmake/`、`cli_args/tests/` のほかのスイート（14.13 の検証として、期待値を変えずに通す。values_test.c は上の呼び出しの修正だけ）、`src/`、`tests/`、`docs/`、`.github/`。
 
 ### 型（`cli_args/include/clopts/clopts.h`）
 
@@ -1067,7 +1068,7 @@ bool clopts_find_negated(const clopts_result_t *result, const char *name, size_t
 void clopts_result_set_flag(clopts_result_t *result, clopts_ref_t ref, bool enabled);
 ```
 
-- `clopts_value_init` は `enabled = false` にする（14.6）。
+- `enabled` の初期値は偽にする（14.6）。値の配列は `calloc` で確保するので、確保した時点で偽になる。`clopts_value_free` は `enabled` も偽に戻す。
 - `clopts_result_apply_defaults` は、フラグで `explicit_set` が偽かつ `default_enabled` が真なら `enabled = true` にする（14.15）。確保を行わないので、失敗の経路は増えない。
 - `clopts_flag` は `enabled` を、`clopts_is_set` は `explicit_set` を返す。オプションが経路上で宣言されていなければ、どちらも `false`（5.7 のまま）。
 
@@ -1117,12 +1118,12 @@ void clopts_result_set_flag(clopts_result_t *result, clopts_ref_t ref, bool enab
 
 **改訂前と同じであること**（14.13）:
 
-- `cli_args/tests/` の既存のスイート（decl、dispatch、long、short、values、positional、errors、help、single、nested、inherit、argv、errors_api）を、期待値を変えずに通す。変えるのは `main.c` の登録と、`decl_test.c` への追加だけである。
+- `cli_args/tests/` の既存のスイート（decl、dispatch、long、short、values、positional、errors、help、single、nested、inherit、argv、errors_api）を、期待値を変えずに通す。変えるのは `main.c` の登録、`decl_test.c` への追加、`values_test.c` の `clopts_result_set_flag` の呼び出しへの引数 `true` の追加だけである。
 - Monde の全テスト（`ctest` の全体。`cli`、`docs`、`clopts` を含む）を、`src/` と `tests/` を変えずに通す。`ctest -L docs` が通ることが、`monde` のヘルプの文面が変わっていないことの証拠になる。
 - CLOpts の単独構成（`cmake -S cli_args -B build-clopts`）でビルドとテストを通す。`clopts_package.find_package` が、バージョン 0.2.0 と C++ の利用例（`consumer_cxx.cpp`）で通ることを含む。
 
 ### Migration Strategy
 
 - 互換の層は要らない。公開の型へのメンバーの追加は末尾で、既存の利用側のソースは変えずにビルドできる。
-- `clopts_result_set_flag` の引数の追加は内部の関数で、呼び出し元は `clopts_parse.c` の 2 か所だけである。型と ResultStore を先に変え、続けて Parser を変える。DeclCheck と HelpFormatter は、型の変更の後なら互いに独立に進められる。
+- `clopts_result_set_flag` の引数の追加は内部の関数の変更で、公開の API には影響しない。呼び出し元は `clopts_parse.c` の肯定の形の 2 か所と、内部の関数を直接使う `cli_args/tests/values_test.c` の 3 か所である。`values_test.c` には引数 `true` を足すだけで、テストの意味と期待値は変えない。型と ResultStore を先に変え、続けて Parser を変える。DeclCheck と HelpFormatter は、型の変更の後なら互いに独立に進められる。
 - CLOpts のバージョンは、公開の型の変更を表すために 0.2.0 に上げる。番号を書く場所は `cli_args/CMakeLists.txt` の `project(CLOpts VERSION ...)` だけで、パッケージの検証はこの値を使う。Monde のバージョンは変えない。
