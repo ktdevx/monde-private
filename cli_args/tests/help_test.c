@@ -4,7 +4,6 @@
 
 #include "clopts/help.h"
 #include "clopts_internal.h"
-#include "foundation/buf.h"
 #include "test_decl.h"
 
 /*
@@ -90,14 +89,15 @@ static void make_path(mnd_args_result_t *result, const mnd_args_command_t *comma
 static void check_help(const mnd_args_command_t *command, const char *expected)
 {
     mnd_args_result_t result;
-    mnd_buf_t buf = MND_BUF_INIT;
+    char *text = NULL;
 
     make_path(&result, command);
-    NAOS_REQUIRE_TRUE(mnd_args_format_help(&result, &buf));
-    NAOS_CHECK_STR_EQ(expected, mnd_buf_cstr(&buf));
-    NAOS_CHECK_MEM_EQ(expected, strlen(expected), mnd_buf_cstr(&buf), buf.len);
+    text = mnd_args_format_help(&result);
+    NAOS_REQUIRE_NOT_NULL(text);
+    NAOS_CHECK_STR_EQ(expected, text);
+    NAOS_CHECK_MEM_EQ(expected, strlen(expected), text, strlen(text));
 
-    mnd_buf_free(&buf);
+    mnd_args_text_free(text);
     mnd_args_result_free(&result);
 }
 
@@ -123,38 +123,44 @@ NAOS_TEST(cat_help_shows_optional_unlimited_positional)
 
 NAOS_TEST(version_is_program_and_version_line)
 {
-    mnd_buf_t buf = MND_BUF_INIT;
+    char *text = NULL;
 
-    NAOS_REQUIRE_TRUE(mnd_args_format_version(&test_tool_program, &buf));
-    NAOS_CHECK_STR_EQ("tool 1.2.3\n", mnd_buf_cstr(&buf));
-    NAOS_CHECK_UINT_EQ(11, buf.len);
+    text = mnd_args_format_version(&test_tool_program);
+    NAOS_REQUIRE_NOT_NULL(text);
+    NAOS_CHECK_STR_EQ("tool 1.2.3\n", text);
+    NAOS_CHECK_UINT_EQ(11, strlen(text));
 
-    mnd_buf_free(&buf);
+    mnd_args_text_free(text);
+
+    /* 空の値を渡しても安全 */
+    mnd_args_text_free(NULL);
 }
 
 NAOS_TEST(usage_hint_without_command)
 {
     mnd_args_result_t result;
-    mnd_buf_t buf = MND_BUF_INIT;
+    char *text = NULL;
 
     make_path(&result, NULL);
-    NAOS_REQUIRE_TRUE(mnd_args_format_usage_hint(&result, &buf));
-    NAOS_CHECK_STR_EQ("Run 'tool --help' for usage.\n", mnd_buf_cstr(&buf));
+    text = mnd_args_format_usage_hint(&result);
+    NAOS_REQUIRE_NOT_NULL(text);
+    NAOS_CHECK_STR_EQ("Run 'tool --help' for usage.\n", text);
 
-    mnd_buf_free(&buf);
+    mnd_args_text_free(text);
     mnd_args_result_free(&result);
 }
 
 NAOS_TEST(usage_hint_with_command)
 {
     mnd_args_result_t result;
-    mnd_buf_t buf = MND_BUF_INIT;
+    char *text = NULL;
 
     make_path(&result, test_tool_build);
-    NAOS_REQUIRE_TRUE(mnd_args_format_usage_hint(&result, &buf));
-    NAOS_CHECK_STR_EQ("Run 'tool build --help' for usage.\n", mnd_buf_cstr(&buf));
+    text = mnd_args_format_usage_hint(&result);
+    NAOS_REQUIRE_NOT_NULL(text);
+    NAOS_CHECK_STR_EQ("Run 'tool build --help' for usage.\n", text);
 
-    mnd_buf_free(&buf);
+    mnd_args_text_free(text);
     mnd_args_result_free(&result);
 }
 
@@ -162,8 +168,8 @@ NAOS_TEST(generating_twice_gives_identical_text)
 {
     const mnd_args_command_t *root = test_tool_program.root;
     mnd_args_result_t result;
-    mnd_buf_t first = MND_BUF_INIT;
-    mnd_buf_t second = MND_BUF_INIT;
+    char *first = NULL;
+    char *second = NULL;
     size_t i;
 
     for (i = 0; i <= root->command_count; i++)
@@ -175,53 +181,69 @@ NAOS_TEST(generating_twice_gives_identical_text)
             command = &root->commands[i];
         }
         make_path(&result, command);
-        mnd_buf_clear(&first);
-        mnd_buf_clear(&second);
-        NAOS_REQUIRE_TRUE(mnd_args_format_help(&result, &first));
-        NAOS_REQUIRE_TRUE(mnd_args_format_help(&result, &second));
-        NAOS_CHECK_UINT_GT(first.len, 0);
-        NAOS_CHECK_UINT_EQ(first.len, second.len);
-        NAOS_CHECK_STR_EQ(mnd_buf_cstr(&first), mnd_buf_cstr(&second));
+        first = mnd_args_format_help(&result);
+        second = mnd_args_format_help(&result);
         mnd_args_result_free(&result);
+        NAOS_REQUIRE_NOT_NULL(first);
+        NAOS_REQUIRE_NOT_NULL(second);
+        NAOS_CHECK_UINT_GT(strlen(first), 0);
+        NAOS_CHECK_UINT_EQ(strlen(first), strlen(second));
+        NAOS_CHECK_STR_EQ(first, second);
+        mnd_args_text_free(first);
+        mnd_args_text_free(second);
+        first = NULL;
+        second = NULL;
     }
-
-    mnd_buf_free(&first);
-    mnd_buf_free(&second);
 }
 
-NAOS_TEST(output_is_appended_to_existing_content)
+/*
+ * 続けて生成した文字列は、それぞれ別に確保された独立したものである。
+ * 一方を書き換えても解放しても、他方の内容は変わらない
+ */
+NAOS_TEST(consecutive_texts_are_independent)
 {
     mnd_args_result_t copy;
     mnd_args_result_t cat;
-    mnd_buf_t buf = MND_BUF_INIT;
-    const char *text;
+    char *version;
+    char *hint;
+    char *help;
 
     make_path(&copy, test_tool_copy);
     make_path(&cat, test_tool_cat);
-    NAOS_REQUIRE_TRUE(mnd_buf_append_str(&buf, "prefix:"));
-    NAOS_REQUIRE_TRUE(mnd_args_format_version(&test_tool_program, &buf));
-    NAOS_REQUIRE_TRUE(mnd_args_format_usage_hint(&copy, &buf));
-    NAOS_REQUIRE_TRUE(mnd_args_format_help(&cat, &buf));
-
-    text = mnd_buf_cstr(&buf);
-    NAOS_REQUIRE_UINT_EQ(strlen("prefix:tool 1.2.3\nRun 'tool copy --help' for usage.\n")
-                             + strlen(expected_cat_help),
-                         buf.len);
-    NAOS_CHECK_TRUE(strncmp(text, "prefix:tool 1.2.3\nRun 'tool copy --help' for usage.\n",
-                            strlen("prefix:tool 1.2.3\nRun 'tool copy --help' for usage.\n")) == 0);
-    NAOS_CHECK_STR_EQ(expected_cat_help,
-                      text + strlen("prefix:tool 1.2.3\nRun 'tool copy --help' for usage.\n"));
-
-    mnd_buf_free(&buf);
+    version = mnd_args_format_version(&test_tool_program);
+    hint = mnd_args_format_usage_hint(&copy);
+    help = mnd_args_format_help(&cat);
     mnd_args_result_free(&copy);
     mnd_args_result_free(&cat);
+    NAOS_REQUIRE_NOT_NULL(version);
+    NAOS_REQUIRE_NOT_NULL(hint);
+    NAOS_REQUIRE_NOT_NULL(help);
+    NAOS_CHECK_TRUE(version != hint);
+    NAOS_CHECK_TRUE(version != help);
+    NAOS_CHECK_TRUE(hint != help);
+
+    /* それぞれが自分の文面だけを持つ（前の文字列の後ろに追記されていない） */
+    NAOS_CHECK_STR_EQ("tool 1.2.3\n", version);
+    NAOS_CHECK_STR_EQ("Run 'tool copy --help' for usage.\n", hint);
+    NAOS_CHECK_STR_EQ(expected_cat_help, help);
+
+    /* 一方を書き換えても、他方は変わらない */
+    version[0] = 'X';
+    NAOS_CHECK_STR_EQ("Run 'tool copy --help' for usage.\n", hint);
+    NAOS_CHECK_STR_EQ(expected_cat_help, help);
+
+    /* 一方を解放しても、他方は読める */
+    mnd_args_text_free(version);
+    mnd_args_text_free(hint);
+    NAOS_CHECK_STR_EQ(expected_cat_help, help);
+    mnd_args_text_free(help);
 }
 
 NAOS_TEST(output_uses_lf_only_and_no_trailing_spaces)
 {
     const mnd_args_command_t *root = test_tool_program.root;
     mnd_args_result_t result;
-    mnd_buf_t buf = MND_BUF_INIT;
+    char *text = NULL;
     size_t i;
     size_t k;
 
@@ -234,22 +256,22 @@ NAOS_TEST(output_uses_lf_only_and_no_trailing_spaces)
             command = &root->commands[i];
         }
         make_path(&result, command);
-        mnd_buf_clear(&buf);
-        NAOS_REQUIRE_TRUE(mnd_args_format_help(&result, &buf));
+        text = mnd_args_format_help(&result);
         mnd_args_result_free(&result);
-        NAOS_REQUIRE_UINT_GT(buf.len, 0);
-        NAOS_CHECK_INT_EQ('\n', buf.data[buf.len - 1]);
-        for (k = 0; k < buf.len; k++)
+        NAOS_REQUIRE_NOT_NULL(text);
+        NAOS_REQUIRE_UINT_GT(strlen(text), 0);
+        NAOS_CHECK_INT_EQ('\n', text[strlen(text) - 1]);
+        for (k = 0; k < strlen(text); k++)
         {
-            NAOS_CHECK_INT_NE('\r', buf.data[k]);
-            if (buf.data[k] == '\n')
+            NAOS_CHECK_INT_NE('\r', text[k]);
+            if (text[k] == '\n')
             {
-                NAOS_CHECK_TRUE((k == 0) || (buf.data[k - 1] != ' '));
+                NAOS_CHECK_TRUE((k == 0) || (text[k - 1] != ' '));
             }
         }
+        mnd_args_text_free(text);
+        text = NULL;
     }
-
-    mnd_buf_free(&buf);
 }
 
 NAOS_SUITE(help,
@@ -261,6 +283,6 @@ NAOS_SUITE(help,
     NAOS_ADD_TEST(usage_hint_without_command),
     NAOS_ADD_TEST(usage_hint_with_command),
     NAOS_ADD_TEST(generating_twice_gives_identical_text),
-    NAOS_ADD_TEST(output_is_appended_to_existing_content),
+    NAOS_ADD_TEST(consecutive_texts_are_independent),
     NAOS_ADD_TEST(output_uses_lf_only_and_no_trailing_spaces)
 )

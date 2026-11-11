@@ -5,8 +5,7 @@
 
 #include "clopts/clopts.h"
 #include "clopts/help.h"
-#include "foundation/buf.h"
-#include "foundation/diag.h"
+#include "clopts/errors.h"
 #include "test_decl.h"
 
 /* サブコマンドのないプログラム（ルートコマンドが末端コマンド）の解析（2.6、6.x、8.x） */
@@ -23,7 +22,7 @@ typedef struct single_run
     char storage[SINGLE_MAX_ARGS][SINGLE_MAX_LEN];
     char *argv[SINGLE_MAX_ARGS + 1];
     mnd_args_result_t result;
-    mnd_diag_list_t diags;
+    clopts_errors_t errors;
     mnd_args_status_t status;
 } single_run_t;
 
@@ -34,7 +33,7 @@ static void run_parse(single_run_t *run, int argc, const char *const *tokens)
 
     memset(run, 0, sizeof *run);
     mnd_args_result_init(&run->result);
-    mnd_diag_list_init(&run->diags);
+    clopts_errors_init(&run->errors);
 
     NAOS_REQUIRE_TRUE(argc <= SINGLE_MAX_ARGS);
     for (i = 0; i < argc; i++)
@@ -45,7 +44,7 @@ static void run_parse(single_run_t *run, int argc, const char *const *tokens)
     }
     run->argv[argc] = NULL;
 
-    run->status = mnd_args_parse(&test_single_program, argc, run->argv, &run->result, &run->diags);
+    run->status = mnd_args_parse(&test_single_program, argc, run->argv, &run->result, &run->errors);
     NAOS_CHECK_INT_EQ(run->status, run->result.status);
 
     for (i = 0; i < argc; i++)
@@ -59,16 +58,16 @@ static void run_parse(single_run_t *run, int argc, const char *const *tokens)
 static void run_free(single_run_t *run)
 {
     mnd_args_result_free(&run->result);
-    mnd_diag_list_free(&run->diags);
+    clopts_errors_free(&run->errors);
 }
 
-/* 診断なしで status になり、経路がルートコマンドだけの 1 段であることを確かめる（2.8） */
+/* エラーなしで status になり、経路がルートコマンドだけの 1 段であることを確かめる（2.8） */
 static void check_status(const single_run_t *run, mnd_args_status_t status)
 {
     NAOS_CHECK_INT_EQ(status, run->status);
     NAOS_CHECK_UINT_EQ(1, mnd_args_depth(&run->result));
     NAOS_CHECK_PTR_EQ(test_single_program.root, mnd_args_command(&run->result));
-    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run->diags));
+    NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&run->errors));
 }
 
 /*
@@ -91,26 +90,23 @@ static const char expected_single_help[] =
     "      --version                Show version information\n";
 
 /* 生成した文面を期待する文面とバイト単位で比べる */
-static void check_text(const char *expected, const mnd_buf_t *buf)
+static void check_text(const char *expected, const char *text)
 {
-    NAOS_CHECK_STR_EQ(expected, mnd_buf_cstr(buf));
-    NAOS_CHECK_MEM_EQ(expected, strlen(expected), mnd_buf_cstr(buf), buf->len);
+    NAOS_CHECK_STR_EQ(expected, text);
+    NAOS_CHECK_MEM_EQ(expected, strlen(expected), text, strlen(text));
 }
 
-/* 使い方のエラーで、期待するメッセージの診断がちょうど 1 件だけ追加されたことを確かめる（7.2、7.4） */
+/* 使い方のエラーで、期待するメッセージのエラーがちょうど 1 件だけ追加されたことを確かめる（7.2、7.4） */
 static void check_usage_error(const single_run_t *run, const char *expected)
 {
-    const mnd_diag_t *d;
+    const char *message;
 
     NAOS_CHECK_INT_EQ(MND_ARGS_USAGE_ERROR, run->status);
     NAOS_CHECK_UINT_EQ(1, mnd_args_depth(&run->result));
     NAOS_CHECK_PTR_EQ(test_single_program.root, mnd_args_command(&run->result));
-    NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&run->diags));
-    d = mnd_diag_list_at(&run->diags, 0);
-    NAOS_CHECK_INT_EQ(MND_SEVERITY_ERROR, d->severity);
-    NAOS_CHECK_NULL(d->path);
-    NAOS_CHECK_UINT_EQ(0, d->line);
-    NAOS_CHECK_STR_EQ(expected, d->message);
+    NAOS_REQUIRE_UINT_EQ(1, clopts_errors_count(&run->errors));
+    message = clopts_errors_at(&run->errors, 0);
+    NAOS_CHECK_STR_EQ(expected, message);
 }
 
 /* 引数なしの実行は通常の解析（2.6、6.6） */
@@ -133,14 +129,14 @@ NAOS_TEST(argc_zero_is_ok)
 {
     char *argv[] = {NULL};
     mnd_args_result_t result = MND_ARGS_RESULT_INIT;
-    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
 
-    NAOS_CHECK_INT_EQ(MND_ARGS_OK, mnd_args_parse(&test_single_program, 0, argv, &result, &diags));
+    NAOS_CHECK_INT_EQ(MND_ARGS_OK, mnd_args_parse(&test_single_program, 0, argv, &result, &errors));
     NAOS_CHECK_UINT_EQ(1, mnd_args_depth(&result));
     NAOS_CHECK_UINT_EQ(0, mnd_args_positional_count(&result));
-    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
+    NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&errors));
     mnd_args_result_free(&result);
-    mnd_diag_list_free(&diags);
+    clopts_errors_free(&errors);
 }
 
 /* どの引数もサブコマンド名として解釈しない（2.6、8.7） */
@@ -380,14 +376,15 @@ NAOS_TEST(help_text_matches_expected_text)
 {
     static const char *const tokens[] = {"single", "--help"};
     single_run_t run;
-    mnd_buf_t buf = MND_BUF_INIT;
+    char *text = NULL;
 
     run_parse(&run, 2, tokens);
     check_status(&run, MND_ARGS_HELP);
-    NAOS_REQUIRE_TRUE(mnd_args_format_help(&run.result, &buf));
-    check_text(expected_single_help, &buf);
+    text = mnd_args_format_help(&run.result);
+    NAOS_REQUIRE_NOT_NULL(text);
+    check_text(expected_single_help, text);
 
-    mnd_buf_free(&buf);
+    mnd_args_text_free(text);
     run_free(&run);
 }
 
@@ -395,17 +392,19 @@ NAOS_TEST(help_text_is_identical_when_generated_twice)
 {
     static const char *const tokens[] = {"single", "--help"};
     single_run_t run;
-    mnd_buf_t first = MND_BUF_INIT;
-    mnd_buf_t second = MND_BUF_INIT;
+    char *first = NULL;
+    char *second = NULL;
 
     run_parse(&run, 2, tokens);
-    NAOS_REQUIRE_TRUE(mnd_args_format_help(&run.result, &first));
-    NAOS_REQUIRE_TRUE(mnd_args_format_help(&run.result, &second));
-    NAOS_CHECK_UINT_GT(first.len, 0);
-    NAOS_CHECK_MEM_EQ(first.data, first.len, second.data, second.len);
+    first = mnd_args_format_help(&run.result);
+    NAOS_REQUIRE_NOT_NULL(first);
+    second = mnd_args_format_help(&run.result);
+    NAOS_REQUIRE_NOT_NULL(second);
+    NAOS_CHECK_UINT_GT(strlen(first), 0);
+    NAOS_CHECK_MEM_EQ(first, strlen(first), second, strlen(second));
 
-    mnd_buf_free(&first);
-    mnd_buf_free(&second);
+    mnd_args_text_free(first);
+    mnd_args_text_free(second);
     run_free(&run);
 }
 
@@ -413,14 +412,15 @@ NAOS_TEST(usage_hint_has_root_path)
 {
     static const char *const tokens[] = {"single", "--bad"};
     single_run_t run;
-    mnd_buf_t buf = MND_BUF_INIT;
+    char *text = NULL;
 
     run_parse(&run, 2, tokens);
     check_usage_error(&run, "single: unknown option '--bad'");
-    NAOS_REQUIRE_TRUE(mnd_args_format_usage_hint(&run.result, &buf));
-    check_text("Run 'single --help' for usage.\n", &buf);
+    text = mnd_args_format_usage_hint(&run.result);
+    NAOS_REQUIRE_NOT_NULL(text);
+    check_text("Run 'single --help' for usage.\n", text);
 
-    mnd_buf_free(&buf);
+    mnd_args_text_free(text);
     run_free(&run);
 }
 

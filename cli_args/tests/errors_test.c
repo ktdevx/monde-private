@@ -6,8 +6,7 @@
 
 #include "clopts/clopts.h"
 #include "clopts/help.h"
-#include "foundation/buf.h"
-#include "foundation/diag.h"
+#include "clopts/errors.h"
 #include "test_decl.h"
 
 /* 必須のオプションの検査、最初の誤り、ヘルプの優先、メッセージの内容、状態の区別（7.1〜7.6、8.2） */
@@ -24,7 +23,7 @@ typedef struct errors_run
     char storage[ERRORS_MAX_ARGS][ERRORS_MAX_LEN];
     char *argv[ERRORS_MAX_ARGS + 1];
     mnd_args_result_t result;
-    mnd_diag_list_t diags;
+    clopts_errors_t errors;
     mnd_args_status_t status;
 } errors_run_t;
 
@@ -36,7 +35,7 @@ static void run_parse_program(errors_run_t *run, const mnd_args_program_t *progr
 
     memset(run, 0, sizeof *run);
     mnd_args_result_init(&run->result);
-    mnd_diag_list_init(&run->diags);
+    clopts_errors_init(&run->errors);
 
     NAOS_REQUIRE_TRUE(argc <= ERRORS_MAX_ARGS);
     for (i = 0; i < argc; i++)
@@ -47,7 +46,7 @@ static void run_parse_program(errors_run_t *run, const mnd_args_program_t *progr
     }
     run->argv[argc] = NULL;
 
-    run->status = mnd_args_parse(program, argc, run->argv, &run->result, &run->diags);
+    run->status = mnd_args_parse(program, argc, run->argv, &run->result, &run->errors);
     NAOS_CHECK_INT_EQ(run->status, run->result.status);
 
     for (i = 0; i < argc; i++)
@@ -66,45 +65,42 @@ static void run_parse(errors_run_t *run, int argc, const char *const *tokens)
 static void run_free(errors_run_t *run)
 {
     mnd_args_result_free(&run->result);
-    mnd_diag_list_free(&run->diags);
+    clopts_errors_free(&run->errors);
 }
 
 /*
- * build を選択した後の使い方のエラーで、診断がちょうど 1 件だけ追加され、
- * 重大度がエラー、パスなし、行 0 で、メッセージが期待どおりであることを確かめる（7.2、7.4、7.5）
+ * build を選択した後の使い方のエラーで、エラーがちょうど 1 件だけ追加され、
+ * メッセージが期待どおりであることを確かめる（7.2、7.4、7.5）
  */
 static void check_build_usage_error(const errors_run_t *run, const char *expected)
 {
-    const mnd_diag_t *d;
+    const char *message;
 
     NAOS_CHECK_INT_EQ(MND_ARGS_USAGE_ERROR, run->status);
     NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&run->result));
-    NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&run->diags));
-    d = mnd_diag_list_at(&run->diags, 0);
-    NAOS_CHECK_INT_EQ(MND_SEVERITY_ERROR, d->severity);
-    NAOS_CHECK_NULL(d->path);
-    NAOS_CHECK_UINT_EQ(0, d->line);
-    NAOS_CHECK_STR_EQ(expected, d->message);
+    NAOS_REQUIRE_UINT_EQ(1, clopts_errors_count(&run->errors));
+    message = clopts_errors_at(&run->errors, 0);
+    NAOS_CHECK_STR_EQ(expected, message);
 }
 
-/* build のヘルプの要求で、診断がないことを確かめる（8.2） */
+/* build のヘルプの要求で、エラーがないことを確かめる（8.2） */
 static void check_build_help(const errors_run_t *run)
 {
     NAOS_CHECK_INT_EQ(MND_ARGS_HELP, run->status);
     NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&run->result));
-    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run->diags));
+    NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&run->errors));
 }
 
 /* message が prefix で始まり、needle を含むことを確かめる */
 static void check_message_mentions(const errors_run_t *run, const char *prefix,
                                    const char *needle)
 {
-    const mnd_diag_t *d;
+    const char *message;
 
-    NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&run->diags));
-    d = mnd_diag_list_at(&run->diags, 0);
-    NAOS_CHECK_INT_EQ(0, strncmp(d->message, prefix, strlen(prefix)));
-    NAOS_CHECK_NOT_NULL(strstr(d->message, needle));
+    NAOS_REQUIRE_UINT_EQ(1, clopts_errors_count(&run->errors));
+    message = clopts_errors_at(&run->errors, 0);
+    NAOS_CHECK_INT_EQ(0, strncmp(message, prefix, strlen(prefix)));
+    NAOS_CHECK_NOT_NULL(strstr(message, needle));
 }
 
 /* 必須のオプションの欠落（7.1） */
@@ -230,7 +226,7 @@ NAOS_TEST(help_wins_over_missing_positional)
     run_parse(&run, 3, tokens);
     NAOS_CHECK_INT_EQ(MND_ARGS_HELP, run.status);
     NAOS_CHECK_PTR_EQ(test_tool_copy, mnd_args_command(&run.result));
-    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run.diags));
+    NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&run.errors));
     run_free(&run);
 }
 
@@ -242,7 +238,7 @@ NAOS_TEST(help_wins_over_extra_positional)
     run_parse(&run, 6, tokens);
     NAOS_CHECK_INT_EQ(MND_ARGS_HELP, run.status);
     NAOS_CHECK_PTR_EQ(test_tool_copy, mnd_args_command(&run.result));
-    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run.diags));
+    NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&run.errors));
     run_free(&run);
 }
 
@@ -311,19 +307,18 @@ NAOS_TEST(error_at_end_has_nothing_to_recover)
 
 /*
  * 子を持つコマンドが選択中の誤りは、後ろに --help・-h があっても報告する（8.10）。
- * 経路がルートコマンドだけで、診断がちょうど 1 件であることを確かめる
+ * 経路がルートコマンドだけで、エラーがちょうど 1 件であることを確かめる
  */
 static void check_root_usage_error(const errors_run_t *run, const char *expected)
 {
-    const mnd_diag_t *d;
+    const char *message;
 
     NAOS_CHECK_INT_EQ(MND_ARGS_USAGE_ERROR, run->status);
     NAOS_CHECK_UINT_EQ(1, mnd_args_depth(&run->result));
     NAOS_CHECK_PTR_EQ(test_tool_program.root, mnd_args_command(&run->result));
-    NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&run->diags));
-    d = mnd_diag_list_at(&run->diags, 0);
-    NAOS_CHECK_INT_EQ(MND_SEVERITY_ERROR, d->severity);
-    NAOS_CHECK_STR_EQ(expected, d->message);
+    NAOS_REQUIRE_UINT_EQ(1, clopts_errors_count(&run->errors));
+    message = clopts_errors_at(&run->errors, 0);
+    NAOS_CHECK_STR_EQ(expected, message);
 }
 
 NAOS_TEST(unknown_command_before_help_is_reported)
@@ -370,7 +365,7 @@ NAOS_TEST(dash_h_consumed_as_value_is_not_help)
     run_parse(&run, 5, tokens);
     NAOS_CHECK_INT_EQ(MND_ARGS_OK, run.status);
     NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&run.result));
-    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run.diags));
+    NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&run.errors));
     NAOS_CHECK_PTR_EQ(run.argv[3], mnd_args_value(&run.result, "output"));
     NAOS_CHECK_STR_EQ("-h", mnd_args_value(&run.result, "output"));
     NAOS_REQUIRE_UINT_EQ(1, mnd_args_positional_count(&run.result));
@@ -412,37 +407,37 @@ NAOS_TEST(each_status_is_distinct)
     run_parse(&run, 5, ok);
     statuses[0] = run.status;
     NAOS_CHECK_INT_EQ(MND_ARGS_OK, run.status);
-    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run.diags));
+    NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&run.errors));
     run_free(&run);
 
     run_parse(&run, 4, help);
     statuses[1] = run.status;
     NAOS_CHECK_INT_EQ(MND_ARGS_HELP, run.status);
-    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run.diags));
+    NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&run.errors));
     run_free(&run);
 
     run_parse(&run, 2, version);
     statuses[2] = run.status;
     NAOS_CHECK_INT_EQ(MND_ARGS_VERSION, run.status);
-    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run.diags));
+    NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&run.errors));
     run_free(&run);
 
     run_parse(&run, 1, no_command);
     statuses[3] = run.status;
     NAOS_CHECK_INT_EQ(MND_ARGS_NO_COMMAND, run.status);
-    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run.diags));
+    NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&run.errors));
     run_free(&run);
 
     run_parse(&run, 3, usage_error);
     statuses[4] = run.status;
     NAOS_CHECK_INT_EQ(MND_ARGS_USAGE_ERROR, run.status);
-    NAOS_CHECK_UINT_EQ(1, mnd_diag_list_count(&run.diags));
+    NAOS_CHECK_UINT_EQ(1, clopts_errors_count(&run.errors));
     run_free(&run);
 
     run_parse_program(&run, &errors_bad_program, 2, decl_error);
     statuses[5] = run.status;
     NAOS_CHECK_INT_EQ(MND_ARGS_DECL_ERROR, run.status);
-    NAOS_CHECK_UINT_GE(mnd_diag_list_count(&run.diags), 1);
+    NAOS_CHECK_UINT_GE(clopts_errors_count(&run.errors), 1);
     run_free(&run);
 
     for (i = 0; i < 6; i++)
@@ -464,23 +459,25 @@ NAOS_TEST(usage_error_then_hint_for_selected_command)
     static const char *const no_command[] = {"tool"};
     static const char global_help_head[] = "Usage: tool <command> [<options>] [<arguments>]\n";
     errors_run_t run;
-    mnd_buf_t buf = MND_BUF_INIT;
+    char *text = NULL;
 
     run_parse(&run, 4, usage_error);
     check_build_usage_error(&run, "tool build: unknown option '--bad'");
-    NAOS_REQUIRE_TRUE(mnd_args_format_usage_hint(&run.result, &buf));
-    NAOS_CHECK_STR_EQ("Run 'tool build --help' for usage.\n", mnd_buf_cstr(&buf));
-    mnd_buf_free(&buf);
+    text = mnd_args_format_usage_hint(&run.result);
+    NAOS_REQUIRE_NOT_NULL(text);
+    NAOS_CHECK_STR_EQ("Run 'tool build --help' for usage.\n", text);
+    mnd_args_text_free(text);
     run_free(&run);
 
     run_parse(&run, 1, no_command);
     NAOS_CHECK_INT_EQ(MND_ARGS_NO_COMMAND, run.status);
     NAOS_CHECK_UINT_EQ(1, mnd_args_depth(&run.result));
     NAOS_CHECK_PTR_EQ(test_tool_program.root, mnd_args_command(&run.result));
-    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run.diags));
-    NAOS_REQUIRE_TRUE(mnd_args_format_help(&run.result, &buf));
-    NAOS_CHECK_INT_EQ(0, strncmp(mnd_buf_cstr(&buf), global_help_head, strlen(global_help_head)));
-    mnd_buf_free(&buf);
+    NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&run.errors));
+    text = mnd_args_format_help(&run.result);
+    NAOS_REQUIRE_NOT_NULL(text);
+    NAOS_CHECK_INT_EQ(0, strncmp(text, global_help_head, strlen(global_help_head)));
+    mnd_args_text_free(text);
     run_free(&run);
 }
 

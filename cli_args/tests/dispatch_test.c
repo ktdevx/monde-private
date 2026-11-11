@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "clopts/clopts.h"
-#include "foundation/diag.h"
+#include "clopts/errors.h"
 #include "test_decl.h"
 
 /* ルートコマンドから始まる走査での子コマンドの選択（2.x、8.x）と、解析の入口（1.6、7.5、7.6） */
@@ -21,7 +21,7 @@ typedef struct dispatch_run
     char storage[DISPATCH_MAX_ARGS][DISPATCH_MAX_LEN];
     char *argv[DISPATCH_MAX_ARGS + 1];
     mnd_args_result_t result;
-    mnd_diag_list_t diags;
+    clopts_errors_t errors;
     mnd_args_status_t status;
 } dispatch_run_t;
 
@@ -29,10 +29,10 @@ static void run_init(dispatch_run_t *run)
 {
     memset(run, 0, sizeof *run);
     mnd_args_result_init(&run->result);
-    mnd_diag_list_init(&run->diags);
+    clopts_errors_init(&run->errors);
 }
 
-/* tokens の argc 個を引数列として解析する。run の結果と診断は前回の内容に上書き・追加される */
+/* tokens の argc 個を引数列として解析する。run の結果とエラーは前回の内容に上書き・追加される */
 static void run_parse_with(dispatch_run_t *run, const mnd_args_program_t *program, int argc,
                            const char *const *tokens)
 {
@@ -47,7 +47,7 @@ static void run_parse_with(dispatch_run_t *run, const mnd_args_program_t *progra
     }
     run->argv[argc] = NULL;
 
-    run->status = mnd_args_parse(program, argc, run->argv, &run->result, &run->diags);
+    run->status = mnd_args_parse(program, argc, run->argv, &run->result, &run->errors);
     NAOS_CHECK_INT_EQ(run->status, run->result.status);
 
     for (i = 0; i < argc; i++)
@@ -66,21 +66,18 @@ static void run_parse(dispatch_run_t *run, int argc, const char *const *tokens)
 static void run_free(dispatch_run_t *run)
 {
     mnd_args_result_free(&run->result);
-    mnd_diag_list_free(&run->diags);
+    clopts_errors_free(&run->errors);
 }
 
-/* 使い方のエラーで、期待するメッセージの診断がちょうど 1 件だけ追加されたことを確かめる（7.4、7.5） */
+/* 使い方のエラーで、期待するメッセージのエラーがちょうど 1 件だけ追加されたことを確かめる（7.4、7.5） */
 static void check_usage_error(const dispatch_run_t *run, const char *expected)
 {
-    const mnd_diag_t *d;
+    const char *message;
 
     NAOS_CHECK_INT_EQ(MND_ARGS_USAGE_ERROR, run->status);
-    NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&run->diags));
-    d = mnd_diag_list_at(&run->diags, 0);
-    NAOS_CHECK_INT_EQ(MND_SEVERITY_ERROR, d->severity);
-    NAOS_CHECK_NULL(d->path);
-    NAOS_CHECK_UINT_EQ(0, d->line);
-    NAOS_CHECK_STR_EQ(expected, d->message);
+    NAOS_REQUIRE_UINT_EQ(1, clopts_errors_count(&run->errors));
+    message = clopts_errors_at(&run->errors, 0);
+    NAOS_CHECK_STR_EQ(expected, message);
 }
 
 /*
@@ -109,13 +106,13 @@ static const mnd_args_value_t *selected_values(const mnd_args_result_t *result)
     return result->levels[result->level_count - 1].values;
 }
 
-/* 診断なしで status になり、経路が check_path のとおりであることを確かめる */
+/* エラーなしで status になり、経路が check_path のとおりであることを確かめる */
 static void check_status(const dispatch_run_t *run, mnd_args_status_t status,
                          const mnd_args_command_t *command)
 {
     NAOS_CHECK_INT_EQ(status, run->status);
     check_path(&run->result, command);
-    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run->diags));
+    NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&run->errors));
 }
 
 /* 宣言済みのサブコマンドの選択（2.1） */
@@ -334,14 +331,14 @@ NAOS_TEST(argc_zero_is_no_command)
 {
     char *argv[] = {NULL};
     mnd_args_result_t result = MND_ARGS_RESULT_INIT;
-    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
 
-    NAOS_CHECK_INT_EQ(MND_ARGS_NO_COMMAND, mnd_args_parse(&test_tool_program, 0, argv, &result, &diags));
+    NAOS_CHECK_INT_EQ(MND_ARGS_NO_COMMAND, mnd_args_parse(&test_tool_program, 0, argv, &result, &errors));
     NAOS_CHECK_INT_EQ(MND_ARGS_NO_COMMAND, result.status);
     check_path(&result, NULL);
-    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
+    NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&errors));
     mnd_args_result_free(&result);
-    mnd_diag_list_free(&diags);
+    clopts_errors_free(&errors);
 }
 
 /* ヘルプとバージョン（8.1、8.3、8.4、8.5） */
@@ -537,25 +534,24 @@ NAOS_TEST(invalid_declaration_is_decl_error_without_reading_argv)
     /* 要素を読めばクラッシュする引数列。宣言の誤りでは読まれないことを確かめる */
     char *argv[] = {NULL, NULL, NULL, NULL};
     mnd_args_result_t result = MND_ARGS_RESULT_INIT;
-    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
     size_t i;
 
     NAOS_CHECK_INT_EQ(MND_ARGS_DECL_ERROR,
-                      mnd_args_parse(&dispatch_bad_program, 3, argv, &result, &diags));
+                      mnd_args_parse(&dispatch_bad_program, 3, argv, &result, &errors));
     NAOS_CHECK_INT_EQ(MND_ARGS_DECL_ERROR, result.status);
     NAOS_CHECK_NULL(mnd_args_command(&result));
     NAOS_CHECK_UINT_EQ(0, mnd_args_depth(&result));
-    NAOS_REQUIRE_UINT_GT(mnd_diag_list_count(&diags), 0);
-    for (i = 0; i < mnd_diag_list_count(&diags); i++)
+    NAOS_REQUIRE_UINT_GT(clopts_errors_count(&errors), 0);
+    for (i = 0; i < clopts_errors_count(&errors); i++)
     {
-        const mnd_diag_t *d = mnd_diag_list_at(&diags, i);
+        const char *message = clopts_errors_at(&errors, i);
 
-        NAOS_CHECK_INT_EQ(MND_SEVERITY_ERROR, d->severity);
-        NAOS_CHECK_TRUE(strncmp(d->message, "invalid argument declaration: ",
+        NAOS_CHECK_TRUE(strncmp(message, "invalid argument declaration: ",
                                 strlen("invalid argument declaration: ")) == 0);
     }
     mnd_args_result_free(&result);
-    mnd_diag_list_free(&diags);
+    clopts_errors_free(&errors);
 }
 
 NAOS_TEST(invalid_declaration_with_tokens)
@@ -566,7 +562,7 @@ NAOS_TEST(invalid_declaration_with_tokens)
     run_init(&run);
     run_parse_with(&run, &dispatch_bad_program, 2, tokens);
     NAOS_CHECK_INT_EQ(MND_ARGS_DECL_ERROR, run.status);
-    NAOS_CHECK_UINT_GT(mnd_diag_list_count(&run.diags), 0);
+    NAOS_CHECK_UINT_GT(clopts_errors_count(&run.errors), 0);
     run_free(&run);
 }
 
@@ -586,7 +582,7 @@ NAOS_TEST(result_is_reset_between_parses)
     run_parse(&run, 3, first);
     check_path(&run.result, test_tool_build);
     NAOS_CHECK_NOT_NULL(selected_values(&run.result));
-    mnd_diag_list_free(&run.diags);
+    clopts_errors_free(&run.errors);
 
     run_parse(&run, 5, second);
     check_status(&run, MND_ARGS_OK, test_tool_cat);

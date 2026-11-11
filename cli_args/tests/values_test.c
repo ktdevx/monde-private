@@ -6,7 +6,7 @@
 
 #include "clopts/clopts.h"
 #include "clopts_internal.h"
-#include "foundation/diag.h"
+#include "clopts/errors.h"
 #include "test_decl.h"
 
 /*
@@ -303,7 +303,7 @@ typedef struct values_run
     char storage[VALUES_MAX_ARGS][VALUES_MAX_LEN];
     char *argv[VALUES_MAX_ARGS + 1];
     mnd_args_result_t result;
-    mnd_diag_list_t diags;
+    clopts_errors_t errors;
     mnd_args_status_t status;
 } values_run_t;
 
@@ -313,7 +313,7 @@ static void run_parse(values_run_t *run, int argc, const char *const *tokens)
 
     memset(run, 0, sizeof *run);
     mnd_args_result_init(&run->result);
-    mnd_diag_list_init(&run->diags);
+    clopts_errors_init(&run->errors);
 
     NAOS_REQUIRE_TRUE(argc <= VALUES_MAX_ARGS);
     for (i = 0; i < argc; i++)
@@ -324,7 +324,7 @@ static void run_parse(values_run_t *run, int argc, const char *const *tokens)
     }
     run->argv[argc] = NULL;
 
-    run->status = mnd_args_parse(&test_tool_program, argc, run->argv, &run->result, &run->diags);
+    run->status = mnd_args_parse(&test_tool_program, argc, run->argv, &run->result, &run->errors);
     NAOS_CHECK_INT_EQ(run->status, run->result.status);
 
     for (i = 0; i < argc; i++)
@@ -338,27 +338,24 @@ static void run_parse(values_run_t *run, int argc, const char *const *tokens)
 static void run_free(values_run_t *run)
 {
     mnd_args_result_free(&run->result);
-    mnd_diag_list_free(&run->diags);
+    clopts_errors_free(&run->errors);
 }
 
 static void check_ok(const values_run_t *run)
 {
     NAOS_CHECK_INT_EQ(MND_ARGS_OK, run->status);
     NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&run->result));
-    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run->diags));
+    NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&run->errors));
 }
 
 static void check_usage_error(const values_run_t *run, const char *expected)
 {
-    const mnd_diag_t *d;
+    const char *message;
 
     NAOS_CHECK_INT_EQ(MND_ARGS_USAGE_ERROR, run->status);
-    NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&run->diags));
-    d = mnd_diag_list_at(&run->diags, 0);
-    NAOS_CHECK_INT_EQ(MND_SEVERITY_ERROR, d->severity);
-    NAOS_CHECK_NULL(d->path);
-    NAOS_CHECK_UINT_EQ(0, d->line);
-    NAOS_CHECK_STR_EQ(expected, d->message);
+    NAOS_REQUIRE_UINT_EQ(1, clopts_errors_count(&run->errors));
+    message = clopts_errors_at(&run->errors, 0);
+    NAOS_CHECK_STR_EQ(expected, message);
 }
 
 NAOS_TEST(parse_list_items_keep_whitespace)

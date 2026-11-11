@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "clopts/clopts.h"
-#include "foundation/diag.h"
+#include "clopts/errors.h"
 #include "test_decl.h"
 
 /* サブコマンドの後の長いオプション（3.1〜3.7）と、サブコマンドの後の --help（8.2） */
@@ -21,7 +21,7 @@ typedef struct long_run
     char storage[LONG_MAX_ARGS][LONG_MAX_LEN];
     char *argv[LONG_MAX_ARGS + 1];
     mnd_args_result_t result;
-    mnd_diag_list_t diags;
+    clopts_errors_t errors;
     mnd_args_status_t status;
 } long_run_t;
 
@@ -32,7 +32,7 @@ static void run_parse(long_run_t *run, int argc, const char *const *tokens)
 
     memset(run, 0, sizeof *run);
     mnd_args_result_init(&run->result);
-    mnd_diag_list_init(&run->diags);
+    clopts_errors_init(&run->errors);
 
     NAOS_REQUIRE_TRUE(argc <= LONG_MAX_ARGS);
     for (i = 0; i < argc; i++)
@@ -43,7 +43,7 @@ static void run_parse(long_run_t *run, int argc, const char *const *tokens)
     }
     run->argv[argc] = NULL;
 
-    run->status = mnd_args_parse(&test_tool_program, argc, run->argv, &run->result, &run->diags);
+    run->status = mnd_args_parse(&test_tool_program, argc, run->argv, &run->result, &run->errors);
     NAOS_CHECK_INT_EQ(run->status, run->result.status);
 
     for (i = 0; i < argc; i++)
@@ -57,30 +57,27 @@ static void run_parse(long_run_t *run, int argc, const char *const *tokens)
 static void run_free(long_run_t *run)
 {
     mnd_args_result_free(&run->result);
-    mnd_diag_list_free(&run->diags);
+    clopts_errors_free(&run->errors);
 }
 
-/* 診断なしで MND_ARGS_OK になり、build が選択されていることを確かめる */
+/* エラーなしで MND_ARGS_OK になり、build が選択されていることを確かめる */
 static void check_ok(const long_run_t *run)
 {
     NAOS_CHECK_INT_EQ(MND_ARGS_OK, run->status);
     NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&run->result));
-    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run->diags));
+    NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&run->errors));
 }
 
-/* 使い方のエラーで、期待するメッセージの診断がちょうど 1 件だけ追加されたことを確かめる */
+/* 使い方のエラーで、期待するメッセージのエラーがちょうど 1 件だけ追加されたことを確かめる */
 static void check_usage_error(const long_run_t *run, const char *expected)
 {
-    const mnd_diag_t *d;
+    const char *message;
 
     NAOS_CHECK_INT_EQ(MND_ARGS_USAGE_ERROR, run->status);
     NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&run->result));
-    NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&run->diags));
-    d = mnd_diag_list_at(&run->diags, 0);
-    NAOS_CHECK_INT_EQ(MND_SEVERITY_ERROR, d->severity);
-    NAOS_CHECK_NULL(d->path);
-    NAOS_CHECK_UINT_EQ(0, d->line);
-    NAOS_CHECK_STR_EQ(expected, d->message);
+    NAOS_REQUIRE_UINT_EQ(1, clopts_errors_count(&run->errors));
+    message = clopts_errors_at(&run->errors, 0);
+    NAOS_CHECK_STR_EQ(expected, message);
 }
 
 /* フラグ（3.1） */
@@ -298,9 +295,9 @@ NAOS_TEST(option_of_other_command_is_unknown)
     run_parse(&run, 5, tokens);
     NAOS_CHECK_INT_EQ(MND_ARGS_USAGE_ERROR, run.status);
     NAOS_CHECK_PTR_EQ(test_tool_cat, mnd_args_command(&run.result));
-    NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&run.diags));
+    NAOS_REQUIRE_UINT_EQ(1, clopts_errors_count(&run.errors));
     NAOS_CHECK_STR_EQ("tool cat: unknown option '--output'",
-                      mnd_diag_list_at(&run.diags, 0)->message);
+                      clopts_errors_at(&run.errors, 0));
     run_free(&run);
 }
 
@@ -314,7 +311,7 @@ NAOS_TEST(help_after_command_requests_command_help)
     run_parse(&run, 3, tokens);
     NAOS_CHECK_INT_EQ(MND_ARGS_HELP, run.status);
     NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&run.result));
-    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run.diags));
+    NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&run.errors));
     run_free(&run);
 }
 
@@ -326,7 +323,7 @@ NAOS_TEST(help_after_options_requests_command_help)
     run_parse(&run, 6, tokens);
     NAOS_CHECK_INT_EQ(MND_ARGS_HELP, run.status);
     NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&run.result));
-    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run.diags));
+    NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&run.errors));
     run_free(&run);
 }
 

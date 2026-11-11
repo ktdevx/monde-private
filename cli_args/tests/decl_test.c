@@ -6,7 +6,7 @@
 
 #include "clopts/clopts.h"
 #include "clopts_internal.h"
-#include "foundation/diag.h"
+#include "clopts/errors.h"
 #include "test_decl.h"
 
 #define DECL_TEST_NOT_FOUND ((size_t)-1)
@@ -223,36 +223,33 @@ static size_t find_short_index(const mnd_args_command_t *command, char short_nam
     return index;
 }
 
-/* 宣言の検査が失敗し、期待するメッセージの診断がちょうど 1 件だけ追加されることを確かめる */
+/* 宣言の検査が失敗し、期待するメッセージのエラーがちょうど 1 件だけ追加されることを確かめる */
 static void check_single_error(const mnd_args_program_t *program, const char *expected)
 {
-    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
-    const mnd_diag_t *d;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
+    const char *message;
     bool ok;
 
-    ok = mnd_args_decl_check(program, &diags);
+    ok = mnd_args_decl_check(program, &errors);
     NAOS_CHECK_FALSE(ok);
-    NAOS_CHECK_UINT_EQ(1, mnd_diag_list_count(&diags));
-    if (mnd_diag_list_count(&diags) >= 1)
+    NAOS_CHECK_UINT_EQ(1, clopts_errors_count(&errors));
+    if (clopts_errors_count(&errors) >= 1)
     {
-        d = mnd_diag_list_at(&diags, 0);
-        NAOS_CHECK_INT_EQ(MND_SEVERITY_ERROR, d->severity);
-        NAOS_CHECK_NULL(d->path);
-        NAOS_CHECK_UINT_EQ(0, d->line);
-        NAOS_CHECK_STR_EQ(expected, d->message);
+        message = clopts_errors_at(&errors, 0);
+        NAOS_CHECK_STR_EQ(expected, message);
     }
 
-    mnd_diag_list_free(&diags);
+    clopts_errors_free(&errors);
 }
 
-/* 宣言の検査が成功し、診断が追加されないことを確かめる */
+/* 宣言の検査が成功し、エラーが追加されないことを確かめる */
 static void check_valid(const mnd_args_program_t *program)
 {
-    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
 
-    NAOS_CHECK_TRUE(mnd_args_decl_check(program, &diags));
-    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
-    mnd_diag_list_free(&diags);
+    NAOS_CHECK_TRUE(mnd_args_decl_check(program, &errors));
+    NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&errors));
+    clopts_errors_free(&errors);
 }
 
 /* 妥当な宣言 */
@@ -723,52 +720,54 @@ NAOS_TEST(unlimited_with_several_positional_names_is_valid)
 NAOS_TEST(two_errors_produce_two_diagnostics)
 {
     decl_fixture_t f;
-    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
 
     fixture_init(&f);
     f.commands[1].name = "run";
     f.run_options[1].required = true;
 
-    NAOS_CHECK_FALSE(mnd_args_decl_check(&f.program, &diags));
-    NAOS_REQUIRE_UINT_EQ(2, mnd_diag_list_count(&diags));
+    NAOS_CHECK_FALSE(mnd_args_decl_check(&f.program, &errors));
+    NAOS_REQUIRE_UINT_EQ(2, clopts_errors_count(&errors));
     NAOS_CHECK_STR_EQ("invalid argument declaration: flag '--force' cannot be required or have a default in command 'prog run'",
-                      mnd_diag_list_at(&diags, 0)->message);
+                      clopts_errors_at(&errors, 0));
     NAOS_CHECK_STR_EQ("invalid argument declaration: duplicate command 'run' in command 'prog'",
-                      mnd_diag_list_at(&diags, 1)->message);
-    mnd_diag_list_free(&diags);
+                      clopts_errors_at(&errors, 1));
+    clopts_errors_free(&errors);
 }
 
 NAOS_TEST(errors_in_several_commands_are_all_reported)
 {
     decl_fixture_t f;
-    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
 
     fixture_init(&f);
     f.program.version = NULL;
     f.run_options[0].short_name = 'h';
     f.commands[1].positional_count = 0;
 
-    NAOS_CHECK_FALSE(mnd_args_decl_check(&f.program, &diags));
-    NAOS_CHECK_UINT_EQ(3, mnd_diag_list_count(&diags));
-    NAOS_CHECK_TRUE(mnd_diag_list_has_error(&diags));
-    mnd_diag_list_free(&diags);
+    NAOS_CHECK_FALSE(mnd_args_decl_check(&f.program, &errors));
+    NAOS_CHECK_UINT_EQ(3, clopts_errors_count(&errors));
+    NAOS_CHECK_FALSE(clopts_errors_dropped(&errors));
+    clopts_errors_free(&errors);
 }
 
 NAOS_TEST(check_appends_to_existing_diagnostics)
 {
     decl_fixture_t f;
-    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
 
     fixture_init(&f);
     f.run_options[1].short_name = 'n';
-    mnd_diag_add(&diags, MND_SEVERITY_WARNING, NULL, 0, "%s", "earlier");
+    /* 内部の追加の操作で、あらかじめ 1 件入れておく */
+    clopts_errors_add(&errors, "%s", "earlier");
+    NAOS_REQUIRE_UINT_EQ(1, clopts_errors_count(&errors));
 
-    NAOS_CHECK_FALSE(mnd_args_decl_check(&f.program, &diags));
-    NAOS_REQUIRE_UINT_EQ(2, mnd_diag_list_count(&diags));
-    NAOS_CHECK_STR_EQ("earlier", mnd_diag_list_at(&diags, 0)->message);
+    NAOS_CHECK_FALSE(mnd_args_decl_check(&f.program, &errors));
+    NAOS_REQUIRE_UINT_EQ(2, clopts_errors_count(&errors));
+    NAOS_CHECK_STR_EQ("earlier", clopts_errors_at(&errors, 0));
     NAOS_CHECK_STR_EQ("invalid argument declaration: duplicate option '-n' in command 'prog run'",
-                      mnd_diag_list_at(&diags, 1)->message);
-    mnd_diag_list_free(&diags);
+                      clopts_errors_at(&errors, 1));
+    clopts_errors_free(&errors);
 }
 
 NAOS_TEST(names_with_percent_are_not_format_strings)
@@ -848,18 +847,18 @@ NAOS_TEST(deep_declaration_is_checked_without_depth_limit)
     program.root = &chain[0];
 
     {
-        mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+        clopts_errors_t errors = CLOPTS_ERRORS_INIT;
         const char *message;
 
-        NAOS_CHECK_FALSE(mnd_args_decl_check(&program, &diags));
-        NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&diags));
-        message = mnd_diag_list_at(&diags, 0)->message;
+        NAOS_CHECK_FALSE(mnd_args_decl_check(&program, &errors));
+        NAOS_REQUIRE_UINT_EQ(1, clopts_errors_count(&errors));
+        message = clopts_errors_at(&errors, 0);
         /* 経路は "deep" と 39 個の " c" */
         NAOS_CHECK_TRUE(strstr(message, "option '--help' is reserved in command 'deep c c ") != NULL);
         NAOS_CHECK_UINT_EQ(strlen("invalid argument declaration: option '--help' is reserved in command 'deep'")
                                + 39 * 2,
                            strlen(message));
-        mnd_diag_list_free(&diags);
+        clopts_errors_free(&errors);
     }
 }
 
@@ -1009,18 +1008,18 @@ NAOS_TEST(short_name_of_non_inherited_ancestor_option_is_error)
 NAOS_TEST(long_and_short_of_ancestor_option_are_two_errors)
 {
     nest_fixture_t f;
-    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
 
     nest_init(&f);
     nest_add_option(&f, "config", 'c');
 
-    NAOS_CHECK_FALSE(mnd_args_decl_check(&f.program, &diags));
-    NAOS_REQUIRE_UINT_EQ(2, mnd_diag_list_count(&diags));
+    NAOS_CHECK_FALSE(mnd_args_decl_check(&f.program, &errors));
+    NAOS_REQUIRE_UINT_EQ(2, clopts_errors_count(&errors));
     NAOS_CHECK_STR_EQ("invalid argument declaration: option '--config' in command 'nest remote add' duplicates an option of command 'nest'",
-                      mnd_diag_list_at(&diags, 0)->message);
+                      clopts_errors_at(&errors, 0));
     NAOS_CHECK_STR_EQ("invalid argument declaration: option '-c' in command 'nest remote add' duplicates an option of command 'nest'",
-                      mnd_diag_list_at(&diags, 1)->message);
-    mnd_diag_list_free(&diags);
+                      clopts_errors_at(&errors, 1));
+    clopts_errors_free(&errors);
 }
 
 /* --version という長い名前（1.9） */
@@ -1080,19 +1079,19 @@ NAOS_TEST(option_error_in_nested_parent_shows_path)
 NAOS_TEST(two_errors_in_nested_declaration_produce_two_diagnostics)
 {
     nest_fixture_t f;
-    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
 
     nest_init(&f);
     f.remote_commands[1].name = "help";
     f.commands[1].min_positionals = 1;
 
-    NAOS_CHECK_FALSE(mnd_args_decl_check(&f.program, &diags));
-    NAOS_REQUIRE_UINT_EQ(2, mnd_diag_list_count(&diags));
+    NAOS_CHECK_FALSE(mnd_args_decl_check(&f.program, &errors));
+    NAOS_REQUIRE_UINT_EQ(2, clopts_errors_count(&errors));
     NAOS_CHECK_STR_EQ("invalid argument declaration: command name 'help' is reserved in command 'nest remote'",
-                      mnd_diag_list_at(&diags, 0)->message);
+                      clopts_errors_at(&errors, 0));
     NAOS_CHECK_STR_EQ("invalid argument declaration: invalid positional range in command 'nest status'",
-                      mnd_diag_list_at(&diags, 1)->message);
-    mnd_diag_list_free(&diags);
+                      clopts_errors_at(&errors, 1));
+    clopts_errors_free(&errors);
 }
 
 /* 自分自身を子孫に持つコマンド */

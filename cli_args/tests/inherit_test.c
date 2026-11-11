@@ -6,8 +6,7 @@
 
 #include "clopts/clopts.h"
 #include "clopts/help.h"
-#include "foundation/buf.h"
-#include "foundation/diag.h"
+#include "clopts/errors.h"
 #include "test_decl.h"
 
 /* 子孫に引き継ぐオプションと、経路全体にわたる必須の検査（3.6、5.7、7.1、12.1〜12.6） */
@@ -24,7 +23,7 @@ typedef struct inherit_run
     char storage[INHERIT_MAX_ARGS][INHERIT_MAX_LEN];
     char *argv[INHERIT_MAX_ARGS + 1];
     mnd_args_result_t result;
-    mnd_diag_list_t diags;
+    clopts_errors_t errors;
     mnd_args_status_t status;
 } inherit_run_t;
 
@@ -36,7 +35,7 @@ static void run_parse_with(inherit_run_t *run, const mnd_args_program_t *program
 
     memset(run, 0, sizeof *run);
     mnd_args_result_init(&run->result);
-    mnd_diag_list_init(&run->diags);
+    clopts_errors_init(&run->errors);
 
     NAOS_REQUIRE_TRUE(argc <= INHERIT_MAX_ARGS);
     for (i = 0; i < argc; i++)
@@ -47,7 +46,7 @@ static void run_parse_with(inherit_run_t *run, const mnd_args_program_t *program
     }
     run->argv[argc] = NULL;
 
-    run->status = mnd_args_parse(program, argc, run->argv, &run->result, &run->diags);
+    run->status = mnd_args_parse(program, argc, run->argv, &run->result, &run->errors);
     NAOS_CHECK_INT_EQ(run->status, run->result.status);
 
     for (i = 0; i < argc; i++)
@@ -67,29 +66,26 @@ static void run_parse(inherit_run_t *run, int argc, const char *const *tokens)
 static void run_free(inherit_run_t *run)
 {
     mnd_args_result_free(&run->result);
-    mnd_diag_list_free(&run->diags);
+    clopts_errors_free(&run->errors);
 }
 
-/* 診断なしで成功し、経路の最後が command であることを確かめる */
+/* エラーなしで成功し、経路の最後が command であることを確かめる */
 static void check_ok(const inherit_run_t *run, const mnd_args_command_t *command)
 {
     NAOS_CHECK_INT_EQ(MND_ARGS_OK, run->status);
     NAOS_CHECK_PTR_EQ(command, mnd_args_command(&run->result));
-    NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run->diags));
+    NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&run->errors));
 }
 
-/* 使い方のエラーで、期待するメッセージの診断がちょうど 1 件だけ追加されたことを確かめる（7.2、7.4） */
+/* 使い方のエラーで、期待するメッセージのエラーがちょうど 1 件だけ追加されたことを確かめる（7.2、7.4） */
 static void check_usage_error(const inherit_run_t *run, const char *expected)
 {
-    const mnd_diag_t *d;
+    const char *message;
 
     NAOS_CHECK_INT_EQ(MND_ARGS_USAGE_ERROR, run->status);
-    NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&run->diags));
-    d = mnd_diag_list_at(&run->diags, 0);
-    NAOS_CHECK_INT_EQ(MND_SEVERITY_ERROR, d->severity);
-    NAOS_CHECK_NULL(d->path);
-    NAOS_CHECK_UINT_EQ(0, d->line);
-    NAOS_CHECK_STR_EQ(expected, d->message);
+    NAOS_REQUIRE_UINT_EQ(1, clopts_errors_count(&run->errors));
+    message = clopts_errors_at(&run->errors, 0);
+    NAOS_CHECK_STR_EQ(expected, message);
 }
 
 /*
@@ -466,20 +462,22 @@ NAOS_TEST(remote_add_help_lists_inherited_options_in_order)
 {
     static const char *const tokens[] = {"nest", "remote", "add", "--help"};
     inherit_run_t run;
-    mnd_buf_t first = MND_BUF_INIT;
-    mnd_buf_t second = MND_BUF_INIT;
+    char *first = NULL;
+    char *second = NULL;
 
     run_parse(&run, 4, tokens);
     NAOS_CHECK_INT_EQ(MND_ARGS_HELP, run.status);
     NAOS_CHECK_PTR_EQ(test_nest_remote_add, mnd_args_command(&run.result));
-    NAOS_REQUIRE_TRUE(mnd_args_format_help(&run.result, &first));
-    NAOS_REQUIRE_TRUE(mnd_args_format_help(&run.result, &second));
-    NAOS_CHECK_STR_EQ(expected_remote_add_help, mnd_buf_cstr(&first));
-    NAOS_CHECK_MEM_EQ(expected_remote_add_help, strlen(expected_remote_add_help), first.data, first.len);
-    NAOS_CHECK_MEM_EQ(first.data, first.len, second.data, second.len);
+    first = mnd_args_format_help(&run.result);
+    NAOS_REQUIRE_NOT_NULL(first);
+    second = mnd_args_format_help(&run.result);
+    NAOS_REQUIRE_NOT_NULL(second);
+    NAOS_CHECK_STR_EQ(expected_remote_add_help, first);
+    NAOS_CHECK_MEM_EQ(expected_remote_add_help, strlen(expected_remote_add_help), first, strlen(first));
+    NAOS_CHECK_MEM_EQ(first, strlen(first), second, strlen(second));
 
-    mnd_buf_free(&first);
-    mnd_buf_free(&second);
+    mnd_args_text_free(first);
+    mnd_args_text_free(second);
     run_free(&run);
 }
 
