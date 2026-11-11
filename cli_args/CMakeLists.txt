@@ -1,5 +1,5 @@
 # CLOpts: コマンドライン引数の解析ライブラリ。静的ライブラリ clopts と別名 CLOpts::clopts を作る。
-# 移動の段階では Monde の共通部品（monde::foundation）にリンクし、Monde のコンパイラオプションを使う
+# C の標準ライブラリと OS のライブラリだけにリンクする。コンパイラオプションは当面 Monde のものを使う
 add_library(clopts STATIC
   src/clopts_errors.c
   src/clopts_buf.c
@@ -14,7 +14,6 @@ target_include_directories(clopts
   PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
-target_link_libraries(clopts PUBLIC monde::foundation)
 # Windows では CommandLineToArgvW のために shell32 をリンクする
 if(WIN32)
   target_link_libraries(clopts PUBLIC shell32)

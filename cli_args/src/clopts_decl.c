@@ -1,5 +1,5 @@
 #include "clopts_internal.h"
-#include "foundation/buf.h"
+#include "clopts_buf.h"
 
 /* DeclCheck: 宣言の妥当性の検査と、子コマンド・有効なオプションの検索と列挙 */
 
@@ -83,14 +83,14 @@ struct decl_frame
     decl_frame_t *parent;              /* ルートコマンドでは NULL */
     const mnd_args_command_t *command;
     const char *name;                  /* 経路上の名前。ルートコマンドではプログラム名 */
-    mnd_buf_t path;                    /* 経路の文字列。最初の誤りの報告のときに作る */
+    clopts_buf_t path;                 /* 経路の文字列。最初の誤りの報告のときに作る */
     bool path_ready;
     bool path_failed;                  /* 経路の文字列を作れなかった（メモリ不足） */
 };
 
 typedef struct decl_check
 {
-    mnd_diag_list_t *diags;
+    clopts_errors_t *errors;
     bool ok;
 } decl_check_t;
 
@@ -100,22 +100,24 @@ static void frame_init(decl_frame_t *frame, decl_frame_t *parent,
     frame->parent = parent;
     frame->command = command;
     frame->name = name;
-    mnd_buf_init(&frame->path);
+    frame->path.data = NULL;
+    frame->path.len = 0;
+    frame->path.cap = 0;
     frame->path_ready = false;
     frame->path_failed = false;
 }
 
-static bool append_path(mnd_buf_t *buf, const decl_frame_t *frame)
+static bool append_path(clopts_buf_t *buf, const decl_frame_t *frame)
 {
     if (frame->parent != NULL)
     {
-        if (!append_path(buf, frame->parent) || !mnd_buf_append_byte(buf, ' '))
+        if (!append_path(buf, frame->parent) || !clopts_buf_append_byte(buf, ' '))
         {
             return false;
         }
     }
 
-    return mnd_buf_append_str(buf, shown(frame->name));
+    return clopts_buf_append_str(buf, shown(frame->name));
 }
 
 /*
@@ -129,7 +131,7 @@ static const char *frame_path(decl_frame_t *frame)
         frame->path_ready = true;
         if (!append_path(&frame->path, frame))
         {
-            mnd_buf_free(&frame->path);
+            clopts_buf_free(&frame->path);
             frame->path_failed = true;
         }
     }
@@ -139,7 +141,7 @@ static const char *frame_path(decl_frame_t *frame)
         return shown(frame->name);
     }
 
-    return mnd_buf_cstr(&frame->path);
+    return clopts_buf_cstr(&frame->path);
 }
 
 /* frame の祖先（frame 自身を除く）で、長い名前が name のオプションを持つ最も近い段。なければ NULL */
@@ -191,18 +193,18 @@ static void check_command_name(decl_check_t *check, decl_frame_t *frame, size_t 
 
     if (is_empty(name) || (name[0] == '-'))
     {
-        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
-                     DECL_PREFIX "invalid command name '%s' in command '%s'", shown(name),
-                     frame_path(frame));
+        clopts_errors_add(check->errors,
+                          DECL_PREFIX "invalid command name '%s' in command '%s'", shown(name),
+                          frame_path(frame));
         check->ok = false;
         return;
     }
 
     if (strcmp(name, "help") == 0)
     {
-        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
-                     DECL_PREFIX "command name 'help' is reserved in command '%s'",
-                     frame_path(frame));
+        clopts_errors_add(check->errors,
+                          DECL_PREFIX "command name 'help' is reserved in command '%s'",
+                          frame_path(frame));
         check->ok = false;
         return;
     }
@@ -211,9 +213,9 @@ static void check_command_name(decl_check_t *check, decl_frame_t *frame, size_t 
     {
         if (names_equal(parent->commands[j].name, name))
         {
-            mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
-                         DECL_PREFIX "duplicate command '%s' in command '%s'", name,
-                         frame_path(frame));
+            clopts_errors_add(check->errors,
+                              DECL_PREFIX "duplicate command '%s' in command '%s'", name,
+                              frame_path(frame));
             check->ok = false;
             return;
         }
@@ -230,18 +232,18 @@ static void check_long_name(decl_check_t *check, decl_frame_t *frame, size_t ind
 
     if (is_empty(name) || (name[0] == '-') || (strchr(name, '=') != NULL))
     {
-        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
-                     DECL_PREFIX "invalid option name '%s' in command '%s'", shown(name),
-                     frame_path(frame));
+        clopts_errors_add(check->errors,
+                          DECL_PREFIX "invalid option name '%s' in command '%s'", shown(name),
+                          frame_path(frame));
         check->ok = false;
         return;
     }
 
     if ((strcmp(name, "help") == 0) || (strcmp(name, "version") == 0))
     {
-        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
-                     DECL_PREFIX "option '--%s' is reserved in command '%s'", name,
-                     frame_path(frame));
+        clopts_errors_add(check->errors,
+                          DECL_PREFIX "option '--%s' is reserved in command '%s'", name,
+                          frame_path(frame));
         check->ok = false;
         return;
     }
@@ -250,9 +252,9 @@ static void check_long_name(decl_check_t *check, decl_frame_t *frame, size_t ind
     {
         if (names_equal(command->options[j].long_name, name))
         {
-            mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
-                         DECL_PREFIX "duplicate option '--%s' in command '%s'", name,
-                         frame_path(frame));
+            clopts_errors_add(check->errors,
+                              DECL_PREFIX "duplicate option '--%s' in command '%s'", name,
+                              frame_path(frame));
             check->ok = false;
             return;
         }
@@ -262,9 +264,9 @@ static void check_long_name(decl_check_t *check, decl_frame_t *frame, size_t ind
     ancestor = find_ancestor_long(frame, name);
     if (ancestor != NULL)
     {
-        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
-                     DECL_PREFIX "option '--%s' in command '%s' duplicates an option of command '%s'",
-                     name, frame_path(frame), frame_path(ancestor));
+        clopts_errors_add(check->errors,
+                          DECL_PREFIX "option '--%s' in command '%s' duplicates an option of command '%s'",
+                          name, frame_path(frame), frame_path(ancestor));
         check->ok = false;
     }
 }
@@ -285,17 +287,17 @@ static void check_short_name(decl_check_t *check, decl_frame_t *frame, size_t in
 
     if (short_name == 'h')
     {
-        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
-                     DECL_PREFIX "option '-h' is reserved in command '%s'", frame_path(frame));
+        clopts_errors_add(check->errors,
+                          DECL_PREFIX "option '-h' is reserved in command '%s'", frame_path(frame));
         check->ok = false;
         return;
     }
 
     if (!is_ascii_alnum(short_name))
     {
-        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
-                     DECL_PREFIX "invalid short option for '--%s' in command '%s'",
-                     shown(option->long_name), frame_path(frame));
+        clopts_errors_add(check->errors,
+                          DECL_PREFIX "invalid short option for '--%s' in command '%s'",
+                          shown(option->long_name), frame_path(frame));
         check->ok = false;
         return;
     }
@@ -304,9 +306,9 @@ static void check_short_name(decl_check_t *check, decl_frame_t *frame, size_t in
     {
         if (command->options[j].short_name == short_name)
         {
-            mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
-                         DECL_PREFIX "duplicate option '-%c' in command '%s'", short_name,
-                         frame_path(frame));
+            clopts_errors_add(check->errors,
+                              DECL_PREFIX "duplicate option '-%c' in command '%s'", short_name,
+                              frame_path(frame));
             check->ok = false;
             return;
         }
@@ -315,9 +317,9 @@ static void check_short_name(decl_check_t *check, decl_frame_t *frame, size_t in
     ancestor = find_ancestor_short(frame, short_name);
     if (ancestor != NULL)
     {
-        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
-                     DECL_PREFIX "option '-%c' in command '%s' duplicates an option of command '%s'",
-                     short_name, frame_path(frame), frame_path(ancestor));
+        clopts_errors_add(check->errors,
+                          DECL_PREFIX "option '-%c' in command '%s' duplicates an option of command '%s'",
+                          short_name, frame_path(frame), frame_path(ancestor));
         check->ok = false;
     }
 }
@@ -335,9 +337,9 @@ static void check_option(decl_check_t *check, decl_frame_t *frame, size_t index)
     {
         if (option->required || (option->default_value != NULL))
         {
-            mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
-                         DECL_PREFIX "flag '--%s' cannot be required or have a default in command '%s'",
-                         shown(name), frame_path(frame));
+            clopts_errors_add(check->errors,
+                              DECL_PREFIX "flag '--%s' cannot be required or have a default in command '%s'",
+                              shown(name), frame_path(frame));
             check->ok = false;
         }
 
@@ -346,18 +348,18 @@ static void check_option(decl_check_t *check, decl_frame_t *frame, size_t index)
 
     if (option->required && (option->default_value != NULL))
     {
-        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
-                     DECL_PREFIX "option '--%s' cannot be both required and defaulted in command '%s'",
-                     shown(name), frame_path(frame));
+        clopts_errors_add(check->errors,
+                          DECL_PREFIX "option '--%s' cannot be both required and defaulted in command '%s'",
+                          shown(name), frame_path(frame));
         check->ok = false;
     }
 
     if ((option->kind == MND_ARGS_LIST) && (option->default_value != NULL)
         && has_empty_item(option->default_value))
     {
-        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
-                     DECL_PREFIX "default of '--%s' has an empty item in command '%s'",
-                     shown(name), frame_path(frame));
+        clopts_errors_add(check->errors,
+                          DECL_PREFIX "default of '--%s' has an empty item in command '%s'",
+                          shown(name), frame_path(frame));
         check->ok = false;
     }
 }
@@ -373,9 +375,9 @@ static void check_positionals(decl_check_t *check, decl_frame_t *frame)
         if ((command->positional_count != 0) || (command->min_positionals != 0)
             || (command->max_positionals != 0))
         {
-            mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
-                         DECL_PREFIX "command '%s' cannot have both subcommands and positional arguments",
-                         frame_path(frame));
+            clopts_errors_add(check->errors,
+                              DECL_PREFIX "command '%s' cannot have both subcommands and positional arguments",
+                              frame_path(frame));
             check->ok = false;
         }
 
@@ -384,8 +386,8 @@ static void check_positionals(decl_check_t *check, decl_frame_t *frame)
 
     if (command->min_positionals > command->max_positionals)
     {
-        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
-                     DECL_PREFIX "invalid positional range in command '%s'", frame_path(frame));
+        clopts_errors_add(check->errors,
+                          DECL_PREFIX "invalid positional range in command '%s'", frame_path(frame));
         check->ok = false;
     }
 
@@ -400,9 +402,9 @@ static void check_positionals(decl_check_t *check, decl_frame_t *frame)
 
     if (!names_match)
     {
-        mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
-                     DECL_PREFIX "positional names do not match the range in command '%s'",
-                     frame_path(frame));
+        clopts_errors_add(check->errors,
+                          DECL_PREFIX "positional names do not match the range in command '%s'",
+                          frame_path(frame));
         check->ok = false;
     }
 }
@@ -441,43 +443,43 @@ static void check_tree(decl_check_t *check, decl_frame_t *frame)
 
         if (ancestor != NULL)
         {
-            mnd_diag_add(check->diags, MND_SEVERITY_ERROR, NULL, 0,
-                         DECL_PREFIX "command '%s' contains itself", frame_path(ancestor));
+            clopts_errors_add(check->errors,
+                              DECL_PREFIX "command '%s' contains itself", frame_path(ancestor));
             check->ok = false;
             continue;
         }
 
         frame_init(&child_frame, frame, child, child->name);
         check_tree(check, &child_frame);
-        mnd_buf_free(&child_frame.path);
+        clopts_buf_free(&child_frame.path);
     }
 }
 
-bool mnd_args_decl_check(const mnd_args_program_t *program, mnd_diag_list_t *diags)
+bool mnd_args_decl_check(const mnd_args_program_t *program, clopts_errors_t *errors)
 {
     decl_check_t check;
     decl_frame_t root;
 
-    check.diags = diags;
+    check.errors = errors;
     check.ok = true;
 
     if (is_empty(program->name) || is_empty(program->version))
     {
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0,
-                     DECL_PREFIX "program name and version are required");
+        clopts_errors_add(errors,
+                          DECL_PREFIX "program name and version are required");
         check.ok = false;
     }
 
     if (program->root == NULL)
     {
-        mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0, DECL_PREFIX "root command is required");
+        clopts_errors_add(errors, DECL_PREFIX "root command is required");
         return false;
     }
 
     /* ルートコマンドの経路上の名前はプログラム名。子を持たないルートコマンドも妥当な宣言である（1.4） */
     frame_init(&root, NULL, program->root, program->name);
     check_tree(&check, &root);
-    mnd_buf_free(&root.path);
+    clopts_buf_free(&root.path);
 
     return check.ok;
 }

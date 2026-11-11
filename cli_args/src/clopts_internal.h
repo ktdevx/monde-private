@@ -5,7 +5,6 @@
 
 #include "clopts/clopts.h"
 #include "clopts/errors.h"
-#include "foundation/diag.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -33,8 +32,8 @@ typedef struct mnd_args_ref
     size_t index;
 } mnd_args_ref_t;
 
-/* 宣言が妥当なら true。誤りごとに診断を追加して false を返す */
-bool mnd_args_decl_check(const mnd_args_program_t *program, mnd_diag_list_t *diags);
+/* 宣言が妥当なら true。誤りごとにエラーを追加して false を返す */
+bool mnd_args_decl_check(const mnd_args_program_t *program, clopts_errors_t *errors);
 
 /* parent の子コマンドを名前で探す。見つからなければ NULL */
 const mnd_args_command_t *mnd_args_find_child(const mnd_args_command_t *parent,

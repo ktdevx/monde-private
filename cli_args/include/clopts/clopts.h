@@ -1,7 +1,7 @@
 #ifndef MONDE_CLI_ARGS_ARGS_H
 #define MONDE_CLI_ARGS_ARGS_H
 
-#include "foundation/diag.h"
+#include "clopts/errors.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -73,9 +73,9 @@ typedef enum mnd_args_status
     MND_ARGS_HELP,           /* ヘルプの要求。対象は結果の経路の最後のコマンド */
     MND_ARGS_VERSION,        /* バージョンの要求 */
     MND_ARGS_NO_COMMAND,     /* 子を持つコマンドで子コマンドが指定されなかった。対象は経路の最後のコマンド */
-    MND_ARGS_USAGE_ERROR,    /* 利用者の入力の誤り。診断を 1 件追加済み */
-    MND_ARGS_DECL_ERROR,     /* 宣言の誤り（プログラムの不具合）。診断を 1 件以上追加済み */
-    MND_ARGS_OUT_OF_MEMORY   /* メモリ不足。診断を追加済み（記録できなければ dropped） */
+    MND_ARGS_USAGE_ERROR,    /* 利用者の入力の誤り。エラーを 1 件追加済み */
+    MND_ARGS_DECL_ERROR,     /* 宣言の誤り（プログラムの不具合）。エラーを 1 件以上追加済み */
+    MND_ARGS_OUT_OF_MEMORY   /* メモリ不足。エラーを 1 件追加済み（記録できなければ dropped） */
 } mnd_args_status_t;
 
 typedef struct mnd_args_value
@@ -130,9 +130,9 @@ const char *mnd_args_positional_at(const mnd_args_result_t *result, size_t index
 /*
  * argv[0] を読み飛ばし、argv[1]〜argv[argc - 1] を解析する。
  * result は初期化済みであること。以前の内容は解放してから書き込む。
- * 戻り値は result->status と同じ。
+ * 戻り値は result->status と同じ。エラーは errors の末尾に追加する（errors は初期化済みであること）。
  */
 mnd_args_status_t mnd_args_parse(const mnd_args_program_t *program, int argc, char *const *argv,
-                                 mnd_args_result_t *result, mnd_diag_list_t *diags);
+                                 mnd_args_result_t *result, clopts_errors_t *errors);
 
 #endif

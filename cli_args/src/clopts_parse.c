@@ -1,6 +1,6 @@
 #include "clopts/clopts.h"
 #include "clopts_internal.h"
-#include "foundation/buf.h"
+#include "clopts_buf.h"
 
 /* Parser: 引数列の走査と状態の決定 */
 
@@ -23,7 +23,7 @@ typedef enum mnd_args_error_kind
 } mnd_args_error_kind_t;
 
 /*
- * 保留した使い方の誤り。回復走査でヘルプの要求が見つかれば捨て、見つからなければ診断にする（7.4、8.3）。
+ * 保留した使い方の誤り。回復走査でヘルプの要求が見つかれば捨て、見つからなければエラーにする（7.4、8.3）。
  * arg は arg_len バイトの名前で、短いオプションの "-c" のように引数列の中に連続して現れない形は
  * arg_buf にコピーして指す
  */
@@ -48,7 +48,7 @@ typedef struct mnd_args_scan
     int next;                           /* 次に見るトークンの添字 */
     bool terminated;                    /* "--" を見た */
     mnd_args_result_t *result;
-    mnd_diag_list_t *diags;
+    clopts_errors_t *errors;
     mnd_args_pending_t pending;         /* 走査が MND_ARGS_USAGE_ERROR を返したときの最初の誤り */
 } mnd_args_scan_t;
 
@@ -58,14 +58,14 @@ static mnd_args_status_t finish(mnd_args_result_t *result, mnd_args_status_t sta
     return status;
 }
 
-static mnd_args_status_t out_of_memory(mnd_args_result_t *result, mnd_diag_list_t *diags)
+static mnd_args_status_t out_of_memory(mnd_args_result_t *result, clopts_errors_t *errors)
 {
-    mnd_diag_add(diags, MND_SEVERITY_ERROR, NULL, 0, "out of memory while parsing arguments");
+    clopts_errors_add(errors, "out of memory while parsing arguments");
     return finish(result, MND_ARGS_OUT_OF_MEMORY);
 }
 
 /*
- * 診断に示す名前の長さ。"%.*s" の精度は int なので、それを超える長さは int の最大値に切り詰める
+ * エラーのメッセージに示す名前の長さ。"%.*s" の精度は int なので、それを超える長さは int の最大値に切り詰める
  * （引数の長さがそこまで達することは実際にはない）
  */
 static int name_precision(size_t len)
@@ -79,7 +79,7 @@ static int name_precision(size_t len)
 }
 
 /*
- * 最初の誤りを保留する。診断はまだ追加しない。
+ * 最初の誤りを保留する。エラーはまだ追加しない。
  * 戻り値は常に MND_ARGS_USAGE_ERROR で、走査を終えるために呼び出し元へそのまま返す
  */
 static mnd_args_status_t scan_error(mnd_args_scan_t *scan, mnd_args_error_kind_t kind,
@@ -105,20 +105,20 @@ static mnd_args_status_t scan_error(mnd_args_scan_t *scan, mnd_args_error_kind_t
 }
 
 /* 経路の文字列（プログラム名に、段 1 以降のコマンド名を空白 1 つで区切って続けたもの）を out に追加する */
-static bool append_path(const mnd_args_scan_t *scan, mnd_buf_t *out)
+static bool append_path(const mnd_args_scan_t *scan, clopts_buf_t *out)
 {
     const mnd_args_result_t *result = scan->result;
     size_t level;
 
-    if (!mnd_buf_append_str(out, scan->program->name))
+    if (!clopts_buf_append_str(out, scan->program->name))
     {
         return false;
     }
 
     for (level = 1; level < result->level_count; level++)
     {
-        if (!mnd_buf_append_byte(out, ' ')
-            || !mnd_buf_append_str(out, result->levels[level].command->name))
+        if (!clopts_buf_append_byte(out, ' ')
+            || !clopts_buf_append_str(out, result->levels[level].command->name))
         {
             return false;
         }
@@ -127,60 +127,60 @@ static bool append_path(const mnd_args_scan_t *scan, mnd_buf_t *out)
     return true;
 }
 
-/* 保留した誤りを、誤りを保留した時点の経路の接頭辞を付けた診断として 1 件追加する（7.2） */
+/* 保留した誤りを、誤りを保留した時点の経路の接頭辞を付けたエラーとして 1 件追加する（7.2） */
 static mnd_args_status_t report_pending(mnd_args_scan_t *scan)
 {
     const mnd_args_pending_t *pending = &scan->pending;
-    mnd_buf_t path = MND_BUF_INIT;
+    clopts_buf_t path = CLOPTS_BUF_INIT;
     const char *prefix;
     int len = name_precision(pending->arg_len);
 
     if (!append_path(scan, &path))
     {
-        mnd_buf_free(&path);
-        return out_of_memory(scan->result, scan->diags);
+        clopts_buf_free(&path);
+        return out_of_memory(scan->result, scan->errors);
     }
 
-    prefix = mnd_buf_cstr(&path);
+    prefix = clopts_buf_cstr(&path);
 
     switch (pending->kind)
     {
     case MND_ARGS_ERR_UNKNOWN_OPTION:
-        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0, "%s: unknown option '%.*s'",
-                     prefix, len, pending->arg);
+        clopts_errors_add(scan->errors, "%s: unknown option '%.*s'",
+                          prefix, len, pending->arg);
         break;
     case MND_ARGS_ERR_REQUIRES_VALUE:
-        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
-                     "%s: option '%.*s' requires a value", prefix, len, pending->arg);
+        clopts_errors_add(scan->errors,
+                          "%s: option '%.*s' requires a value", prefix, len, pending->arg);
         break;
     case MND_ARGS_ERR_TAKES_NO_VALUE:
-        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
-                     "%s: option '%.*s' does not take a value", prefix, len, pending->arg);
+        clopts_errors_add(scan->errors,
+                          "%s: option '%.*s' does not take a value", prefix, len, pending->arg);
         break;
     case MND_ARGS_ERR_EMPTY_ITEM:
-        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
-                     "%s: option '%.*s' has an empty item in '%s'", prefix, len, pending->arg,
-                     pending->value);
+        clopts_errors_add(scan->errors,
+                          "%s: option '%.*s' has an empty item in '%s'", prefix, len, pending->arg,
+                          pending->value);
         break;
     case MND_ARGS_ERR_MISSING_ARGUMENT:
-        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0, "%s: missing argument <%.*s>",
-                     prefix, len, pending->arg);
+        clopts_errors_add(scan->errors, "%s: missing argument <%.*s>",
+                          prefix, len, pending->arg);
         break;
     case MND_ARGS_ERR_UNEXPECTED:
-        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0, "%s: unexpected argument '%.*s'",
-                     prefix, len, pending->arg);
+        clopts_errors_add(scan->errors, "%s: unexpected argument '%.*s'",
+                          prefix, len, pending->arg);
         break;
     case MND_ARGS_ERR_MISSING_REQUIRED:
-        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
-                     "%s: missing required option '--%.*s'", prefix, len, pending->arg);
+        clopts_errors_add(scan->errors,
+                          "%s: missing required option '--%.*s'", prefix, len, pending->arg);
         break;
     case MND_ARGS_ERR_UNKNOWN_COMMAND:
-        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0, "%s: unknown command '%.*s'",
-                     prefix, len, pending->arg);
+        clopts_errors_add(scan->errors, "%s: unknown command '%.*s'",
+                          prefix, len, pending->arg);
         break;
     }
 
-    mnd_buf_free(&path);
+    clopts_buf_free(&path);
 
     return finish(scan->result, MND_ARGS_USAGE_ERROR);
 }
@@ -203,7 +203,7 @@ static mnd_args_status_t scan_record_value(mnd_args_scan_t *scan, mnd_args_ref_t
     status = mnd_args_result_append_list(scan->result, ref, value, true);
     if (status == MND_ARGS_OUT_OF_MEMORY)
     {
-        return out_of_memory(scan->result, scan->diags);
+        return out_of_memory(scan->result, scan->errors);
     }
 
     if (status != MND_ARGS_OK)
@@ -361,7 +361,7 @@ static mnd_args_status_t scan_positional(mnd_args_scan_t *scan, const char *toke
 
     if (!mnd_args_result_add_positional(scan->result, token))
     {
-        return out_of_memory(scan->result, scan->diags);
+        return out_of_memory(scan->result, scan->errors);
     }
 
     return MND_ARGS_OK;
@@ -393,7 +393,7 @@ static mnd_args_status_t scan_help_word(mnd_args_scan_t *scan)
             {
                 if (!mnd_args_result_push(scan->result, command))
                 {
-                    return out_of_memory(scan->result, scan->diags);
+                    return out_of_memory(scan->result, scan->errors);
                 }
 
                 continue;
@@ -440,7 +440,7 @@ static mnd_args_status_t scan_operand(mnd_args_scan_t *scan, const char *token)
 
     if (!mnd_args_result_push(scan->result, command))
     {
-        return out_of_memory(scan->result, scan->diags);
+        return out_of_memory(scan->result, scan->errors);
     }
 
     return MND_ARGS_OK;
@@ -590,7 +590,7 @@ static mnd_args_status_t post_check(mnd_args_scan_t *scan)
 
 /*
  * トークンを走査し、状態を決める（「走査の後の検査と優先順位」の節）。
- * 使い方の誤りの診断は、ヘルプの要求がないと決まってから 1 件だけ追加する。
+ * 使い方の誤りのエラーは、ヘルプの要求がないと決まってから 1 件だけ追加する。
  * 回復走査は、誤りを検出した時点で選択中のコマンドが末端コマンド（末端コマンドのルートを含む）の
  * 場合だけ行う。子を持つコマンドが選択中の誤りは、後ろに --help があっても報告する（8.3、8.10）
  */
@@ -629,20 +629,20 @@ static mnd_args_status_t scan_command(mnd_args_scan_t *scan)
     status = mnd_args_result_apply_defaults(scan->result);
     if (status == MND_ARGS_OUT_OF_MEMORY)
     {
-        return out_of_memory(scan->result, scan->diags);
+        return out_of_memory(scan->result, scan->errors);
     }
 
     return finish(scan->result, status);
 }
 
 mnd_args_status_t mnd_args_parse(const mnd_args_program_t *program, int argc, char *const *argv,
-                                 mnd_args_result_t *result, mnd_diag_list_t *diags)
+                                 mnd_args_result_t *result, clopts_errors_t *errors)
 {
     mnd_args_scan_t scan;
 
     mnd_args_result_free(result);
 
-    if (!mnd_args_decl_check(program, diags))
+    if (!mnd_args_decl_check(program, errors))
     {
         return finish(result, MND_ARGS_DECL_ERROR);
     }
@@ -651,7 +651,7 @@ mnd_args_status_t mnd_args_parse(const mnd_args_program_t *program, int argc, ch
     result->program = program;
     if (!mnd_args_result_push(result, program->root))
     {
-        return out_of_memory(result, diags);
+        return out_of_memory(result, errors);
     }
 
     scan.program = program;
@@ -660,7 +660,7 @@ mnd_args_status_t mnd_args_parse(const mnd_args_program_t *program, int argc, ch
     scan.next = 1;
     scan.terminated = false;
     scan.result = result;
-    scan.diags = diags;
+    scan.errors = errors;
     memset(&scan.pending, 0, sizeof scan.pending);
 
     return scan_command(&scan);

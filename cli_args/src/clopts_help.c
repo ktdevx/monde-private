@@ -1,6 +1,8 @@
 #include "clopts/help.h"
+#include "clopts_buf.h"
 #include "clopts_internal.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 /* HelpFormatter: 解析結果の経路が指すコマンドのヘルプ、バージョン、使い方の案内、経路の文字列 */
@@ -22,13 +24,13 @@ static bool has_text(const char *text)
     return (text != NULL) && (text[0] != '\0');
 }
 
-static bool append_spaces(mnd_buf_t *out, size_t count)
+static bool append_spaces(clopts_buf_t *out, size_t count)
 {
     size_t i;
 
     for (i = 0; i < count; i++)
     {
-        if (!mnd_buf_append_byte(out, ' '))
+        if (!clopts_buf_append_byte(out, ' '))
         {
             return false;
         }
@@ -38,49 +40,49 @@ static bool append_spaces(mnd_buf_t *out, size_t count)
 }
 
 /* 左列の後ろに空白を補い、説明の開始位置を 2 + max_width + 2 バイト目に揃える */
-static bool append_pad(mnd_buf_t *out, size_t left_width, size_t max_width)
+static bool append_pad(clopts_buf_t *out, size_t left_width, size_t max_width)
 {
     return append_spaces(out, (max_width - left_width) + HELP_GAP);
 }
 
 /* 説明があれば揃えて追加し、行を終える。説明がなければ末尾に空白を出さない */
-static bool finish_row(mnd_buf_t *out, size_t left_width, size_t max_width, const char *text)
+static bool finish_row(clopts_buf_t *out, size_t left_width, size_t max_width, const char *text)
 {
     if (has_text(text))
     {
-        if (!append_pad(out, left_width, max_width) || !mnd_buf_append_str(out, text))
+        if (!append_pad(out, left_width, max_width) || !clopts_buf_append_str(out, text))
         {
             return false;
         }
     }
 
-    return mnd_buf_append_byte(out, '\n');
+    return clopts_buf_append_byte(out, '\n');
 }
 
 /* 左列が文字列そのものである行 */
-static bool append_text_row(mnd_buf_t *out, const char *left, size_t max_width, const char *text)
+static bool append_text_row(clopts_buf_t *out, const char *left, size_t max_width, const char *text)
 {
-    return append_spaces(out, HELP_INDENT) && mnd_buf_append_str(out, left)
+    return append_spaces(out, HELP_INDENT) && clopts_buf_append_str(out, left)
            && finish_row(out, strlen(left), max_width, text);
 }
 
 /* 段落を始める。見出しの前に空行を置く */
-static bool append_heading(mnd_buf_t *out, const char *heading)
+static bool append_heading(clopts_buf_t *out, const char *heading)
 {
-    return mnd_buf_append_byte(out, '\n') && mnd_buf_append_str(out, heading)
-           && mnd_buf_append_byte(out, '\n');
+    return clopts_buf_append_byte(out, '\n') && clopts_buf_append_str(out, heading)
+           && clopts_buf_append_byte(out, '\n');
 }
 
 /* 説明の段落（前に空行、後ろに改行）。説明が NULL または空なら何も出さない */
-static bool append_description(mnd_buf_t *out, const char *description)
+static bool append_description(clopts_buf_t *out, const char *description)
 {
     if (!has_text(description))
     {
         return true;
     }
 
-    return mnd_buf_append_byte(out, '\n') && mnd_buf_append_str(out, description)
-           && mnd_buf_append_byte(out, '\n');
+    return clopts_buf_append_byte(out, '\n') && clopts_buf_append_str(out, description)
+           && clopts_buf_append_byte(out, '\n');
 }
 
 /* オプションの左列: "-c, --name" または "    --name" に、値 " <VALUE>"、リスト値 " <VALUE>[,<VALUE>...]" を続ける */
@@ -104,62 +106,62 @@ static size_t option_left_width(const mnd_args_option_t *option)
     return width;
 }
 
-static bool append_option_left(mnd_buf_t *out, const mnd_args_option_t *option)
+static bool append_option_left(clopts_buf_t *out, const mnd_args_option_t *option)
 {
     const char *value_name;
     bool ok;
 
     if (option->short_name != '\0')
     {
-        ok = mnd_buf_append_byte(out, '-') && mnd_buf_append_byte(out, (unsigned char)option->short_name)
-             && mnd_buf_append_str(out, ", ");
+        ok = clopts_buf_append_byte(out, '-') && clopts_buf_append_byte(out, (unsigned char)option->short_name)
+             && clopts_buf_append_str(out, ", ");
     }
     else
     {
         ok = append_spaces(out, 4);
     }
-    ok = ok && mnd_buf_append_str(out, "--") && mnd_buf_append_str(out, option->long_name);
+    ok = ok && clopts_buf_append_str(out, "--") && clopts_buf_append_str(out, option->long_name);
     if (!ok || (option->kind == MND_ARGS_FLAG))
     {
         return ok;
     }
 
     value_name = mnd_args_value_name(option);
-    ok = mnd_buf_append_str(out, " <") && mnd_buf_append_str(out, value_name) && mnd_buf_append_byte(out, '>');
+    ok = clopts_buf_append_str(out, " <") && clopts_buf_append_str(out, value_name) && clopts_buf_append_byte(out, '>');
     if (ok && (option->kind == MND_ARGS_LIST))
     {
-        ok = mnd_buf_append_str(out, "[,<") && mnd_buf_append_str(out, value_name)
-             && mnd_buf_append_str(out, ">...]");
+        ok = clopts_buf_append_str(out, "[,<") && clopts_buf_append_str(out, value_name)
+             && clopts_buf_append_str(out, ">...]");
     }
 
     return ok;
 }
 
 /* 説明と注記 " (required)"、" (default: X)"。説明がなければ注記の先頭の空白を出さない */
-static bool append_option_text(mnd_buf_t *out, const mnd_args_option_t *option)
+static bool append_option_text(clopts_buf_t *out, const mnd_args_option_t *option)
 {
     bool has_help = has_text(option->help);
     bool ok = true;
 
     if (has_help)
     {
-        ok = mnd_buf_append_str(out, option->help);
+        ok = clopts_buf_append_str(out, option->help);
     }
     if (ok && option->required)
     {
-        ok = mnd_buf_append_str(out, has_help ? " (required)" : "(required)");
+        ok = clopts_buf_append_str(out, has_help ? " (required)" : "(required)");
         has_help = true;
     }
     if (ok && (option->default_value != NULL))
     {
-        ok = mnd_buf_append_str(out, has_help ? " (default: " : "(default: ")
-             && mnd_buf_append_str(out, option->default_value) && mnd_buf_append_byte(out, ')');
+        ok = clopts_buf_append_str(out, has_help ? " (default: " : "(default: ")
+             && clopts_buf_append_str(out, option->default_value) && clopts_buf_append_byte(out, ')');
     }
 
     return ok;
 }
 
-static bool append_option_row(mnd_buf_t *out, const mnd_args_option_t *option, size_t max_width)
+static bool append_option_row(clopts_buf_t *out, const mnd_args_option_t *option, size_t max_width)
 {
     size_t left_width = option_left_width(option);
 
@@ -176,11 +178,11 @@ static bool append_option_row(mnd_buf_t *out, const mnd_args_option_t *option, s
         }
     }
 
-    return mnd_buf_append_byte(out, '\n');
+    return clopts_buf_append_byte(out, '\n');
 }
 
 /* 位置引数の使い方: 必須は <NAME>、省略可は [<NAME>]、上限なしの最後は <NAME>... または [<NAME>...] */
-static bool append_positional_usage(mnd_buf_t *out, const mnd_args_command_t *command)
+static bool append_positional_usage(clopts_buf_t *out, const mnd_args_command_t *command)
 {
     size_t i;
 
@@ -188,13 +190,13 @@ static bool append_positional_usage(mnd_buf_t *out, const mnd_args_command_t *co
     {
         bool optional = (i >= command->min_positionals);
         bool repeated = (command->max_positionals == MND_ARGS_UNLIMITED) && (i + 1 == command->positional_count);
-        bool ok = mnd_buf_append_byte(out, ' ');
+        bool ok = clopts_buf_append_byte(out, ' ');
 
-        ok = ok && (!optional || mnd_buf_append_byte(out, '['));
-        ok = ok && mnd_buf_append_byte(out, '<') && mnd_buf_append_str(out, mnd_args_positional_name(command, i))
-             && mnd_buf_append_byte(out, '>');
-        ok = ok && (!repeated || mnd_buf_append_str(out, "..."));
-        ok = ok && (!optional || mnd_buf_append_byte(out, ']'));
+        ok = ok && (!optional || clopts_buf_append_byte(out, '['));
+        ok = ok && clopts_buf_append_byte(out, '<') && clopts_buf_append_str(out, mnd_args_positional_name(command, i))
+             && clopts_buf_append_byte(out, '>');
+        ok = ok && (!repeated || clopts_buf_append_str(out, "..."));
+        ok = ok && (!optional || clopts_buf_append_byte(out, ']'));
         if (!ok)
         {
             return false;
@@ -222,19 +224,19 @@ static const char *command_description(const mnd_args_command_t *command)
 }
 
 /* 経路の文字列: プログラム名に、段 1 以降のコマンド名を空白 1 つで区切って続ける */
-static bool append_path(const mnd_args_result_t *result, mnd_buf_t *out)
+static bool append_path(const mnd_args_result_t *result, clopts_buf_t *out)
 {
     size_t level;
 
-    if (!mnd_buf_append_str(out, result->program->name))
+    if (!clopts_buf_append_str(out, result->program->name))
     {
         return false;
     }
 
     for (level = 1; level < result->level_count; level++)
     {
-        if (!mnd_buf_append_byte(out, ' ')
-            || !mnd_buf_append_str(out, result->levels[level].command->name))
+        if (!clopts_buf_append_byte(out, ' ')
+            || !clopts_buf_append_str(out, result->levels[level].command->name))
         {
             return false;
         }
@@ -250,31 +252,31 @@ static size_t wider(size_t max_width, size_t width)
 }
 
 /* 使い方の行（9.1、9.2、9.3）。子を持つコマンドでは、有効なオプションがあるときだけ経路の直後に " [<options>]" */
-static bool append_usage_line(const mnd_args_result_t *result, mnd_buf_t *out)
+static bool append_usage_line(const mnd_args_result_t *result, clopts_buf_t *out)
 {
     const mnd_args_command_t *command = selected_command(result);
 
-    if (!mnd_buf_append_str(out, "Usage: ") || !append_path(result, out))
+    if (!clopts_buf_append_str(out, "Usage: ") || !append_path(result, out))
     {
         return false;
     }
 
     if (command->command_count > 0)
     {
-        if ((mnd_args_effective_count(result) > 0) && !mnd_buf_append_str(out, " [<options>]"))
+        if ((mnd_args_effective_count(result) > 0) && !clopts_buf_append_str(out, " [<options>]"))
         {
             return false;
         }
 
-        return mnd_buf_append_str(out, " <command> [<options>] [<arguments>]\n");
+        return clopts_buf_append_str(out, " <command> [<options>] [<arguments>]\n");
     }
 
-    return mnd_buf_append_str(out, " [<options>]") && append_positional_usage(out, command)
-           && mnd_buf_append_byte(out, '\n');
+    return clopts_buf_append_str(out, " [<options>]") && append_positional_usage(out, command)
+           && clopts_buf_append_byte(out, '\n');
 }
 
 /* Commands: の段落。子コマンドの一覧の末尾に help の行（9.2） */
-static bool append_commands_section(const mnd_args_command_t *command, mnd_buf_t *out)
+static bool append_commands_section(const mnd_args_command_t *command, clopts_buf_t *out)
 {
     size_t max_width = strlen(HELP_COMMAND_NAME);
     size_t i;
@@ -303,7 +305,7 @@ static bool append_commands_section(const mnd_args_command_t *command, mnd_buf_t
 }
 
 /* Arguments: の段落（9.3）。位置引数がなければ何も出さない */
-static bool append_arguments_section(const mnd_args_command_t *command, mnd_buf_t *out)
+static bool append_arguments_section(const mnd_args_command_t *command, clopts_buf_t *out)
 {
     size_t max_width = 0;
     size_t i;
@@ -326,8 +328,8 @@ static bool append_arguments_section(const mnd_args_command_t *command, mnd_buf_
     for (i = 0; i < command->positional_count; i++)
     {
         const mnd_args_positional_t *positional = &command->positionals[i];
-        bool ok = append_spaces(out, HELP_INDENT) && mnd_buf_append_byte(out, '<')
-                  && mnd_buf_append_str(out, positional->name) && mnd_buf_append_byte(out, '>')
+        bool ok = append_spaces(out, HELP_INDENT) && clopts_buf_append_byte(out, '<')
+                  && clopts_buf_append_str(out, positional->name) && clopts_buf_append_byte(out, '>')
                   && finish_row(out, strlen(positional->name) + 2, max_width, positional->help);
 
         if (!ok)
@@ -343,7 +345,7 @@ static bool append_arguments_section(const mnd_args_command_t *command, mnd_buf_
  * Options: の段落（9.1、9.4〜9.8）。有効なオプション（そのコマンドのオプション、親から祖先へ向かう順の
  * 引き継いだオプション）、-h, --help、ルートコマンドでは --version の順に並べる
  */
-static bool append_options_section(const mnd_args_result_t *result, mnd_buf_t *out)
+static bool append_options_section(const mnd_args_result_t *result, clopts_buf_t *out)
 {
     size_t option_count = mnd_args_effective_count(result);
     bool is_root = (result->level_count == 1);
@@ -387,7 +389,7 @@ static bool append_options_section(const mnd_args_result_t *result, mnd_buf_t *o
  * コマンドのヘルプは 1 つの書式で、要素をコマンドの性質で決める: 子を持つコマンドは Commands: と末尾の案内、
  * 末端コマンドは Arguments:、ルートコマンドは --version の行を持つ
  */
-bool mnd_args_format_help(const mnd_args_result_t *result, mnd_buf_t *out)
+static bool append_help(const mnd_args_result_t *result, clopts_buf_t *out)
 {
     const mnd_args_command_t *command = selected_command(result);
     bool has_children = (command->command_count > 0);
@@ -419,23 +421,66 @@ bool mnd_args_format_help(const mnd_args_result_t *result, mnd_buf_t *out)
         return true;
     }
 
-    return mnd_buf_append_str(out, "\nRun '") && append_path(result, out)
-           && mnd_buf_append_str(out, " <command> --help' for help on a command.\n");
+    return clopts_buf_append_str(out, "\nRun '") && append_path(result, out)
+           && clopts_buf_append_str(out, " <command> --help' for help on a command.\n");
 }
 
-bool mnd_args_format_version(const mnd_args_program_t *program, mnd_buf_t *out)
+static bool append_version(const mnd_args_program_t *program, clopts_buf_t *out)
 {
-    return mnd_buf_append_str(out, program->name) && mnd_buf_append_byte(out, ' ')
-           && mnd_buf_append_str(out, program->version) && mnd_buf_append_byte(out, '\n');
+    return clopts_buf_append_str(out, program->name) && clopts_buf_append_byte(out, ' ')
+           && clopts_buf_append_str(out, program->version) && clopts_buf_append_byte(out, '\n');
 }
 
-bool mnd_args_format_usage_hint(const mnd_args_result_t *result, mnd_buf_t *out)
+static bool append_usage_hint(const mnd_args_result_t *result, clopts_buf_t *out)
 {
-    return mnd_buf_append_str(out, "Run '") && append_path(result, out)
-           && mnd_buf_append_str(out, " --help' for usage.\n");
+    return clopts_buf_append_str(out, "Run '") && append_path(result, out)
+           && clopts_buf_append_str(out, " --help' for usage.\n");
 }
 
-bool mnd_args_format_path(const mnd_args_result_t *result, mnd_buf_t *out)
+/* 組み立てに成功したら、内容を確保した文字列として返す。失敗（メモリ不足）なら NULL を返す */
+static char *finish_text(clopts_buf_t *buf, bool ok)
 {
-    return append_path(result, out);
+    char *text = NULL;
+
+    if (ok)
+    {
+        text = clopts_buf_take(buf);
+    }
+
+    clopts_buf_free(buf);
+
+    return text;
+}
+
+char *mnd_args_format_help(const mnd_args_result_t *result)
+{
+    clopts_buf_t buf = CLOPTS_BUF_INIT;
+
+    return finish_text(&buf, append_help(result, &buf));
+}
+
+char *mnd_args_format_version(const mnd_args_program_t *program)
+{
+    clopts_buf_t buf = CLOPTS_BUF_INIT;
+
+    return finish_text(&buf, append_version(program, &buf));
+}
+
+char *mnd_args_format_usage_hint(const mnd_args_result_t *result)
+{
+    clopts_buf_t buf = CLOPTS_BUF_INIT;
+
+    return finish_text(&buf, append_usage_hint(result, &buf));
+}
+
+char *mnd_args_format_path(const mnd_args_result_t *result)
+{
+    clopts_buf_t buf = CLOPTS_BUF_INIT;
+
+    return finish_text(&buf, append_path(result, &buf));
+}
+
+void mnd_args_text_free(char *text)
+{
+    free(text);
 }
