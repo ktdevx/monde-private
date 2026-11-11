@@ -270,6 +270,23 @@ NAOS_TEST(inherited_negatable_flag_is_reset_after_command_name)
     run_free(&run);
 }
 
+/* 別名との合算（15.2、17.3）。別名による指定も元の名前の回数に数え、別名の名前では 0 になる（17.8） */
+
+NAOS_TEST(alias_occurrences_are_summed_with_long_and_short_names)
+{
+    static const char *const tokens[] = {"ext", "-v", "--chatty", "run", "--token", "t",
+                                         "--verbose"};
+    count_run_t run;
+
+    run_parse(&run, 7, tokens);
+    check_ok(&run, test_ext_run);
+    NAOS_CHECK_UINT_EQ(3, clopts_flag_count(&run.result, "verbose"));
+    NAOS_CHECK_TRUE(clopts_flag(&run.result, "verbose"));
+    NAOS_CHECK_UINT_EQ(0, clopts_flag_count(&run.result, "chatty"));
+    NAOS_CHECK_FALSE(clopts_flag(&run.result, "chatty"));
+    run_free(&run);
+}
+
 /* 0 を返す場合（15.7、17.8） */
 
 NAOS_TEST(value_and_list_options_count_zero)
@@ -412,6 +429,7 @@ NAOS_SUITE(count,
     NAOS_ADD_TEST(negated_default_enabled_flag_counts_zero),
     NAOS_ADD_TEST(inherited_flag_is_summed_across_command_names),
     NAOS_ADD_TEST(inherited_negatable_flag_is_reset_after_command_name),
+    NAOS_ADD_TEST(alias_occurrences_are_summed_with_long_and_short_names),
     NAOS_ADD_TEST(value_and_list_options_count_zero),
     NAOS_ADD_TEST(defaulted_value_and_list_options_count_zero),
     NAOS_ADD_TEST(undeclared_alias_and_null_names_count_zero),

@@ -694,11 +694,76 @@ typedef struct clopts_name_key
     size_t len;
 } clopts_name_key_t;
 
+/* 名前の 1 つ。NUL で終わるとは限らない（別名はカンマ区切りの文字列の一部を指す） */
+typedef struct clopts_name
+{
+    const char *bytes;
+    size_t len;
+} clopts_name_t;
+
+/*
+ * option の n 番目の名前を *name に入れて true。0 番目は long_name、1 番目以降は aliases を
+ * カンマで区切った項目（空の項目も 1 つの名前として返す）。n が名前の数以上なら false。
+ * long_name が NULL なら、0 番目は長さ 0 の名前とする。確保は行わない
+ */
+static bool option_name_at(const clopts_option_t *option, size_t n, clopts_name_t *name)
+{
+    const char *item;
+    const char *end;
+    size_t i;
+
+    if (n == 0)
+    {
+        name->bytes = shown(option->long_name);
+        name->len = strlen(name->bytes);
+        return true;
+    }
+
+    if (option->aliases == NULL)
+    {
+        return false;
+    }
+
+    item = option->aliases;
+    for (i = 1; i < n; ++i)
+    {
+        item = strchr(item, ',');
+        if (item == NULL)
+        {
+            return false;
+        }
+
+        ++item;
+    }
+
+    end = strchr(item, ',');
+    name->bytes = item;
+    name->len = (end != NULL) ? (size_t)(end - item) : strlen(item);
+    return true;
+}
+
+/* 長い名前と別名のどれかが、キーの名前とバイト単位で完全に一致するなら true（17.2、17.6） */
 static bool match_long(const clopts_option_t *option, const void *key)
 {
-    const clopts_name_key_t *name = (const clopts_name_key_t *)key;
+    const clopts_name_key_t *wanted = (const clopts_name_key_t *)key;
+    clopts_name_t name;
+    size_t n;
 
-    return name_matches(option->long_name, name->name, name->len);
+    for (n = 0; option_name_at(option, n, &name); ++n)
+    {
+        /* 長い名前のないオプション（妥当でない宣言）は、空の名前にも一致させない */
+        if ((n == 0) && (option->long_name == NULL))
+        {
+            continue;
+        }
+
+        if ((name.len == wanted->len) && (memcmp(name.bytes, wanted->name, name.len) == 0))
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static bool match_short(const clopts_option_t *option, const void *key)
