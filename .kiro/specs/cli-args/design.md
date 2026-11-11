@@ -362,7 +362,7 @@ stateDiagram-v2
 | 14.15 | 指定がなければ既定の状態を返す | ResultStore | `clopts_result_apply_defaults`、`clopts_flag` | 走査の後の検査 |
 | 14.17 | ヘルプに既定で有効を示す | HelpFormatter | `clopts_format_help` | — |
 | 15.1〜15.7 | フラグの出現回数 | 型（clopts.h）、ResultStore | `clopts_value_t.count`、`clopts_flag_count` | 改訂（2026-11-11）: 出現回数、隠しオプション、別名の「Requirements Traceability」 |
-| 16.1〜16.7 | 隠しオプション | 型（clopts.h）、DeclCheck、HelpFormatter | `clopts_option_t.hidden` | 同上 |
+| 16.1〜16.8 | 隠しオプション | 型（clopts.h）、DeclCheck、HelpFormatter | `clopts_option_t.hidden` | 同上 |
 | 17.1〜17.14 | オプションの別名 | 型（clopts.h）、DeclCheck | `clopts_option_t.aliases`、`clopts_find_long` | 同上 |
 
 ## Components and Interfaces
@@ -1188,7 +1188,7 @@ cli_args/
     ├── test_decl.h               # 変更: 架空のプログラム ext の宣言
     ├── test_decl.c               # 変更: 同上の定義
     ├── count_test.c              # 新規: スイート count（15.1〜15.7）
-    ├── hidden_test.c             # 新規: スイート hidden（16.1〜16.5、16.7）。ファイル内の宣言 solo を含む
+    ├── hidden_test.c             # 新規: スイート hidden（16.1〜16.5、16.7、16.8）。ファイル内の宣言 solo を含む
     ├── alias_test.c              # 新規: スイート alias（17.1〜17.11）
     └── decl_test.c               # 変更: 隠しオプションと別名に関する宣言の誤り（16.6、17.12〜17.14）
 ```
@@ -1295,7 +1295,7 @@ size_t clopts_flag_count(const clopts_result_t *result, const char *long_name);
 ### ヘルプ
 
 - **オプションの一覧**: 有効なオプションのうち、`hidden` が真のものを、列幅の計算と行の出力の両方で飛ばす。引き継いだオプションも同じ列挙を通るので、子孫のコマンドのヘルプからも消える（16.2、16.3）。`-h, --help` の行と、ルートコマンドの `--version` の行は、宣言されたオプションではないので常に出す（16.7）。
-- **使い方の行**: 子を持つコマンドの、経路の直後の ` [<options>]` は、「有効なオプションが 1 つ以上あるとき」ではなく「**隠しオプションではない**有効なオプションが 1 つ以上あるとき」に出す。隠しオプションしか持たないコマンドのヘルプを、オプションを 1 つも宣言しないコマンドのヘルプと同じにするためである。末端コマンドの ` [<options>]` は、改訂前から常に出しているので変えない。
+- **使い方の行**: 子を持つコマンドの、経路の直後の ` [<options>]` は、「有効なオプションが 1 つ以上あるとき」ではなく「**隠しオプションではない**有効なオプションが 1 つ以上あるとき」に出す。隠しオプションしか持たないコマンドのヘルプを、オプションを 1 つも宣言しないコマンドのヘルプと同じにするためである（16.8）。末端コマンドの ` [<options>]` は、改訂前から常に出しているので変えない。
 - **別名**: ヘルプの左列は `long_name` だけから作るので、別名は出ない（17.11）。変更は要らない。
 - 隠しオプションを含まないコマンドのヘルプは、1 バイトも変わらない（1.12）。
 
@@ -1343,7 +1343,7 @@ Options:
 | 15.4 | 指定がなければ 0、既定で有効なら 1 | ResultStore | `clopts_result_apply_defaults` | 走査の後の検査 |
 | 15.6 | 回数が 1 以上であることと有効であることの一致 | ResultStore | `clopts_value_t.count`、`clopts_value_t.enabled` | — |
 | 16.1 | ヘルプに出さないかの宣言 | 型（clopts.h） | `clopts_option_t.hidden` | — |
-| 16.2, 16.3, 16.7 | 一覧と列幅から除く。組み込みのオプションは出す | HelpFormatter | `clopts_format_help` | この節の「ヘルプ」 |
+| 16.2, 16.3, 16.7, 16.8 | 一覧と列幅から除く。組み込みのオプションは出す。使い方の行の判定からも除く | HelpFormatter | `clopts_format_help` | この節の「ヘルプ」 |
 | 16.4, 16.5 | 解析とエラーは同じ | Parser、ResultStore | 変更なし（`hidden` を見ない） | — |
 | 16.6 | 必須かつ隠しは宣言の誤り | DeclCheck | `clopts_decl_check` | 解析の最初 |
 | 17.1 | 別名の宣言 | 型（clopts.h） | `clopts_option_t.aliases` | — |
@@ -1362,7 +1362,7 @@ Options:
 | DeclCheck（`clopts_decl.c`） | 名前の列挙、別名の照合、別名の検査、必須かつ隠しの検査 | 16.6, 17.2, 17.4, 17.5, 17.12〜17.14 |
 | ResultStore（`clopts_result.c`） | `count` の記録、既定の適用、`clopts_flag_count` | 15.1〜15.7, 17.3 |
 | Parser（`clopts_parse.c`） | 変更なし | 16.4, 16.5, 17.9, 17.10 |
-| HelpFormatter（`clopts_help.c`） | 一覧と使い方の行で隠しオプションを除く | 16.2, 16.3, 16.7, 17.11 |
+| HelpFormatter（`clopts_help.c`） | 一覧と使い方の行で隠しオプションを除く | 16.2, 16.3, 16.7, 16.8, 17.11 |
 | CLOptsTests（`cli_args/tests/`） | プログラム `ext`、スイート count、hidden、alias、decl の追加 | 11.1, 15.1〜17.14 |
 
 #### DeclCheck
@@ -1442,7 +1442,7 @@ size_t clopts_flag_count(const clopts_result_t *result, const char *long_name);
   - ルートと `run` のどちらにも `--trace` が出ないこと（引き継ぐ隠しオプション。16.2）。
   - `run` の一覧に `--jobs` が出ず、説明の開始位置が `--jobs` の行を除いた最大幅に揃うこと（16.3）。
   - `-h, --help` と、ルートの `--version` が出ること（16.7）。
-  - `solo` の使い方の行が `Usage: solo <command> [<options>] [<arguments>]` で、経路の直後の ` [<options>]` がないこと。`Options:` の段落が `-h, --help` と `--version` の行だけになること。`ext` のルートコマンドでは、経路の直後の ` [<options>]` が出ること。
+  - `solo` の使い方の行が `Usage: solo <command> [<options>] [<arguments>]` で、経路の直後の ` [<options>]` がないこと（16.8）。`Options:` の段落が `-h, --help` と `--version` の行だけになること。`ext` のルートコマンドでは、経路の直後の ` [<options>]` が出ること。
   - `solo --dump state` が成功し、`dump` が有効になること（隠しオプションしかないコマンドでも解析は同じ）。
 - 解析: `ext --trace run --token t --jobs 4` で `trace` が有効、`jobs` が `4` になること。`ext run --token t` で `jobs` が既定値 `1` になること。`ext run --token t -j2` の短い名前も働くこと（16.4）。
 - エラー: `ext run --token t --jobs` が `ext run: option '--jobs' requires a value`、`ext --trace=1 run` が `ext: option '--trace' does not take a value`、`ext run --profile x`（引き継がない隠しオプション）が `ext run: unknown option '--profile'` になること（16.5、12.2）。
