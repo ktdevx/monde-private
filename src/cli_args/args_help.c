@@ -3,7 +3,7 @@
 
 #include <string.h>
 
-/* HelpFormatter: 全体とサブコマンドのヘルプ、バージョン、使い方の案内 */
+/* HelpFormatter: 解析結果の経路が指すコマンドのヘルプ、バージョン、使い方の案内、経路の文字列 */
 
 /* 一覧の行の字下げと、左列と説明の間の空白の幅 */
 #define HELP_INDENT 2
@@ -204,117 +204,160 @@ static bool append_positional_usage(mnd_buf_t *out, const mnd_args_command_t *co
     return true;
 }
 
-static bool format_global_help(const mnd_args_program_t *program, mnd_buf_t *out)
+/* 選択中のコマンド（経路の最後の段） */
+static const mnd_args_command_t *selected_command(const mnd_args_result_t *result)
+{
+    return result->levels[result->level_count - 1].command;
+}
+
+/* ヘルプの説明: description、なければ summary */
+static const char *command_description(const mnd_args_command_t *command)
+{
+    if (command->description != NULL)
+    {
+        return command->description;
+    }
+
+    return command->summary;
+}
+
+/* 経路の文字列: プログラム名に、段 1 以降のコマンド名を空白 1 つで区切って続ける */
+static bool append_path(const mnd_args_result_t *result, mnd_buf_t *out)
+{
+    size_t level;
+
+    if (!mnd_buf_append_str(out, result->program->name))
+    {
+        return false;
+    }
+
+    for (level = 1; level < result->level_count; level++)
+    {
+        if (!mnd_buf_append_byte(out, ' ')
+            || !mnd_buf_append_str(out, result->levels[level].command->name))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/* 一覧の左列の最大幅を更新する */
+static size_t wider(size_t max_width, size_t width)
+{
+    return (width > max_width) ? width : max_width;
+}
+
+/* 使い方の行（9.1、9.2、9.3）。子を持つコマンドでは、有効なオプションがあるときだけ経路の直後に " [<options>]" */
+static bool append_usage_line(const mnd_args_result_t *result, mnd_buf_t *out)
+{
+    const mnd_args_command_t *command = selected_command(result);
+
+    if (!mnd_buf_append_str(out, "Usage: ") || !append_path(result, out))
+    {
+        return false;
+    }
+
+    if (command->command_count > 0)
+    {
+        if ((mnd_args_effective_count(result) > 0) && !mnd_buf_append_str(out, " [<options>]"))
+        {
+            return false;
+        }
+
+        return mnd_buf_append_str(out, " <command> [<options>] [<arguments>]\n");
+    }
+
+    return mnd_buf_append_str(out, " [<options>]") && append_positional_usage(out, command)
+           && mnd_buf_append_byte(out, '\n');
+}
+
+/* Commands: の段落。子コマンドの一覧の末尾に help の行（9.2） */
+static bool append_commands_section(const mnd_args_command_t *command, mnd_buf_t *out)
 {
     size_t max_width = strlen(HELP_COMMAND_NAME);
     size_t i;
 
-    for (i = 0; i < program->command_count; i++)
+    for (i = 0; i < command->command_count; i++)
     {
-        size_t width = strlen(program->commands[i].name);
-
-        if (width > max_width)
-        {
-            max_width = width;
-        }
+        max_width = wider(max_width, strlen(command->commands[i].name));
     }
 
-    if (!mnd_buf_append_str(out, "Usage: ") || !mnd_buf_append_str(out, program->name)
-        || !mnd_buf_append_str(out, " <command> [<options>] [<arguments>]\n")
-        || !append_description(out, program->description) || !append_heading(out, "Commands:"))
+    if (!append_heading(out, "Commands:"))
     {
         return false;
     }
 
-    for (i = 0; i < program->command_count; i++)
+    for (i = 0; i < command->command_count; i++)
     {
-        const mnd_args_command_t *command = &program->commands[i];
+        const mnd_args_command_t *child = &command->commands[i];
 
-        if (!append_text_row(out, command->name, max_width, command->summary))
+        if (!append_text_row(out, child->name, max_width, child->summary))
         {
             return false;
         }
     }
 
-    if (!append_text_row(out, HELP_COMMAND_NAME, max_width, HELP_COMMAND_TEXT))
-    {
-        return false;
-    }
-
-    max_width = strlen(VERSION_OPTION_LEFT);
-    if (strlen(HELP_OPTION_LEFT) > max_width)
-    {
-        max_width = strlen(HELP_OPTION_LEFT);
-    }
-
-    return append_heading(out, "Options:")
-           && append_text_row(out, HELP_OPTION_LEFT, max_width, HELP_OPTION_TEXT)
-           && append_text_row(out, VERSION_OPTION_LEFT, max_width, VERSION_OPTION_TEXT)
-           && mnd_buf_append_str(out, "\nRun '") && mnd_buf_append_str(out, program->name)
-           && mnd_buf_append_str(out, " <command> --help' for help on a command.\n");
+    return append_text_row(out, HELP_COMMAND_NAME, max_width, HELP_COMMAND_TEXT);
 }
 
-static bool format_command_help(const mnd_args_program_t *program, const mnd_args_command_t *command,
-                                mnd_buf_t *out)
+/* Arguments: の段落（9.3）。位置引数がなければ何も出さない */
+static bool append_arguments_section(const mnd_args_command_t *command, mnd_buf_t *out)
 {
-    const char *description = command->description;
-    size_t max_width;
+    size_t max_width = 0;
     size_t i;
 
-    if (description == NULL)
+    if (command->positional_count == 0)
     {
-        description = command->summary;
+        return true;
     }
 
-    if (!mnd_buf_append_str(out, "Usage: ") || !mnd_buf_append_str(out, program->name)
-        || !mnd_buf_append_byte(out, ' ') || !mnd_buf_append_str(out, command->name)
-        || !mnd_buf_append_str(out, " [<options>]") || !append_positional_usage(out, command)
-        || !mnd_buf_append_byte(out, '\n') || !append_description(out, description))
+    for (i = 0; i < command->positional_count; i++)
+    {
+        max_width = wider(max_width, strlen(command->positionals[i].name) + 2);
+    }
+
+    if (!append_heading(out, "Arguments:"))
     {
         return false;
     }
 
-    if (command->positional_count > 0)
+    for (i = 0; i < command->positional_count; i++)
     {
-        max_width = 0;
-        for (i = 0; i < command->positional_count; i++)
-        {
-            size_t width = strlen(command->positionals[i].name) + 2;
+        const mnd_args_positional_t *positional = &command->positionals[i];
+        bool ok = append_spaces(out, HELP_INDENT) && mnd_buf_append_byte(out, '<')
+                  && mnd_buf_append_str(out, positional->name) && mnd_buf_append_byte(out, '>')
+                  && finish_row(out, strlen(positional->name) + 2, max_width, positional->help);
 
-            if (width > max_width)
-            {
-                max_width = width;
-            }
-        }
-
-        if (!append_heading(out, "Arguments:"))
+        if (!ok)
         {
             return false;
         }
-
-        for (i = 0; i < command->positional_count; i++)
-        {
-            const mnd_args_positional_t *positional = &command->positionals[i];
-            bool ok = append_spaces(out, HELP_INDENT) && mnd_buf_append_byte(out, '<')
-                      && mnd_buf_append_str(out, positional->name) && mnd_buf_append_byte(out, '>')
-                      && finish_row(out, strlen(positional->name) + 2, max_width, positional->help);
-
-            if (!ok)
-            {
-                return false;
-            }
-        }
     }
 
-    max_width = strlen(HELP_OPTION_LEFT);
-    for (i = 0; i < command->option_count; i++)
-    {
-        size_t width = option_left_width(&command->options[i]);
+    return true;
+}
 
-        if (width > max_width)
-        {
-            max_width = width;
-        }
+/*
+ * Options: の段落（9.1、9.4〜9.8）。有効なオプション（そのコマンドのオプション、親から祖先へ向かう順の
+ * 引き継いだオプション）、-h, --help、ルートコマンドでは --version の順に並べる
+ */
+static bool append_options_section(const mnd_args_result_t *result, mnd_buf_t *out)
+{
+    size_t option_count = mnd_args_effective_count(result);
+    bool is_root = (result->level_count == 1);
+    size_t max_width = strlen(HELP_OPTION_LEFT);
+    size_t i;
+
+    for (i = 0; i < option_count; i++)
+    {
+        max_width = wider(max_width,
+                          option_left_width(mnd_args_option_at(result, mnd_args_effective_at(result, i))));
+    }
+    if (is_root)
+    {
+        max_width = wider(max_width, strlen(VERSION_OPTION_LEFT));
     }
 
     if (!append_heading(out, "Options:"))
@@ -322,26 +365,62 @@ static bool format_command_help(const mnd_args_program_t *program, const mnd_arg
         return false;
     }
 
-    for (i = 0; i < command->option_count; i++)
+    for (i = 0; i < option_count; i++)
     {
-        if (!append_option_row(out, &command->options[i], max_width))
+        if (!append_option_row(out, mnd_args_option_at(result, mnd_args_effective_at(result, i)),
+                               max_width))
         {
             return false;
         }
     }
 
-    return append_text_row(out, HELP_OPTION_LEFT, max_width, HELP_OPTION_TEXT);
-}
-
-bool mnd_args_format_help(const mnd_args_program_t *program, const mnd_args_command_t *command,
-                          mnd_buf_t *out)
-{
-    if (command == NULL)
+    if (!append_text_row(out, HELP_OPTION_LEFT, max_width, HELP_OPTION_TEXT))
     {
-        return format_global_help(program, out);
+        return false;
     }
 
-    return format_command_help(program, command, out);
+    /* --version の行はルートコマンドのヘルプにだけ出す（9.4） */
+    return !is_root || append_text_row(out, VERSION_OPTION_LEFT, max_width, VERSION_OPTION_TEXT);
+}
+
+/*
+ * コマンドのヘルプは 1 つの書式で、要素をコマンドの性質で決める: 子を持つコマンドは Commands: と末尾の案内、
+ * 末端コマンドは Arguments:、ルートコマンドは --version の行を持つ
+ */
+bool mnd_args_format_help(const mnd_args_result_t *result, mnd_buf_t *out)
+{
+    const mnd_args_command_t *command = selected_command(result);
+    bool has_children = (command->command_count > 0);
+
+    if (!append_usage_line(result, out) || !append_description(out, command_description(command)))
+    {
+        return false;
+    }
+
+    if (has_children)
+    {
+        if (!append_commands_section(command, out))
+        {
+            return false;
+        }
+    }
+    else if (!append_arguments_section(command, out))
+    {
+        return false;
+    }
+
+    if (!append_options_section(result, out))
+    {
+        return false;
+    }
+
+    if (!has_children)
+    {
+        return true;
+    }
+
+    return mnd_buf_append_str(out, "\nRun '") && append_path(result, out)
+           && mnd_buf_append_str(out, " <command> --help' for help on a command.\n");
 }
 
 bool mnd_args_format_version(const mnd_args_program_t *program, mnd_buf_t *out)
@@ -350,15 +429,13 @@ bool mnd_args_format_version(const mnd_args_program_t *program, mnd_buf_t *out)
            && mnd_buf_append_str(out, program->version) && mnd_buf_append_byte(out, '\n');
 }
 
-bool mnd_args_format_usage_hint(const mnd_args_program_t *program, const mnd_args_command_t *command,
-                                mnd_buf_t *out)
+bool mnd_args_format_usage_hint(const mnd_args_result_t *result, mnd_buf_t *out)
 {
-    bool ok = mnd_buf_append_str(out, "Run '") && mnd_buf_append_str(out, program->name);
+    return mnd_buf_append_str(out, "Run '") && append_path(result, out)
+           && mnd_buf_append_str(out, " --help' for usage.\n");
+}
 
-    if (ok && (command != NULL))
-    {
-        ok = mnd_buf_append_byte(out, ' ') && mnd_buf_append_str(out, command->name);
-    }
-
-    return ok && mnd_buf_append_str(out, " --help' for usage.\n");
+bool mnd_args_format_path(const mnd_args_result_t *result, mnd_buf_t *out)
+{
+    return append_path(result, out);
 }

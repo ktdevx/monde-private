@@ -10,18 +10,37 @@
 #include "test_decl.h"
 
 /*
- * ResultStore の書き込み関数を直接使うテスト。
+ * ResultStore の書き込み関数を直接使うテスト。経路は tool（段 0）と子コマンド（段 1）の 2 段。
  * test_tool_build のオプションの添字: 0 output、1 keys、2 level、3 verbose、4 quiet
  */
-#define VALUES_OUTPUT 0
-#define VALUES_KEYS 1
-#define VALUES_LEVEL 2
-#define VALUES_VERBOSE 3
+#define VALUES_BUILD_LEVEL 1
+#define VALUES_OUTPUT build_ref(0)
+#define VALUES_KEYS build_ref(1)
+#define VALUES_LEVEL build_ref(2)
+#define VALUES_VERBOSE build_ref(3)
+
+/* 段 1 の build のオプションの位置 */
+static mnd_args_ref_t build_ref(size_t index)
+{
+    mnd_args_ref_t ref;
+
+    ref.level = VALUES_BUILD_LEVEL;
+    ref.index = index;
+    return ref;
+}
+
+/* ルートコマンドと command の 2 段の経路を作る */
+static void begin_command(mnd_args_result_t *result, const mnd_args_command_t *command)
+{
+    mnd_args_result_init(result);
+    result->program = &test_tool_program;
+    NAOS_REQUIRE_TRUE(mnd_args_result_push(result, test_tool_program.root));
+    NAOS_REQUIRE_TRUE(mnd_args_result_push(result, command));
+}
 
 static void begin_build(mnd_args_result_t *result)
 {
-    mnd_args_result_init(result);
-    NAOS_REQUIRE_TRUE(mnd_args_result_begin(result, test_tool_build));
+    begin_command(result, test_tool_build);
 }
 
 NAOS_TEST(init_is_empty_and_free_is_repeatable)
@@ -31,35 +50,37 @@ NAOS_TEST(init_is_empty_and_free_is_repeatable)
     mnd_args_result_free(&result);
     mnd_args_result_free(&result);
     NAOS_CHECK_TRUE(result.status == MND_ARGS_NO_COMMAND);
-    NAOS_CHECK_NULL(result.command);
-    NAOS_CHECK_NULL(result.values);
+    NAOS_CHECK_NULL(mnd_args_command(&result));
+    NAOS_CHECK_UINT_EQ(0, mnd_args_depth(&result));
+    NAOS_CHECK_NULL(result.levels);
     NAOS_CHECK_UINT_EQ(0, mnd_args_positional_count(&result));
     NAOS_CHECK_FALSE(mnd_args_is_set(&result, "output"));
     NAOS_CHECK_NULL(mnd_args_value(&result, "output"));
 
     begin_build(&result);
-    NAOS_CHECK_PTR_EQ(test_tool_build, result.command);
-    NAOS_CHECK_NOT_NULL(result.values);
+    NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&result));
+    NAOS_REQUIRE_UINT_EQ(2, mnd_args_depth(&result));
+    NAOS_CHECK_NOT_NULL(result.levels[VALUES_BUILD_LEVEL].values);
     NAOS_CHECK_TRUE(mnd_args_result_append_list(&result, VALUES_KEYS, "x,y", true) == MND_ARGS_OK);
     NAOS_CHECK_TRUE(mnd_args_result_add_positional(&result, "src"));
     mnd_args_result_free(&result);
     NAOS_CHECK_TRUE(result.status == MND_ARGS_NO_COMMAND);
-    NAOS_CHECK_NULL(result.command);
-    NAOS_CHECK_NULL(result.values);
+    NAOS_CHECK_NULL(mnd_args_command(&result));
+    NAOS_CHECK_UINT_EQ(0, mnd_args_depth(&result));
+    NAOS_CHECK_NULL(result.levels);
     NAOS_CHECK_NULL(result.positionals);
     NAOS_CHECK_UINT_EQ(0, result.positional_count);
     NAOS_CHECK_UINT_EQ(0, result.positional_cap);
     mnd_args_result_free(&result);
-    NAOS_CHECK_NULL(result.command);
+    NAOS_CHECK_NULL(mnd_args_command(&result));
 }
 
 NAOS_TEST(begin_without_options_succeeds)
 {
     mnd_args_result_t result;
 
-    mnd_args_result_init(&result);
-    NAOS_REQUIRE_TRUE(mnd_args_result_begin(&result, test_tool_cat));
-    NAOS_CHECK_PTR_EQ(test_tool_cat, result.command);
+    begin_command(&result, test_tool_cat);
+    NAOS_CHECK_PTR_EQ(test_tool_cat, mnd_args_command(&result));
     NAOS_CHECK_FALSE(mnd_args_is_set(&result, "output"));
     NAOS_CHECK_UINT_EQ(0, mnd_args_list_count(&result, "keys"));
     mnd_args_result_free(&result);
@@ -190,7 +211,7 @@ NAOS_TEST(defaults_apply_when_not_set)
     NAOS_CHECK_STR_EQ("b", mnd_args_list_at(&result, "keys", 1));
     NAOS_CHECK_FALSE(mnd_args_is_set(&result, "keys"));
     NAOS_CHECK_STR_EQ("1", mnd_args_value(&result, "level"));
-    NAOS_CHECK_PTR_EQ(test_tool_build->options[VALUES_LEVEL].default_value,
+    NAOS_CHECK_PTR_EQ(test_tool_build->options[VALUES_LEVEL.index].default_value,
                       mnd_args_value(&result, "level"));
     NAOS_CHECK_FALSE(mnd_args_is_set(&result, "level"));
     NAOS_CHECK_NULL(mnd_args_value(&result, "output"));
@@ -220,8 +241,7 @@ NAOS_TEST(positionals_point_at_arguments)
     char second[] = "out.txt";
     mnd_args_result_t result;
 
-    mnd_args_result_init(&result);
-    NAOS_REQUIRE_TRUE(mnd_args_result_begin(&result, test_tool_cat));
+    begin_command(&result, test_tool_cat);
     NAOS_REQUIRE_TRUE(mnd_args_result_add_positional(&result, first));
     NAOS_REQUIRE_TRUE(mnd_args_result_add_positional(&result, second));
     NAOS_REQUIRE_UINT_EQ(2, mnd_args_positional_count(&result));
@@ -324,7 +344,7 @@ static void run_free(values_run_t *run)
 static void check_ok(const values_run_t *run)
 {
     NAOS_CHECK_INT_EQ(MND_ARGS_OK, run->status);
-    NAOS_CHECK_PTR_EQ(test_tool_build, run->result.command);
+    NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_command(&run->result));
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&run->diags));
 }
 

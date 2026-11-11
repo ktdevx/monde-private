@@ -23,11 +23,11 @@
 void mnd_cli_report_diags(FILE *err, const mnd_diag_list_t *diags);
 
 /*
- * 使い方のエラー。diags の診断を "monde: error: <message>" の形で書き、
- * 続けて mnd_args_format_usage_hint の案内（command が NULL なら全体の案内）を書く
+ * 使い方のエラー。diags の診断を、result の経路の文字列 "<path>: " の接頭辞を除いて
+ * "monde: error: <message>" の形で書き、続けて mnd_args_format_usage_hint の案内（経路の最後のコマンドの案内）を書く。
+ * result は mnd_args_parse が MND_ARGS_USAGE_ERROR を返したものであること
  */
-void mnd_cli_report_usage_error(FILE *err, const mnd_args_program_t *program,
-                                const mnd_args_command_t *command, const mnd_diag_list_t *diags);
+void mnd_cli_report_usage_error(FILE *err, const mnd_args_result_t *result, const mnd_diag_list_t *diags);
 
 /* 統計と情報。quiet なら何も書かない */
 void mnd_cli_report_extract(FILE *err, bool quiet, size_t messages);

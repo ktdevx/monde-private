@@ -131,11 +131,11 @@ static const mnd_args_command_t *find_command(const mnd_args_program_t *program,
 {
     size_t i;
 
-    for (i = 0; i < program->command_count; i++)
+    for (i = 0; i < program->root->command_count; i++)
     {
-        if (strcmp(program->commands[i].name, name) == 0)
+        if (strcmp(program->root->commands[i].name, name) == 0)
         {
-            return &program->commands[i];
+            return &program->root->commands[i];
         }
     }
 
@@ -191,21 +191,38 @@ static mnd_args_status_t parse_tokens(const mnd_args_program_t *program, const c
     return mnd_args_parse(program, copy->argc, copy->argv, result, diags);
 }
 
-/* プログラムの宣言: 名前、説明、実行時に渡したバージョン、4 つのサブコマンド（1.1） */
+/*
+ * プログラムの宣言: 名前、実行時に渡したバージョン、説明と 4 つの子コマンドを持つルートコマンド（1.1、13.1）。
+ * ルートコマンドはオプションと位置引数を持たず、子コマンドは末端コマンドで、引き継ぐオプションを使わない
+ */
 NAOS_TEST(run_commands_program_declares_four_subcommands)
 {
     static const char version[] = "9.8.7-commands";
     mnd_args_program_t program = mnd_cli_program(version);
+    const mnd_args_command_t *root = program.root;
     size_t i;
+    size_t j;
 
     NAOS_CHECK_STR_EQ("monde", program.name);
-    NAOS_CHECK_STR_EQ("Translate Markdown documents through gettext .pot/.po files.", program.description);
     NAOS_CHECK_TRUE(program.version == version);
-    NAOS_REQUIRE_UINT_EQ(EXPECTED_COMMAND_COUNT, program.command_count);
+    NAOS_REQUIRE_NOT_NULL(root);
+    NAOS_CHECK_STR_EQ("Translate Markdown documents through gettext .pot/.po files.", root->description);
+    NAOS_CHECK_UINT_EQ(0, root->option_count);
+    NAOS_CHECK_UINT_EQ(0, root->positional_count);
+    NAOS_REQUIRE_UINT_EQ(EXPECTED_COMMAND_COUNT, root->command_count);
     for (i = 0; i < EXPECTED_COMMAND_COUNT; i++)
     {
-        NAOS_CHECK_STR_EQ(expected_commands[i].name, program.commands[i].name);
-        NAOS_CHECK_TRUE((program.commands[i].summary != NULL) && (program.commands[i].summary[0] != '\0'));
+        const mnd_args_command_t *command = &root->commands[i];
+
+        NAOS_TRACE_PUSH("%s", expected_commands[i].name);
+        NAOS_CHECK_STR_EQ(expected_commands[i].name, command->name);
+        NAOS_CHECK_TRUE((command->summary != NULL) && (command->summary[0] != '\0'));
+        NAOS_CHECK_UINT_EQ(0, command->command_count);
+        for (j = 0; j < command->option_count; j++)
+        {
+            NAOS_CHECK_FALSE(command->options[j].inherited);
+        }
+        NAOS_TRACE_POP();
     }
 }
 
@@ -218,7 +235,7 @@ NAOS_TEST(run_commands_program_version_replaced_per_call)
 
     NAOS_CHECK_STR_EQ("1.0.0", a.version);
     NAOS_CHECK_STR_EQ("2.0.0", b.version);
-    NAOS_CHECK_TRUE(a.commands == b.commands);
+    NAOS_CHECK_TRUE(a.root == b.root);
     NAOS_REQUIRE_TRUE(mnd_args_format_version(&b, &out));
     NAOS_CHECK_STR_EQ("monde 2.0.0\n", mnd_buf_cstr(&out));
     mnd_buf_free(&out);
@@ -254,6 +271,7 @@ NAOS_TEST(run_commands_declarations_match_design_table)
 
             NAOS_TRACE_PUSH("--%s", expected->options[j].long_name);
             NAOS_REQUIRE_NOT_NULL(option);
+            NAOS_CHECK_TRUE(option == &command->options[j]);
             NAOS_CHECK_INT_EQ((int)expected->options[j].short_name, (int)option->short_name);
             NAOS_CHECK_INT_EQ((int)expected->options[j].kind, (int)option->kind);
             NAOS_CHECK_FALSE(option->required);
@@ -290,8 +308,9 @@ NAOS_TEST(run_commands_minimal_argv_parses_without_decl_error)
         {
             NAOS_NOTE("first diagnostic: %s", mnd_diag_list_at(&diags, 0)->message);
         }
-        NAOS_REQUIRE_NOT_NULL(result.command);
-        NAOS_CHECK_STR_EQ(argvs[i][1], result.command->name);
+        NAOS_CHECK_UINT_EQ(2, mnd_args_depth(&result));
+        NAOS_REQUIRE_NOT_NULL(mnd_args_command(&result));
+        NAOS_CHECK_STR_EQ(argvs[i][1], mnd_args_command(&result)->name);
         NAOS_CHECK_FALSE(mnd_args_is_set(&result, MND_CLI_OPT_OUTPUT));
         NAOS_CHECK_NULL(mnd_args_value(&result, MND_CLI_OPT_OUTPUT));
         NAOS_CHECK_FALSE(mnd_args_flag(&result, MND_CLI_OPT_QUIET));
@@ -299,6 +318,29 @@ NAOS_TEST(run_commands_minimal_argv_parses_without_decl_error)
         mnd_diag_list_free(&diags);
         NAOS_TRACE_POP();
     }
+}
+
+/*
+ * "monde --help"（command_name が NULL のとき）または "monde <command_name> --help" を解析し、
+ * そのヘルプの文面を out に追加する
+ */
+static void format_help_of(const char *command_name, mnd_buf_t *out)
+{
+    static const char *const global_argv[] = {"monde", "--help", NULL};
+    const char *command_argv[] = {"monde", NULL, "--help", NULL};
+    argv_copy_t copy;
+    mnd_args_program_t program = mnd_cli_program(TEST_CLI_VERSION);
+    mnd_args_result_t result = MND_ARGS_RESULT_INIT;
+    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    mnd_args_status_t status;
+
+    command_argv[1] = command_name;
+    status = parse_tokens(&program, (command_name != NULL) ? command_argv : global_argv, &copy, &result, &diags);
+    NAOS_REQUIRE_INT_EQ((int)MND_ARGS_HELP, (int)status);
+    NAOS_REQUIRE_UINT_EQ((command_name != NULL) ? 2 : 1, mnd_args_depth(&result));
+    NAOS_REQUIRE_TRUE(mnd_args_format_help(&result, out));
+    mnd_args_result_free(&result);
+    mnd_diag_list_free(&diags);
 }
 
 /* 各サブコマンドのヘルプに、宣言したすべてのオプションと位置引数が現れる（1.3） */
@@ -309,7 +351,7 @@ NAOS_TEST(run_commands_help_lists_all_options_and_positionals)
     size_t i;
     size_t j;
 
-    NAOS_REQUIRE_TRUE(mnd_args_format_help(&program, NULL, &global));
+    format_help_of(NULL, &global);
     NAOS_CHECK_TRUE(buf_contains(&global, "Usage: monde "));
     for (i = 0; i < EXPECTED_COMMAND_COUNT; i++)
     {
@@ -321,7 +363,7 @@ NAOS_TEST(run_commands_help_lists_all_options_and_positionals)
         NAOS_TRACE_PUSH("%s", expected->name);
         NAOS_REQUIRE_NOT_NULL(command);
         NAOS_CHECK_TRUE(buf_contains(&global, expected->name));
-        NAOS_REQUIRE_TRUE(mnd_args_format_help(&program, command, &help));
+        format_help_of(expected->name, &help);
         for (j = 0; j < expected->positional_count; j++)
         {
             mnd_buf_clear(&needle);
@@ -360,15 +402,15 @@ static void check_same_result(const mnd_args_result_t *a, const mnd_args_result_
 
     NAOS_REQUIRE_INT_EQ((int)MND_ARGS_OK, (int)a->status);
     NAOS_REQUIRE_INT_EQ((int)MND_ARGS_OK, (int)b->status);
-    NAOS_REQUIRE_TRUE(a->command == b->command);
+    NAOS_REQUIRE_TRUE(mnd_args_command(a) == mnd_args_command(b));
     NAOS_REQUIRE_UINT_EQ(mnd_args_positional_count(a), mnd_args_positional_count(b));
     for (i = 0; i < mnd_args_positional_count(a); i++)
     {
         NAOS_CHECK_STR_EQ(mnd_args_positional_at(a, i), mnd_args_positional_at(b, i));
     }
-    for (i = 0; i < a->command->option_count; i++)
+    for (i = 0; i < mnd_args_command(a)->option_count; i++)
     {
-        const mnd_args_option_t *option = &a->command->options[i];
+        const mnd_args_option_t *option = &mnd_args_command(a)->options[i];
         const char *name = option->long_name;
 
         NAOS_TRACE_PUSH("--%s", name);
@@ -403,12 +445,13 @@ static void check_same_result(const mnd_args_result_t *a, const mnd_args_result_
 /* 宣言したすべてのオプションが明示的に指定されている */
 static void check_all_set(const mnd_args_result_t *result)
 {
+    const mnd_args_command_t *command = mnd_args_command(result);
     size_t i;
 
-    for (i = 0; i < result->command->option_count; i++)
+    for (i = 0; i < command->option_count; i++)
     {
-        NAOS_TRACE_PUSH("--%s", result->command->options[i].long_name);
-        NAOS_CHECK_TRUE(mnd_args_is_set(result, result->command->options[i].long_name));
+        NAOS_TRACE_PUSH("--%s", command->options[i].long_name);
+        NAOS_CHECK_TRUE(mnd_args_is_set(result, command->options[i].long_name));
         NAOS_TRACE_POP();
     }
 }
@@ -428,7 +471,7 @@ static void check_order_independent(const char *const *argv_a, const char *const
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
     if ((a.status == MND_ARGS_OK) && (b.status == MND_ARGS_OK))
     {
-        NAOS_CHECK_STR_EQ(argv_a[1], a.command->name);
+        NAOS_CHECK_STR_EQ(argv_a[1], mnd_args_command(&a)->name);
         check_all_set(&a);
         check_same_result(&a, &b);
     }
@@ -485,11 +528,11 @@ NAOS_TEST(run_commands_every_declared_command_has_handler)
     mnd_args_program_t program = mnd_cli_program(TEST_CLI_VERSION);
     size_t i;
 
-    NAOS_REQUIRE_UINT_EQ(EXPECTED_COMMAND_COUNT, program.command_count);
-    for (i = 0; i < program.command_count; i++)
+    NAOS_REQUIRE_UINT_EQ(EXPECTED_COMMAND_COUNT, program.root->command_count);
+    for (i = 0; i < program.root->command_count; i++)
     {
-        NAOS_TRACE_PUSH("%s", program.commands[i].name);
-        NAOS_CHECK_TRUE(mnd_cli_find_handler(program.commands[i].name) != NULL);
+        NAOS_TRACE_PUSH("%s", program.root->commands[i].name);
+        NAOS_CHECK_TRUE(mnd_cli_find_handler(program.root->commands[i].name) != NULL);
         NAOS_TRACE_POP();
     }
 }
@@ -574,15 +617,7 @@ static void run_tokens_with(const char *name, const char *const *tokens, mnd_cli
 /* 期待するヘルプの文面（command_name が NULL なら全体） */
 static void expected_help(const char *command_name, mnd_buf_t *out)
 {
-    mnd_args_program_t program = mnd_cli_program(TEST_CLI_VERSION);
-    const mnd_args_command_t *command = NULL;
-
-    if (command_name != NULL)
-    {
-        command = find_command(&program, command_name);
-        NAOS_REQUIRE_NOT_NULL(command);
-    }
-    NAOS_REQUIRE_TRUE(mnd_args_format_help(&program, command, out));
+    format_help_of(command_name, out);
 }
 
 /* --help / -h / help は全体のヘルプを out に書いて 0 を返し、err には何も書かない（1.2） */
@@ -718,6 +753,136 @@ NAOS_TEST(run_entry_usage_errors_print_message_and_hint)
     }
 }
 
+/*
+ * 子コマンドの選択前の誤り（未知のサブコマンド、未知のオプション）は、後ろに --help があっても
+ * 改訂前と同じく使い方のエラーとして 2 を返し、ヘルプを出さない（8.10、13.4）
+ */
+NAOS_TEST(run_entry_unknown_command_with_help_stays_usage_error)
+{
+    static const usage_case_t cases[] = {
+        {"run_entry_bogus_command_help", {"monde", "bogus", "--help", NULL},
+         "monde: error: unknown command 'bogus'\n"
+         "Run 'monde --help' for usage.\n"},
+        {"run_entry_bogus_command_short_help", {"monde", "bogus", "-h", NULL},
+         "monde: error: unknown command 'bogus'\n"
+         "Run 'monde --help' for usage.\n"},
+        {"run_entry_bogus_option_help", {"monde", "--bogus", "--help", NULL},
+         "monde: error: unknown option '--bogus'\n"
+         "Run 'monde --help' for usage.\n"},
+    };
+    size_t i;
+
+    for (i = 0; i < sizeof cases / sizeof cases[0]; i++)
+    {
+        test_cli_result_t result = TEST_CLI_RESULT_INIT;
+
+        NAOS_TRACE_PUSH("%s", cases[i].name);
+        run_tokens(cases[i].name, cases[i].tokens, &result);
+        NAOS_CHECK_INT_EQ(MND_CLI_EXIT_USAGE, result.exit_code);
+        NAOS_CHECK_UINT_EQ(0, result.out.len);
+        NAOS_CHECK_STR_EQ(cases[i].expected_err, mnd_buf_cstr(&result.err));
+        test_cli_result_free(&result);
+        NAOS_TRACE_POP();
+    }
+}
+
+/*
+ * 設計書「改訂前の 1 段の構成との違い」の表のうち、使い方のエラーのまま文面が変わるもの（13.4）。
+ * 子コマンドの選択前にも、オプションの形の規則と短いオプションを 1 文字ずつ処理する規則を適用する
+ */
+NAOS_TEST(run_entry_revised_usage_error_messages)
+{
+    static const usage_case_t cases[] = {
+        {"run_entry_revised_help_word_two", {"monde", "help", "a", "b", NULL},
+         "monde: error: unknown command 'a'\n"
+         "Run 'monde --help' for usage.\n"},
+        {"run_entry_revised_help_word_extra", {"monde", "help", "extract", "x", NULL},
+         "monde: error: unexpected argument 'x'\n"
+         "Run 'monde --help' for usage.\n"},
+        {"run_entry_revised_help_word_help", {"monde", "help", "extract", "--help", NULL},
+         "monde: error: unexpected argument '--help'\n"
+         "Run 'monde --help' for usage.\n"},
+        {"run_entry_revised_unknown_long_value", {"monde", "--foo=bar", NULL},
+         "monde: error: unknown option '--foo'\n"
+         "Run 'monde --help' for usage.\n"},
+        {"run_entry_revised_version_value", {"monde", "--version=1", NULL},
+         "monde: error: option '--version' does not take a value\n"
+         "Run 'monde --help' for usage.\n"},
+        {"run_entry_revised_help_value", {"monde", "--help=1", NULL},
+         "monde: error: option '--help' does not take a value\n"
+         "Run 'monde --help' for usage.\n"},
+        {"run_entry_revised_short_cluster", {"monde", "-xy", NULL},
+         "monde: error: unknown option '-x'\n"
+         "Run 'monde --help' for usage.\n"},
+        {"run_entry_revised_short_cluster_v", {"monde", "-vh", NULL},
+         "monde: error: unknown option '-v'\n"
+         "Run 'monde --help' for usage.\n"},
+        {"run_entry_revised_terminator_command", {"monde", "--", "extract", NULL},
+         "monde: error: unexpected argument 'extract'\n"
+         "Run 'monde --help' for usage.\n"},
+    };
+    size_t i;
+
+    for (i = 0; i < sizeof cases / sizeof cases[0]; i++)
+    {
+        test_cli_result_t result = TEST_CLI_RESULT_INIT;
+
+        NAOS_TRACE_PUSH("%s", cases[i].name);
+        run_tokens(cases[i].name, cases[i].tokens, &result);
+        NAOS_CHECK_INT_EQ(MND_CLI_EXIT_USAGE, result.exit_code);
+        NAOS_CHECK_UINT_EQ(0, result.out.len);
+        NAOS_CHECK_STR_EQ(cases[i].expected_err, mnd_buf_cstr(&result.err));
+        test_cli_result_free(&result);
+        NAOS_TRACE_POP();
+    }
+}
+
+/* "monde --" は子コマンドの未指定として、全体のヘルプを err に書いて 2 を返す（2.5、13.4） */
+NAOS_TEST(run_entry_terminator_alone_prints_help_to_err)
+{
+    static const char *const tokens[] = {"monde", "--", NULL};
+    test_cli_result_t result = TEST_CLI_RESULT_INIT;
+    mnd_buf_t expected = MND_BUF_INIT;
+
+    expected_help(NULL, &expected);
+    run_tokens("run_entry_terminator_alone", tokens, &result);
+    NAOS_CHECK_INT_EQ(MND_CLI_EXIT_USAGE, result.exit_code);
+    NAOS_CHECK_UINT_EQ(0, result.out.len);
+    NAOS_CHECK_MEM_EQ(expected.data, expected.len, result.err.data, result.err.len);
+    mnd_buf_free(&expected);
+    test_cli_result_free(&result);
+}
+
+/*
+ * 子コマンドの選択前の、h で始まる短いオプションのまとめ書きは、全体のヘルプを out に書いて 0 を返す
+ * （4.3、4.5、8.1、13.4 の例外。monde extract -hx と同じ扱い）
+ */
+NAOS_TEST(run_entry_short_help_cluster_prints_help)
+{
+    static const char *const tokens_hx[] = {"monde", "-hx", NULL};
+    static const char *const tokens_hh[] = {"monde", "-hh", NULL};
+    static const char *const tokens_h1[] = {"monde", "-h1", NULL};
+    static const char *const tokens_heq[] = {"monde", "-h=1", NULL};
+    static const char *const *const cases[] = {tokens_hx, tokens_hh, tokens_h1, tokens_heq};
+    mnd_buf_t expected = MND_BUF_INIT;
+    size_t i;
+
+    expected_help(NULL, &expected);
+    for (i = 0; i < sizeof cases / sizeof cases[0]; i++)
+    {
+        test_cli_result_t result = TEST_CLI_RESULT_INIT;
+
+        NAOS_TRACE_PUSH("%s", cases[i][1]);
+        run_tokens("run_entry_short_help_cluster", cases[i], &result);
+        NAOS_CHECK_INT_EQ(MND_CLI_EXIT_OK, result.exit_code);
+        NAOS_CHECK_UINT_EQ(0, result.err.len);
+        NAOS_CHECK_MEM_EQ(expected.data, expected.len, result.out.data, result.out.len);
+        test_cli_result_free(&result);
+        NAOS_TRACE_POP();
+    }
+    mnd_buf_free(&expected);
+}
+
 /* 入口から呼ばれたハンドラ（仮の実装を含む）の失敗は、err に診断を書いて 1 を返し、out には何も書かない（9.6、9.8） */
 NAOS_TEST(run_entry_handler_failure_reports_diags_and_returns_1)
 {
@@ -752,7 +917,7 @@ static void record_ctx(const mnd_cli_ctx_t *ctx)
     g_seen.calls++;
     g_seen.has_env = (ctx->env != NULL);
     g_seen.version = (ctx->env != NULL) ? ctx->env->version : NULL;
-    g_seen.command = (ctx->result->command != NULL) ? ctx->result->command->name : NULL;
+    g_seen.command = (mnd_args_command(ctx->result) != NULL) ? mnd_args_command(ctx->result)->name : NULL;
     g_seen.positionals = mnd_args_positional_count(ctx->result);
     g_seen.quiet = ctx->quiet;
     g_seen.usage_error_initial = ctx->usage_error;
@@ -953,6 +1118,10 @@ NAOS_SUITE(run,
     NAOS_ADD_TEST(run_entry_version_goes_to_out),
     NAOS_ADD_TEST(run_entry_no_arguments_prints_help_to_err),
     NAOS_ADD_TEST(run_entry_usage_errors_print_message_and_hint),
+    NAOS_ADD_TEST(run_entry_unknown_command_with_help_stays_usage_error),
+    NAOS_ADD_TEST(run_entry_revised_usage_error_messages),
+    NAOS_ADD_TEST(run_entry_terminator_alone_prints_help_to_err),
+    NAOS_ADD_TEST(run_entry_short_help_cluster_prints_help),
     NAOS_ADD_TEST(run_entry_handler_failure_reports_diags_and_returns_1),
     NAOS_ADD_TEST(run_entry_failed_handler_prints_all_diags_in_order),
     NAOS_ADD_TEST(run_entry_handler_usage_error_returns_2),
