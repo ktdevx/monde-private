@@ -283,7 +283,7 @@ stateDiagram-v2
 
 ### 改訂前の 1 段の構成との違い
 
-1 段の構成（`monde`）で結果が変わるのは次の場合だけである。いずれも使い方のエラーのままで、文面だけが変わる。ほかは、状態・選択されるコマンド・値・メッセージが改訂前と一致する。
+1 段の構成（`monde`）で結果が変わるのは次の場合だけである。`-h` で始まるまとめ書きの行と `monde --` の行を除き、いずれも使い方のエラーのままで、文面だけが変わる。ほかは、状態・選択されるコマンド・値・メッセージが改訂前と一致する。
 
 | コマンドライン | 改訂前 | 改訂後 | 根拠 |
 |---|---|---|---|
@@ -291,6 +291,13 @@ stateDiagram-v2
 | `monde help extract x` | `too many arguments for 'help'` | `unexpected argument 'x'` | 8.6（同上） |
 | `monde --foo=bar` | `unknown option '--foo=bar'` | `unknown option '--foo'` | 3.6（同上） |
 | `monde --version=1` | `unknown option '--version=1'` | `option '--version' does not take a value` | 3.5（同上） |
+| `monde --help=1` | `unknown option '--help=1'` | `option '--help' does not take a value` | 3.5（同上） |
+| `monde -xy` | `unknown option '-xy'` | `unknown option '-x'` | 4.5（同上。子コマンドの選択前にも短いオプションを 1 文字ずつ処理する） |
+| `monde -vh` | `unknown option '-vh'` | `unknown option '-v'` | 4.5（同上） |
+| `monde -- extract` | `unknown option '--'` | `unexpected argument 'extract'` | 2.5（同上） |
+| `monde help extract --help` | `too many arguments for 'help'` | `unexpected argument '--help'` | 8.6（同上） |
+| `monde --` | `unknown option '--'`（使い方のエラー） | 子コマンドの未指定（ルートのヘルプを標準エラー出力へ、終了コード 2） | 2.5（終了コードは同じ） |
+| `monde -hx`、`monde -h1`、`monde -h=1` | `unknown option '<トークン>'`（使い方のエラー、終了コード 2） | ルートのヘルプ（標準出力、終了コード 0） | 4.x、8.1、13.4 の例外（短いオプションを左から処理し、`h` でヘルプの要求になる。`monde extract -hx` と同じ扱い） |
 
 `monde --version extra` と `monde --help extra` は、改訂前と同じくバージョンとヘルプを返す（8.1、8.8）。`monde bogus --help` と `monde --bogus --help` は、改訂前と同じく使い方のエラーになる（8.10）。
 

@@ -786,6 +786,102 @@ NAOS_TEST(run_entry_unknown_command_with_help_stays_usage_error)
     }
 }
 
+/*
+ * 設計書「改訂前の 1 段の構成との違い」の表のうち、使い方のエラーのまま文面が変わるもの（13.4）。
+ * 子コマンドの選択前にも、オプションの形の規則と短いオプションを 1 文字ずつ処理する規則を適用する
+ */
+NAOS_TEST(run_entry_revised_usage_error_messages)
+{
+    static const usage_case_t cases[] = {
+        {"run_entry_revised_help_word_two", {"monde", "help", "a", "b", NULL},
+         "monde: error: unknown command 'a'\n"
+         "Run 'monde --help' for usage.\n"},
+        {"run_entry_revised_help_word_extra", {"monde", "help", "extract", "x", NULL},
+         "monde: error: unexpected argument 'x'\n"
+         "Run 'monde --help' for usage.\n"},
+        {"run_entry_revised_help_word_help", {"monde", "help", "extract", "--help", NULL},
+         "monde: error: unexpected argument '--help'\n"
+         "Run 'monde --help' for usage.\n"},
+        {"run_entry_revised_unknown_long_value", {"monde", "--foo=bar", NULL},
+         "monde: error: unknown option '--foo'\n"
+         "Run 'monde --help' for usage.\n"},
+        {"run_entry_revised_version_value", {"monde", "--version=1", NULL},
+         "monde: error: option '--version' does not take a value\n"
+         "Run 'monde --help' for usage.\n"},
+        {"run_entry_revised_help_value", {"monde", "--help=1", NULL},
+         "monde: error: option '--help' does not take a value\n"
+         "Run 'monde --help' for usage.\n"},
+        {"run_entry_revised_short_cluster", {"monde", "-xy", NULL},
+         "monde: error: unknown option '-x'\n"
+         "Run 'monde --help' for usage.\n"},
+        {"run_entry_revised_short_cluster_v", {"monde", "-vh", NULL},
+         "monde: error: unknown option '-v'\n"
+         "Run 'monde --help' for usage.\n"},
+        {"run_entry_revised_terminator_command", {"monde", "--", "extract", NULL},
+         "monde: error: unexpected argument 'extract'\n"
+         "Run 'monde --help' for usage.\n"},
+    };
+    size_t i;
+
+    for (i = 0; i < sizeof cases / sizeof cases[0]; i++)
+    {
+        test_cli_result_t result = TEST_CLI_RESULT_INIT;
+
+        NAOS_TRACE_PUSH("%s", cases[i].name);
+        run_tokens(cases[i].name, cases[i].tokens, &result);
+        NAOS_CHECK_INT_EQ(MND_CLI_EXIT_USAGE, result.exit_code);
+        NAOS_CHECK_UINT_EQ(0, result.out.len);
+        NAOS_CHECK_STR_EQ(cases[i].expected_err, mnd_buf_cstr(&result.err));
+        test_cli_result_free(&result);
+        NAOS_TRACE_POP();
+    }
+}
+
+/* "monde --" は子コマンドの未指定として、全体のヘルプを err に書いて 2 を返す（2.5、13.4） */
+NAOS_TEST(run_entry_terminator_alone_prints_help_to_err)
+{
+    static const char *const tokens[] = {"monde", "--", NULL};
+    test_cli_result_t result = TEST_CLI_RESULT_INIT;
+    mnd_buf_t expected = MND_BUF_INIT;
+
+    expected_help(NULL, &expected);
+    run_tokens("run_entry_terminator_alone", tokens, &result);
+    NAOS_CHECK_INT_EQ(MND_CLI_EXIT_USAGE, result.exit_code);
+    NAOS_CHECK_UINT_EQ(0, result.out.len);
+    NAOS_CHECK_MEM_EQ(expected.data, expected.len, result.err.data, result.err.len);
+    mnd_buf_free(&expected);
+    test_cli_result_free(&result);
+}
+
+/*
+ * 子コマンドの選択前の、h で始まる短いオプションのまとめ書きは、全体のヘルプを out に書いて 0 を返す
+ * （4.x、8.1、13.4 の例外。monde extract -hx と同じ扱い）
+ */
+NAOS_TEST(run_entry_short_help_cluster_prints_help)
+{
+    static const char *const tokens_hx[] = {"monde", "-hx", NULL};
+    static const char *const tokens_h1[] = {"monde", "-h1", NULL};
+    static const char *const tokens_heq[] = {"monde", "-h=1", NULL};
+    static const char *const *const cases[] = {tokens_hx, tokens_h1, tokens_heq};
+    mnd_buf_t expected = MND_BUF_INIT;
+    size_t i;
+
+    expected_help(NULL, &expected);
+    for (i = 0; i < sizeof cases / sizeof cases[0]; i++)
+    {
+        test_cli_result_t result = TEST_CLI_RESULT_INIT;
+
+        NAOS_TRACE_PUSH("%s", cases[i][1]);
+        run_tokens("run_entry_short_help_cluster", cases[i], &result);
+        NAOS_CHECK_INT_EQ(MND_CLI_EXIT_OK, result.exit_code);
+        NAOS_CHECK_UINT_EQ(0, result.err.len);
+        NAOS_CHECK_MEM_EQ(expected.data, expected.len, result.out.data, result.out.len);
+        test_cli_result_free(&result);
+        NAOS_TRACE_POP();
+    }
+    mnd_buf_free(&expected);
+}
+
 /* 入口から呼ばれたハンドラ（仮の実装を含む）の失敗は、err に診断を書いて 1 を返し、out には何も書かない（9.6、9.8） */
 NAOS_TEST(run_entry_handler_failure_reports_diags_and_returns_1)
 {
@@ -1022,6 +1118,9 @@ NAOS_SUITE(run,
     NAOS_ADD_TEST(run_entry_no_arguments_prints_help_to_err),
     NAOS_ADD_TEST(run_entry_usage_errors_print_message_and_hint),
     NAOS_ADD_TEST(run_entry_unknown_command_with_help_stays_usage_error),
+    NAOS_ADD_TEST(run_entry_revised_usage_error_messages),
+    NAOS_ADD_TEST(run_entry_terminator_alone_prints_help_to_err),
+    NAOS_ADD_TEST(run_entry_short_help_cluster_prints_help),
     NAOS_ADD_TEST(run_entry_handler_failure_reports_diags_and_returns_1),
     NAOS_ADD_TEST(run_entry_failed_handler_prints_all_diags_in_order),
     NAOS_ADD_TEST(run_entry_handler_usage_error_returns_2),

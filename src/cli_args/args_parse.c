@@ -23,7 +23,7 @@ typedef enum mnd_args_error_kind
 } mnd_args_error_kind_t;
 
 /*
- * 保留した使い方の誤り。回復走査でヘルプの要求が見つかれば捨て、見つからなければ診断にする（7.4、8.2）。
+ * 保留した使い方の誤り。回復走査でヘルプの要求が見つかれば捨て、見つからなければ診断にする（7.4、8.3）。
  * arg は arg_len バイトの名前で、短いオプションの "-c" のように引数列の中に連続して現れない形は
  * arg_buf にコピーして指す
  */
@@ -227,7 +227,7 @@ static bool has_children(const mnd_args_scan_t *scan)
 }
 
 /*
- * "--" で始まるトークンを処理する（3.1〜3.7、8.2、8.8、8.9）。
+ * "--" で始まるトークンを処理する（3.1〜3.7、8.1、8.8、8.9）。
  * 戻り値が MND_ARGS_OK なら走査を続け、それ以外なら走査を終える
  */
 static mnd_args_status_t scan_long(mnd_args_scan_t *scan, const char *token)
@@ -293,7 +293,7 @@ static mnd_args_status_t scan_long(mnd_args_scan_t *scan, const char *token)
 }
 
 /*
- * "-" に 1 文字以上が続くトークンを、2 文字目から 1 文字ずつ処理する（4.1〜4.6、8.2）。
+ * "-" に 1 文字以上が続くトークンを、2 文字目から 1 文字ずつ処理する（4.1〜4.6、8.1）。
  * 戻り値が MND_ARGS_OK なら走査を続け、それ以外なら走査を終える
  */
 static mnd_args_status_t scan_short(mnd_args_scan_t *scan, const char *token)
@@ -519,7 +519,7 @@ static mnd_args_status_t scan_tokens(mnd_args_scan_t *scan)
 }
 
 /*
- * 回復走査（7.4、8.2）。最初の誤りの原因となったトークン（消費した値を含む）の次から、
+ * 回復走査（7.4、8.3）。最初の誤りの原因となったトークン（消費した値を含む）の次から、
  * "--" より前に残っているトークンのうち、完全に "--help" または "-h" と一致するものを探す
  */
 static bool recover_help(const mnd_args_scan_t *scan)
