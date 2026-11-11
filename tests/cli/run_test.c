@@ -73,7 +73,7 @@ typedef struct expected_option
 {
     const char *long_name;
     char short_name;
-    mnd_args_kind_t kind;
+    clopts_kind_t kind;
 } expected_option_t;
 
 /* 期待するサブコマンドの宣言（位置引数は min = max = 個数） */
@@ -87,33 +87,33 @@ typedef struct expected_command
 } expected_command_t;
 
 static const expected_option_t expected_extract_options[] = {
-    {MND_CLI_OPT_OUTPUT, 'o', MND_ARGS_VALUE},
-    {MND_CLI_OPT_QUIET, 'q', MND_ARGS_FLAG},
-    {MND_CLI_OPT_FRONT_MATTER_KEYS, '\0', MND_ARGS_LIST},
-    {MND_CLI_OPT_PROJECT_ID_VERSION, '\0', MND_ARGS_VALUE},
-    {MND_CLI_OPT_MSGID_BUGS_ADDRESS, '\0', MND_ARGS_VALUE},
-    {MND_CLI_OPT_NO_WRAP, '\0', MND_ARGS_FLAG},
+    {MND_CLI_OPT_OUTPUT, 'o', CLOPTS_VALUE},
+    {MND_CLI_OPT_QUIET, 'q', CLOPTS_FLAG},
+    {MND_CLI_OPT_FRONT_MATTER_KEYS, '\0', CLOPTS_LIST},
+    {MND_CLI_OPT_PROJECT_ID_VERSION, '\0', CLOPTS_VALUE},
+    {MND_CLI_OPT_MSGID_BUGS_ADDRESS, '\0', CLOPTS_VALUE},
+    {MND_CLI_OPT_NO_WRAP, '\0', CLOPTS_FLAG},
 };
 
 static const expected_option_t expected_init_options[] = {
-    {MND_CLI_OPT_OUTPUT, 'o', MND_ARGS_VALUE},
-    {MND_CLI_OPT_QUIET, 'q', MND_ARGS_FLAG},
-    {MND_CLI_OPT_LANGUAGE, 'l', MND_ARGS_VALUE},
-    {MND_CLI_OPT_NO_WRAP, '\0', MND_ARGS_FLAG},
+    {MND_CLI_OPT_OUTPUT, 'o', CLOPTS_VALUE},
+    {MND_CLI_OPT_QUIET, 'q', CLOPTS_FLAG},
+    {MND_CLI_OPT_LANGUAGE, 'l', CLOPTS_VALUE},
+    {MND_CLI_OPT_NO_WRAP, '\0', CLOPTS_FLAG},
 };
 
 static const expected_option_t expected_update_options[] = {
-    {MND_CLI_OPT_OUTPUT, 'o', MND_ARGS_VALUE},
-    {MND_CLI_OPT_QUIET, 'q', MND_ARGS_FLAG},
-    {MND_CLI_OPT_NO_FUZZY_MATCHING, '\0', MND_ARGS_FLAG},
-    {MND_CLI_OPT_NO_WRAP, '\0', MND_ARGS_FLAG},
+    {MND_CLI_OPT_OUTPUT, 'o', CLOPTS_VALUE},
+    {MND_CLI_OPT_QUIET, 'q', CLOPTS_FLAG},
+    {MND_CLI_OPT_NO_FUZZY_MATCHING, '\0', CLOPTS_FLAG},
+    {MND_CLI_OPT_NO_WRAP, '\0', CLOPTS_FLAG},
 };
 
 static const expected_option_t expected_translate_options[] = {
-    {MND_CLI_OPT_OUTPUT, 'o', MND_ARGS_VALUE},
-    {MND_CLI_OPT_QUIET, 'q', MND_ARGS_FLAG},
-    {MND_CLI_OPT_FRONT_MATTER_KEYS, '\0', MND_ARGS_LIST},
-    {MND_CLI_OPT_USE_FUZZY, '\0', MND_ARGS_FLAG},
+    {MND_CLI_OPT_OUTPUT, 'o', CLOPTS_VALUE},
+    {MND_CLI_OPT_QUIET, 'q', CLOPTS_FLAG},
+    {MND_CLI_OPT_FRONT_MATTER_KEYS, '\0', CLOPTS_LIST},
+    {MND_CLI_OPT_USE_FUZZY, '\0', CLOPTS_FLAG},
 };
 
 static const expected_command_t expected_commands[] = {
@@ -129,7 +129,7 @@ static const expected_command_t expected_commands[] = {
 
 #define EXPECTED_COMMAND_COUNT (sizeof expected_commands / sizeof expected_commands[0])
 
-static const mnd_args_command_t *find_command(const mnd_args_program_t *program, const char *name)
+static const clopts_command_t *find_command(const clopts_program_t *program, const char *name)
 {
     size_t i;
 
@@ -144,7 +144,7 @@ static const mnd_args_command_t *find_command(const mnd_args_program_t *program,
     return NULL;
 }
 
-static const mnd_args_option_t *find_option(const mnd_args_command_t *command, const char *long_name)
+static const clopts_option_t *find_option(const clopts_command_t *command, const char *long_name)
 {
     size_t i;
 
@@ -176,11 +176,11 @@ typedef struct argv_copy
 } argv_copy_t;
 
 /* NULL で終わる tokens を copy に複製して解析し、解析のエラーを橋渡しで diags に移す */
-static mnd_args_status_t parse_tokens(const mnd_args_program_t *program, const char *const *tokens,
-                                      argv_copy_t *copy, mnd_args_result_t *result, mnd_diag_list_t *diags)
+static clopts_status_t parse_tokens(const clopts_program_t *program, const char *const *tokens,
+                                      argv_copy_t *copy, clopts_result_t *result, mnd_diag_list_t *diags)
 {
     clopts_errors_t errors = CLOPTS_ERRORS_INIT;
-    mnd_args_status_t status;
+    clopts_status_t status;
 
     copy->argc = 0;
     while (tokens[copy->argc] != NULL)
@@ -193,7 +193,7 @@ static mnd_args_status_t parse_tokens(const mnd_args_program_t *program, const c
     }
     copy->argv[copy->argc] = NULL;
 
-    status = mnd_args_parse(program, copy->argc, copy->argv, result, &errors);
+    status = clopts_parse(program, copy->argc, copy->argv, result, &errors);
     mnd_cli_clopts_errors_to_diags(&errors, diags);
     clopts_errors_free(&errors);
 
@@ -207,8 +207,8 @@ static mnd_args_status_t parse_tokens(const mnd_args_program_t *program, const c
 NAOS_TEST(run_commands_program_declares_four_subcommands)
 {
     static const char version[] = "9.8.7-commands";
-    mnd_args_program_t program = mnd_cli_program(version);
-    const mnd_args_command_t *root = program.root;
+    clopts_program_t program = mnd_cli_program(version);
+    const clopts_command_t *root = program.root;
     size_t i;
     size_t j;
 
@@ -221,7 +221,7 @@ NAOS_TEST(run_commands_program_declares_four_subcommands)
     NAOS_REQUIRE_UINT_EQ(EXPECTED_COMMAND_COUNT, root->command_count);
     for (i = 0; i < EXPECTED_COMMAND_COUNT; i++)
     {
-        const mnd_args_command_t *command = &root->commands[i];
+        const clopts_command_t *command = &root->commands[i];
 
         NAOS_TRACE_PUSH("%s", expected_commands[i].name);
         NAOS_CHECK_STR_EQ(expected_commands[i].name, command->name);
@@ -238,30 +238,30 @@ NAOS_TEST(run_commands_program_declares_four_subcommands)
 /* バージョンは呼び出しごとに差し替わり、宣言のテーブルは共有される */
 NAOS_TEST(run_commands_program_version_replaced_per_call)
 {
-    mnd_args_program_t a = mnd_cli_program("1.0.0");
-    mnd_args_program_t b = mnd_cli_program("2.0.0");
+    clopts_program_t a = mnd_cli_program("1.0.0");
+    clopts_program_t b = mnd_cli_program("2.0.0");
     char *out;
 
     NAOS_CHECK_STR_EQ("1.0.0", a.version);
     NAOS_CHECK_STR_EQ("2.0.0", b.version);
     NAOS_CHECK_TRUE(a.root == b.root);
-    out = mnd_args_format_version(&b);
+    out = clopts_format_version(&b);
     NAOS_REQUIRE_NOT_NULL(out);
     NAOS_CHECK_STR_EQ("monde 2.0.0\n", out);
-    mnd_args_text_free(out);
+    clopts_text_free(out);
 }
 
 /* 各サブコマンドの位置引数とオプションが設計の表のとおりで、出力と言語は必須でない（2.1、2.2、5.2、5.3） */
 NAOS_TEST(run_commands_declarations_match_design_table)
 {
-    mnd_args_program_t program = mnd_cli_program(TEST_CLI_VERSION);
+    clopts_program_t program = mnd_cli_program(TEST_CLI_VERSION);
     size_t i;
     size_t j;
 
     for (i = 0; i < EXPECTED_COMMAND_COUNT; i++)
     {
         const expected_command_t *expected = &expected_commands[i];
-        const mnd_args_command_t *command = find_command(&program, expected->name);
+        const clopts_command_t *command = find_command(&program, expected->name);
 
         NAOS_TRACE_PUSH("%s", expected->name);
         NAOS_REQUIRE_NOT_NULL(command);
@@ -277,7 +277,7 @@ NAOS_TEST(run_commands_declarations_match_design_table)
         NAOS_CHECK_UINT_EQ(expected->option_count, command->option_count);
         for (j = 0; j < expected->option_count; j++)
         {
-            const mnd_args_option_t *option = find_option(command, expected->options[j].long_name);
+            const clopts_option_t *option = find_option(command, expected->options[j].long_name);
 
             NAOS_TRACE_PUSH("--%s", expected->options[j].long_name);
             NAOS_REQUIRE_NOT_NULL(option);
@@ -301,30 +301,30 @@ NAOS_TEST(run_commands_minimal_argv_parses_without_decl_error)
     static const char *const update_argv[] = {"monde", "update", "new.pot", "old.po", NULL};
     static const char *const translate_argv[] = {"monde", "translate", "in.md", "ja.po", NULL};
     static const char *const *const argvs[] = {extract_argv, init_argv, update_argv, translate_argv};
-    mnd_args_program_t program = mnd_cli_program(TEST_CLI_VERSION);
+    clopts_program_t program = mnd_cli_program(TEST_CLI_VERSION);
     size_t i;
 
     for (i = 0; i < sizeof argvs / sizeof argvs[0]; i++)
     {
-        mnd_args_result_t result = MND_ARGS_RESULT_INIT;
+        clopts_result_t result = CLOPTS_RESULT_INIT;
         mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
         argv_copy_t copy;
-        mnd_args_status_t status = parse_tokens(&program, argvs[i], &copy, &result, &diags);
+        clopts_status_t status = parse_tokens(&program, argvs[i], &copy, &result, &diags);
 
         NAOS_TRACE_PUSH("%s", argvs[i][1]);
-        NAOS_CHECK_INT_EQ((int)MND_ARGS_OK, (int)status);
+        NAOS_CHECK_INT_EQ((int)CLOPTS_OK, (int)status);
         NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
         if (mnd_diag_list_count(&diags) > 0)
         {
             NAOS_NOTE("first diagnostic: %s", mnd_diag_list_at(&diags, 0)->message);
         }
-        NAOS_CHECK_UINT_EQ(2, mnd_args_depth(&result));
-        NAOS_REQUIRE_NOT_NULL(mnd_args_command(&result));
-        NAOS_CHECK_STR_EQ(argvs[i][1], mnd_args_command(&result)->name);
-        NAOS_CHECK_FALSE(mnd_args_is_set(&result, MND_CLI_OPT_OUTPUT));
-        NAOS_CHECK_NULL(mnd_args_value(&result, MND_CLI_OPT_OUTPUT));
-        NAOS_CHECK_FALSE(mnd_args_flag(&result, MND_CLI_OPT_QUIET));
-        mnd_args_result_free(&result);
+        NAOS_CHECK_UINT_EQ(2, clopts_depth(&result));
+        NAOS_REQUIRE_NOT_NULL(clopts_command(&result));
+        NAOS_CHECK_STR_EQ(argvs[i][1], clopts_command(&result)->name);
+        NAOS_CHECK_FALSE(clopts_is_set(&result, MND_CLI_OPT_OUTPUT));
+        NAOS_CHECK_NULL(clopts_value(&result, MND_CLI_OPT_OUTPUT));
+        NAOS_CHECK_FALSE(clopts_flag(&result, MND_CLI_OPT_QUIET));
+        clopts_result_free(&result);
         mnd_diag_list_free(&diags);
         NAOS_TRACE_POP();
     }
@@ -339,28 +339,28 @@ static void format_help_of(const char *command_name, mnd_buf_t *out)
     static const char *const global_argv[] = {"monde", "--help", NULL};
     const char *command_argv[] = {"monde", NULL, "--help", NULL};
     argv_copy_t copy;
-    mnd_args_program_t program = mnd_cli_program(TEST_CLI_VERSION);
-    mnd_args_result_t result = MND_ARGS_RESULT_INIT;
+    clopts_program_t program = mnd_cli_program(TEST_CLI_VERSION);
+    clopts_result_t result = CLOPTS_RESULT_INIT;
     mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
-    mnd_args_status_t status;
+    clopts_status_t status;
     char *text;
 
     command_argv[1] = command_name;
     status = parse_tokens(&program, (command_name != NULL) ? command_argv : global_argv, &copy, &result, &diags);
-    NAOS_REQUIRE_INT_EQ((int)MND_ARGS_HELP, (int)status);
-    NAOS_REQUIRE_UINT_EQ((command_name != NULL) ? 2 : 1, mnd_args_depth(&result));
-    text = mnd_args_format_help(&result);
+    NAOS_REQUIRE_INT_EQ((int)CLOPTS_HELP, (int)status);
+    NAOS_REQUIRE_UINT_EQ((command_name != NULL) ? 2 : 1, clopts_depth(&result));
+    text = clopts_format_help(&result);
     NAOS_REQUIRE_NOT_NULL(text);
     NAOS_REQUIRE_TRUE(mnd_buf_append_str(out, text));
-    mnd_args_text_free(text);
-    mnd_args_result_free(&result);
+    clopts_text_free(text);
+    clopts_result_free(&result);
     mnd_diag_list_free(&diags);
 }
 
 /* 各サブコマンドのヘルプに、宣言したすべてのオプションと位置引数が現れる（1.3） */
 NAOS_TEST(run_commands_help_lists_all_options_and_positionals)
 {
-    mnd_args_program_t program = mnd_cli_program(TEST_CLI_VERSION);
+    clopts_program_t program = mnd_cli_program(TEST_CLI_VERSION);
     mnd_buf_t global = MND_BUF_INIT;
     size_t i;
     size_t j;
@@ -370,7 +370,7 @@ NAOS_TEST(run_commands_help_lists_all_options_and_positionals)
     for (i = 0; i < EXPECTED_COMMAND_COUNT; i++)
     {
         const expected_command_t *expected = &expected_commands[i];
-        const mnd_args_command_t *command = find_command(&program, expected->name);
+        const clopts_command_t *command = find_command(&program, expected->name);
         mnd_buf_t help = MND_BUF_INIT;
         mnd_buf_t needle = MND_BUF_INIT;
 
@@ -409,47 +409,47 @@ NAOS_TEST(run_commands_help_lists_all_options_and_positionals)
 }
 
 /* 2 つの解析結果が同じサブコマンド・位置引数・オプションの値を持つことを確かめる */
-static void check_same_result(const mnd_args_result_t *a, const mnd_args_result_t *b)
+static void check_same_result(const clopts_result_t *a, const clopts_result_t *b)
 {
     size_t i;
     size_t k;
 
-    NAOS_REQUIRE_INT_EQ((int)MND_ARGS_OK, (int)a->status);
-    NAOS_REQUIRE_INT_EQ((int)MND_ARGS_OK, (int)b->status);
-    NAOS_REQUIRE_TRUE(mnd_args_command(a) == mnd_args_command(b));
-    NAOS_REQUIRE_UINT_EQ(mnd_args_positional_count(a), mnd_args_positional_count(b));
-    for (i = 0; i < mnd_args_positional_count(a); i++)
+    NAOS_REQUIRE_INT_EQ((int)CLOPTS_OK, (int)a->status);
+    NAOS_REQUIRE_INT_EQ((int)CLOPTS_OK, (int)b->status);
+    NAOS_REQUIRE_TRUE(clopts_command(a) == clopts_command(b));
+    NAOS_REQUIRE_UINT_EQ(clopts_positional_count(a), clopts_positional_count(b));
+    for (i = 0; i < clopts_positional_count(a); i++)
     {
-        NAOS_CHECK_STR_EQ(mnd_args_positional_at(a, i), mnd_args_positional_at(b, i));
+        NAOS_CHECK_STR_EQ(clopts_positional_at(a, i), clopts_positional_at(b, i));
     }
-    for (i = 0; i < mnd_args_command(a)->option_count; i++)
+    for (i = 0; i < clopts_command(a)->option_count; i++)
     {
-        const mnd_args_option_t *option = &mnd_args_command(a)->options[i];
+        const clopts_option_t *option = &clopts_command(a)->options[i];
         const char *name = option->long_name;
 
         NAOS_TRACE_PUSH("--%s", name);
-        NAOS_CHECK_TRUE(mnd_args_is_set(a, name) == mnd_args_is_set(b, name));
-        if (option->kind == MND_ARGS_FLAG)
+        NAOS_CHECK_TRUE(clopts_is_set(a, name) == clopts_is_set(b, name));
+        if (option->kind == CLOPTS_FLAG)
         {
-            NAOS_CHECK_TRUE(mnd_args_flag(a, name) == mnd_args_flag(b, name));
+            NAOS_CHECK_TRUE(clopts_flag(a, name) == clopts_flag(b, name));
         }
-        else if (option->kind == MND_ARGS_VALUE)
+        else if (option->kind == CLOPTS_VALUE)
         {
-            if ((mnd_args_value(a, name) == NULL) || (mnd_args_value(b, name) == NULL))
+            if ((clopts_value(a, name) == NULL) || (clopts_value(b, name) == NULL))
             {
-                NAOS_CHECK_TRUE(mnd_args_value(a, name) == mnd_args_value(b, name));
+                NAOS_CHECK_TRUE(clopts_value(a, name) == clopts_value(b, name));
             }
             else
             {
-                NAOS_CHECK_STR_EQ(mnd_args_value(a, name), mnd_args_value(b, name));
+                NAOS_CHECK_STR_EQ(clopts_value(a, name), clopts_value(b, name));
             }
         }
         else
         {
-            NAOS_REQUIRE_UINT_EQ(mnd_args_list_count(a, name), mnd_args_list_count(b, name));
-            for (k = 0; k < mnd_args_list_count(a, name); k++)
+            NAOS_REQUIRE_UINT_EQ(clopts_list_count(a, name), clopts_list_count(b, name));
+            for (k = 0; k < clopts_list_count(a, name); k++)
             {
-                NAOS_CHECK_STR_EQ(mnd_args_list_at(a, name, k), mnd_args_list_at(b, name, k));
+                NAOS_CHECK_STR_EQ(clopts_list_at(a, name, k), clopts_list_at(b, name, k));
             }
         }
         NAOS_TRACE_POP();
@@ -457,15 +457,15 @@ static void check_same_result(const mnd_args_result_t *a, const mnd_args_result_
 }
 
 /* 宣言したすべてのオプションが明示的に指定されている */
-static void check_all_set(const mnd_args_result_t *result)
+static void check_all_set(const clopts_result_t *result)
 {
-    const mnd_args_command_t *command = mnd_args_command(result);
+    const clopts_command_t *command = clopts_command(result);
     size_t i;
 
     for (i = 0; i < command->option_count; i++)
     {
         NAOS_TRACE_PUSH("--%s", command->options[i].long_name);
-        NAOS_CHECK_TRUE(mnd_args_is_set(result, command->options[i].long_name));
+        NAOS_CHECK_TRUE(clopts_is_set(result, command->options[i].long_name));
         NAOS_TRACE_POP();
     }
 }
@@ -474,23 +474,23 @@ static void check_order_independent(const char *const *argv_a, const char *const
 {
     static argv_copy_t copy_a;
     static argv_copy_t copy_b;
-    mnd_args_program_t program = mnd_cli_program(TEST_CLI_VERSION);
-    mnd_args_result_t a = MND_ARGS_RESULT_INIT;
-    mnd_args_result_t b = MND_ARGS_RESULT_INIT;
+    clopts_program_t program = mnd_cli_program(TEST_CLI_VERSION);
+    clopts_result_t a = CLOPTS_RESULT_INIT;
+    clopts_result_t b = CLOPTS_RESULT_INIT;
     mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
 
     NAOS_TRACE_PUSH("%s", argv_a[1]);
-    NAOS_CHECK_INT_EQ((int)MND_ARGS_OK, (int)parse_tokens(&program, argv_a, &copy_a, &a, &diags));
-    NAOS_CHECK_INT_EQ((int)MND_ARGS_OK, (int)parse_tokens(&program, argv_b, &copy_b, &b, &diags));
+    NAOS_CHECK_INT_EQ((int)CLOPTS_OK, (int)parse_tokens(&program, argv_a, &copy_a, &a, &diags));
+    NAOS_CHECK_INT_EQ((int)CLOPTS_OK, (int)parse_tokens(&program, argv_b, &copy_b, &b, &diags));
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
-    if ((a.status == MND_ARGS_OK) && (b.status == MND_ARGS_OK))
+    if ((a.status == CLOPTS_OK) && (b.status == CLOPTS_OK))
     {
-        NAOS_CHECK_STR_EQ(argv_a[1], mnd_args_command(&a)->name);
+        NAOS_CHECK_STR_EQ(argv_a[1], clopts_command(&a)->name);
         check_all_set(&a);
         check_same_result(&a, &b);
     }
-    mnd_args_result_free(&a);
-    mnd_args_result_free(&b);
+    clopts_result_free(&a);
+    clopts_result_free(&b);
     mnd_diag_list_free(&diags);
     NAOS_TRACE_POP();
 }
@@ -539,7 +539,7 @@ NAOS_TEST(run_commands_find_handler_maps_names)
 /* 宣言したすべてのサブコマンドにハンドラがある */
 NAOS_TEST(run_commands_every_declared_command_has_handler)
 {
-    mnd_args_program_t program = mnd_cli_program(TEST_CLI_VERSION);
+    clopts_program_t program = mnd_cli_program(TEST_CLI_VERSION);
     size_t i;
 
     NAOS_REQUIRE_UINT_EQ(EXPECTED_COMMAND_COUNT, program.root->command_count);
@@ -931,8 +931,8 @@ static void record_ctx(const mnd_cli_ctx_t *ctx)
     g_seen.calls++;
     g_seen.has_env = (ctx->env != NULL);
     g_seen.version = (ctx->env != NULL) ? ctx->env->version : NULL;
-    g_seen.command = (mnd_args_command(ctx->result) != NULL) ? mnd_args_command(ctx->result)->name : NULL;
-    g_seen.positionals = mnd_args_positional_count(ctx->result);
+    g_seen.command = (clopts_command(ctx->result) != NULL) ? clopts_command(ctx->result)->name : NULL;
+    g_seen.positionals = clopts_positional_count(ctx->result);
     g_seen.quiet = ctx->quiet;
     g_seen.usage_error_initial = ctx->usage_error;
 }

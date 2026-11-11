@@ -33,9 +33,9 @@ static bool parse_both(mnd_cli_ctx_t *ctx, const mnd_cli_input_t *template_input
 
 bool mnd_cli_cmd_update(mnd_cli_ctx_t *ctx)
 {
-    const char *template_path = mnd_args_positional_at(ctx->result, 0);
-    const char *old_path = mnd_args_positional_at(ctx->result, 1);
-    const char *output_path = mnd_args_value(ctx->result, MND_CLI_OPT_OUTPUT);
+    const char *template_path = clopts_positional_at(ctx->result, 0);
+    const char *old_path = clopts_positional_at(ctx->result, 1);
+    const char *output_path = clopts_value(ctx->result, MND_CLI_OPT_OUTPUT);
     mnd_cli_input_t template_input = MND_CLI_INPUT_INIT;
     mnd_cli_input_t old_input = MND_CLI_INPUT_INIT;
     mnd_po_catalog_t template_catalog = MND_PO_CATALOG_INIT;
@@ -60,8 +60,8 @@ bool mnd_cli_cmd_update(mnd_cli_ctx_t *ctx)
 
     if (ok)
     {
-        merge_options.fuzzy_matching = !mnd_args_flag(ctx->result, MND_CLI_OPT_NO_FUZZY_MATCHING);
-        write_options.no_wrap = mnd_args_flag(ctx->result, MND_CLI_OPT_NO_WRAP);
+        merge_options.fuzzy_matching = !clopts_flag(ctx->result, MND_CLI_OPT_NO_FUZZY_MATCHING);
+        write_options.no_wrap = clopts_flag(ctx->result, MND_CLI_OPT_NO_WRAP);
         /* 改行コードは既存の翻訳ファイルに合わせる（3.3） */
         write_options.eol = mnd_cli_choose_eol(&old_input.eol);
 

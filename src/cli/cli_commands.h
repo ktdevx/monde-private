@@ -2,7 +2,7 @@
 #define MONDE_CLI_CLI_COMMANDS_H
 
 /*
- * Commands: プログラムとサブコマンドの宣言（mnd_args_program_t）、オプション名の定数、
+ * Commands: プログラムとサブコマンドの宣言（clopts_program_t）、オプション名の定数、
  * サブコマンド名からハンドラへの対応。モジュール内部のヘッダ（src/cli/ と tests/cli/ だけが include する）
  */
 
@@ -28,7 +28,7 @@ struct mnd_cli_ctx;
 typedef bool (*mnd_cli_handler_fn)(struct mnd_cli_ctx *ctx);
 
 /* プログラムの宣言を返す。version（--version に表示する文字列）だけを実行時に差し替える */
-mnd_args_program_t mnd_cli_program(const char *version);
+clopts_program_t mnd_cli_program(const char *version);
 
 /* サブコマンド名に対応するハンドラ。未知の名前なら NULL */
 mnd_cli_handler_fn mnd_cli_find_handler(const char *name);

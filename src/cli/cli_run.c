@@ -50,7 +50,7 @@ static void report_single_error(FILE *err, const char *message)
  * ヘルプ（result の経路の最後のコマンド）またはバージョンの文面を fp に書き、成功なら exit_code を返す。
  * 文面の生成や書き込みに失敗したら err に診断を書いて 1 を返す
  */
-static int write_text(const mnd_cli_env_t *env, FILE *fp, const mnd_args_result_t *result, bool version,
+static int write_text(const mnd_cli_env_t *env, FILE *fp, const clopts_result_t *result, bool version,
                       int exit_code)
 {
     char *text;
@@ -58,11 +58,11 @@ static int write_text(const mnd_cli_env_t *env, FILE *fp, const mnd_args_result_
 
     if (version)
     {
-        text = mnd_args_format_version(result->program);
+        text = clopts_format_version(result->program);
     }
     else
     {
-        text = mnd_args_format_help(result);
+        text = clopts_format_help(result);
     }
 
     if (text == NULL)
@@ -77,16 +77,16 @@ static int write_text(const mnd_cli_env_t *env, FILE *fp, const mnd_args_result_
         code = MND_CLI_EXIT_FAILURE;
     }
 
-    mnd_args_text_free(text);
+    clopts_text_free(text);
 
     return code;
 }
 
 /* 解析に成功したサブコマンドのハンドラを呼び、診断を表示して終了コードを返す */
-static int run_handler(const mnd_cli_env_t *env, const mnd_args_result_t *result, mnd_diag_list_t *diags,
+static int run_handler(const mnd_cli_env_t *env, const clopts_result_t *result, mnd_diag_list_t *diags,
                        mnd_cli_find_handler_fn find_handler)
 {
-    const char *name = mnd_args_command(result)->name;
+    const char *name = clopts_command(result)->name;
     mnd_cli_handler_fn handler = find_handler(name);
     mnd_cli_ctx_t ctx;
     bool ok;
@@ -101,7 +101,7 @@ static int run_handler(const mnd_cli_env_t *env, const mnd_args_result_t *result
     ctx.env = env;
     ctx.result = result;
     ctx.diags = diags;
-    ctx.quiet = mnd_args_flag(result, MND_CLI_OPT_QUIET);
+    ctx.quiet = clopts_flag(result, MND_CLI_OPT_QUIET);
     ctx.usage_error = false;
 
     ok = handler(&ctx);
@@ -118,45 +118,45 @@ static int run_handler(const mnd_cli_env_t *env, const mnd_args_result_t *result
 
 int mnd_cli_run_with(const mnd_cli_env_t *env, int argc, char *const *argv, mnd_cli_find_handler_fn find_handler)
 {
-    mnd_args_program_t program = mnd_cli_program(env->version);
-    mnd_args_result_t result = MND_ARGS_RESULT_INIT;
+    clopts_program_t program = mnd_cli_program(env->version);
+    clopts_result_t result = CLOPTS_RESULT_INIT;
     clopts_errors_t errors = CLOPTS_ERRORS_INIT;
     mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
-    mnd_args_status_t status;
+    clopts_status_t status;
     int exit_code;
 
     /* 解析のエラーは直後に診断へ移し、以降は現在と同じ diags で報告と終了コードを決める */
-    status = mnd_args_parse(&program, argc, argv, &result, &errors);
+    status = clopts_parse(&program, argc, argv, &result, &errors);
     mnd_cli_clopts_errors_to_diags(&errors, &diags);
     clopts_errors_free(&errors);
 
     switch (status)
     {
-    case MND_ARGS_OK:
+    case CLOPTS_OK:
         exit_code = run_handler(env, &result, &diags, find_handler);
         break;
-    case MND_ARGS_HELP:
+    case CLOPTS_HELP:
         exit_code = write_text(env, env->out, &result, false, MND_CLI_EXIT_OK);
         break;
-    case MND_ARGS_VERSION:
+    case CLOPTS_VERSION:
         exit_code = write_text(env, env->out, &result, true, MND_CLI_EXIT_OK);
         break;
-    case MND_ARGS_NO_COMMAND:
+    case CLOPTS_NO_COMMAND:
         exit_code = write_text(env, env->err, &result, false, MND_CLI_EXIT_USAGE);
         break;
-    case MND_ARGS_USAGE_ERROR:
+    case CLOPTS_USAGE_ERROR:
         mnd_cli_report_usage_error(env->err, &result, &diags);
         exit_code = MND_CLI_EXIT_USAGE;
         break;
-    case MND_ARGS_DECL_ERROR:
-    case MND_ARGS_OUT_OF_MEMORY:
+    case CLOPTS_DECL_ERROR:
+    case CLOPTS_OUT_OF_MEMORY:
     default:
         mnd_cli_report_diags(env->err, &diags);
         exit_code = MND_CLI_EXIT_FAILURE;
         break;
     }
 
-    mnd_args_result_free(&result);
+    clopts_result_free(&result);
     mnd_diag_list_free(&diags);
 
     return exit_code;

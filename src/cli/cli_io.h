@@ -42,6 +42,6 @@ bool mnd_cli_write_output(const mnd_cli_env_t *env, const char *path, const char
 mnd_eol_t mnd_cli_choose_eol(const mnd_eol_info_t *info);
 
 /* 位置引数のうち "-" が 2 つ以上なら使い方のエラーの診断を追加して false */
-bool mnd_cli_check_stdin_once(const mnd_args_result_t *result, mnd_diag_list_t *diags);
+bool mnd_cli_check_stdin_once(const clopts_result_t *result, mnd_diag_list_t *diags);
 
 #endif

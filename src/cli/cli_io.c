@@ -66,15 +66,15 @@ mnd_eol_t mnd_cli_choose_eol(const mnd_eol_info_t *info)
     return info->dominant;
 }
 
-bool mnd_cli_check_stdin_once(const mnd_args_result_t *result, mnd_diag_list_t *diags)
+bool mnd_cli_check_stdin_once(const clopts_result_t *result, mnd_diag_list_t *diags)
 {
-    size_t count = mnd_args_positional_count(result);
+    size_t count = clopts_positional_count(result);
     size_t dashes = 0;
     size_t i;
 
     for (i = 0; i < count; i++)
     {
-        if (mnd_cli_is_stdio(mnd_args_positional_at(result, i)))
+        if (mnd_cli_is_stdio(clopts_positional_at(result, i)))
         {
             dashes++;
         }

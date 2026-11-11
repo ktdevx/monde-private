@@ -24,10 +24,10 @@
  * --front-matter-keys の項目を、解析結果の文字列を指す配列として *keys に作る（count == 0 なら NULL）。
  * 配列は呼び出し側が free する。メモリ不足なら診断を追加して false
  */
-static bool collect_keys(const mnd_args_result_t *result, const char ***keys, size_t *count,
+static bool collect_keys(const clopts_result_t *result, const char ***keys, size_t *count,
                          mnd_diag_list_t *diags)
 {
-    size_t n = mnd_args_list_count(result, MND_CLI_OPT_FRONT_MATTER_KEYS);
+    size_t n = clopts_list_count(result, MND_CLI_OPT_FRONT_MATTER_KEYS);
     const char **items;
     size_t i;
 
@@ -46,7 +46,7 @@ static bool collect_keys(const mnd_args_result_t *result, const char ***keys, si
     }
     for (i = 0; i < n; i++)
     {
-        items[i] = mnd_args_list_at(result, MND_CLI_OPT_FRONT_MATTER_KEYS, i);
+        items[i] = clopts_list_at(result, MND_CLI_OPT_FRONT_MATTER_KEYS, i);
     }
 
     *keys = items;
@@ -61,8 +61,8 @@ static bool collect_keys(const mnd_args_result_t *result, const char ***keys, si
  */
 static bool add_header(const mnd_cli_ctx_t *ctx, mnd_po_catalog_t *catalog)
 {
-    const char *project_id_version = mnd_args_value(ctx->result, MND_CLI_OPT_PROJECT_ID_VERSION);
-    const char *bugs_address = mnd_args_value(ctx->result, MND_CLI_OPT_MSGID_BUGS_ADDRESS);
+    const char *project_id_version = clopts_value(ctx->result, MND_CLI_OPT_PROJECT_ID_VERSION);
+    const char *bugs_address = clopts_value(ctx->result, MND_CLI_OPT_MSGID_BUGS_ADDRESS);
     char now[MND_PO_DATE_SIZE];
     mnd_po_entry_t *header;
 
@@ -85,8 +85,8 @@ static bool add_header(const mnd_cli_ctx_t *ctx, mnd_po_catalog_t *catalog)
 
 bool mnd_cli_cmd_extract(mnd_cli_ctx_t *ctx)
 {
-    const char *input_path = mnd_args_positional_at(ctx->result, 0);
-    const char *output_path = mnd_args_value(ctx->result, MND_CLI_OPT_OUTPUT);
+    const char *input_path = clopts_positional_at(ctx->result, 0);
+    const char *output_path = clopts_value(ctx->result, MND_CLI_OPT_OUTPUT);
     mnd_cli_input_t input = MND_CLI_INPUT_INIT;
     mnd_tu_options_t options = MND_TU_OPTIONS_INIT;
     mnd_po_write_options_t write_options = MND_PO_WRITE_OPTIONS_INIT;
@@ -106,7 +106,7 @@ bool mnd_cli_cmd_extract(mnd_cli_ctx_t *ctx)
         options.path = input.path;
         options.front_matter_keys = keys;
         options.front_matter_key_count = key_count;
-        write_options.no_wrap = mnd_args_flag(ctx->result, MND_CLI_OPT_NO_WRAP);
+        write_options.no_wrap = clopts_flag(ctx->result, MND_CLI_OPT_NO_WRAP);
         write_options.eol = mnd_cli_choose_eol(&input.eol);
 
         ok = mnd_tu_scan(mnd_buf_cstr(&input.content), input.content.len, &options, &doc, ctx->diags)
