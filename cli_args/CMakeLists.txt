@@ -1,6 +1,8 @@
 # CLOpts: コマンドライン引数の解析ライブラリ。静的ライブラリ clopts と別名 CLOpts::clopts を作る。
 # 移動の段階では Monde の共通部品（monde::foundation）にリンクし、Monde のコンパイラオプションを使う
 add_library(clopts STATIC
+  src/clopts_errors.c
+  src/clopts_buf.c
   src/clopts_decl.c
   src/clopts_result.c
   src/clopts_parse.c

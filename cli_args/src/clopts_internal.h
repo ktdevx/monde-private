@@ -4,10 +4,25 @@
 /* モジュール内部の宣言。src/cli_args/ の .c と tests/cli_args/ だけが include する */
 
 #include "clopts/clopts.h"
+#include "clopts/errors.h"
 #include "foundation/diag.h"
 
 #include <stdbool.h>
 #include <stddef.h>
+
+/* printf 形式の書式をコンパイル時に検査させる属性（MSVC では空） */
+#if defined(__MINGW32__)
+#define CLOPTS_PRINTF_LIKE(fmt, args) __attribute__((format(gnu_printf, fmt, args)))
+#elif defined(__GNUC__) || defined(__clang__)
+#define CLOPTS_PRINTF_LIKE(fmt, args) __attribute__((format(printf, fmt, args)))
+#else
+#define CLOPTS_PRINTF_LIKE(fmt, args)
+#endif
+
+/* Errors（clopts_errors.c） */
+
+/* printf 形式でメッセージを組み立てて末尾に追加する。失敗したら dropped を立て、ほかの内容は変えない */
+void clopts_errors_add(clopts_errors_t *errors, const char *format, ...) CLOPTS_PRINTF_LIKE(2, 3);
 
 /* DeclCheck（args_decl.c） */
 

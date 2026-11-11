@@ -12,6 +12,8 @@ NAOS_DECLARE_SUITE(single);
 NAOS_DECLARE_SUITE(nested);
 NAOS_DECLARE_SUITE(inherit);
 NAOS_DECLARE_SUITE(argv);
+NAOS_DECLARE_SUITE(errors_api);
+NAOS_DECLARE_SUITE(buf);
 
 NAOS_MAIN(
     NAOS_ADD_SUITE(decl),
@@ -25,5 +27,7 @@ NAOS_MAIN(
     NAOS_ADD_SUITE(single),
     NAOS_ADD_SUITE(nested),
     NAOS_ADD_SUITE(inherit),
-    NAOS_ADD_SUITE(argv)
+    NAOS_ADD_SUITE(argv),
+    NAOS_ADD_SUITE(errors_api),
+    NAOS_ADD_SUITE(buf)
 )
