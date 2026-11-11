@@ -9,11 +9,11 @@
 
 NAOS_TEST(argv_free_on_init_is_safe_twice)
 {
-    mnd_args_argv_t args = MND_ARGS_ARGV_INIT;
+    clopts_argv_t args = CLOPTS_ARGV_INIT;
     clopts_errors_t errors = CLOPTS_ERRORS_INIT;
 
-    mnd_args_argv_free(&args);
-    mnd_args_argv_free(&args);
+    clopts_argv_free(&args);
+    clopts_argv_free(&args);
     NAOS_CHECK_INT_EQ(0, args.argc);
     NAOS_CHECK_NULL(args.argv);
     NAOS_CHECK_FALSE(args.owned);
@@ -33,17 +33,17 @@ NAOS_TEST(argv_get_returns_given_argv_as_is)
     char arg0[] = "tool";
     char arg1[] = "\xE6\x97\xA5\xE6\x9C\xAC";
     char *argv[] = {arg0, arg1, NULL};
-    mnd_args_argv_t args = MND_ARGS_ARGV_INIT;
+    clopts_argv_t args = CLOPTS_ARGV_INIT;
     clopts_errors_t errors = CLOPTS_ERRORS_INIT;
 
-    NAOS_REQUIRE_TRUE(mnd_args_argv_get(2, argv, &args, &errors));
+    NAOS_REQUIRE_TRUE(clopts_argv_get(2, argv, &args, &errors));
     NAOS_CHECK_INT_EQ(2, args.argc);
     NAOS_CHECK_PTR_EQ(argv, args.argv);
     NAOS_CHECK_FALSE(args.owned);
     NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&errors));
 
     /* 所有しないので、解放しても呼び出し側の配列は変わらない */
-    mnd_args_argv_free(&args);
+    clopts_argv_free(&args);
     NAOS_CHECK_INT_EQ(0, args.argc);
     NAOS_CHECK_NULL(args.argv);
     NAOS_CHECK_FALSE(args.owned);
@@ -51,7 +51,7 @@ NAOS_TEST(argv_get_returns_given_argv_as_is)
     NAOS_CHECK_PTR_EQ(arg1, argv[1]);
     NAOS_CHECK_STR_EQ("tool", argv[0]);
 
-    mnd_args_argv_free(&args);
+    clopts_argv_free(&args);
     clopts_errors_free(&errors);
 }
 
@@ -74,10 +74,10 @@ static const wchar_t argv_tool_utf16[] = {0x0074, 0x006F, 0x006F, 0x006C, 0x0000
 NAOS_TEST(argv_from_wide_converts_to_utf8)
 {
     wchar_t *const wargv[] = {(wchar_t *)argv_tool_utf16, (wchar_t *)argv_nihon_utf16, NULL};
-    mnd_args_argv_t args = MND_ARGS_ARGV_INIT;
+    clopts_argv_t args = CLOPTS_ARGV_INIT;
     clopts_errors_t errors = CLOPTS_ERRORS_INIT;
 
-    NAOS_REQUIRE_TRUE(mnd_args_argv_from_wide(2, wargv, &args, &errors));
+    NAOS_REQUIRE_TRUE(clopts_argv_from_wide(2, wargv, &args, &errors));
     NAOS_CHECK_INT_EQ(2, args.argc);
     NAOS_REQUIRE_NOT_NULL(args.argv);
     NAOS_CHECK_TRUE(args.owned);
@@ -87,24 +87,24 @@ NAOS_TEST(argv_from_wide_converts_to_utf8)
     NAOS_CHECK_NULL(args.argv[2]);
     NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&errors));
 
-    mnd_args_argv_free(&args);
+    clopts_argv_free(&args);
     NAOS_CHECK_INT_EQ(0, args.argc);
     NAOS_CHECK_NULL(args.argv);
     NAOS_CHECK_FALSE(args.owned);
 
     /* 解放済みに対しても安全 */
-    mnd_args_argv_free(&args);
+    clopts_argv_free(&args);
     clopts_errors_free(&errors);
 }
 
 NAOS_TEST(argv_from_wide_reports_index_of_invalid_utf16)
 {
     wchar_t *const wargv[] = {(wchar_t *)argv_tool_utf16, (wchar_t *)argv_lone_surrogate, NULL};
-    mnd_args_argv_t args = MND_ARGS_ARGV_INIT;
+    clopts_argv_t args = CLOPTS_ARGV_INIT;
     clopts_errors_t errors = CLOPTS_ERRORS_INIT;
     const char *message;
 
-    NAOS_CHECK_FALSE(mnd_args_argv_from_wide(2, wargv, &args, &errors));
+    NAOS_CHECK_FALSE(clopts_argv_from_wide(2, wargv, &args, &errors));
     NAOS_CHECK_INT_EQ(0, args.argc);
     NAOS_CHECK_NULL(args.argv);
     NAOS_CHECK_FALSE(args.owned);
@@ -112,19 +112,19 @@ NAOS_TEST(argv_from_wide_reports_index_of_invalid_utf16)
     message = clopts_errors_at(&errors, 0);
     NAOS_CHECK_STR_EQ("command-line argument 1 is not valid UTF-16", message);
 
-    mnd_args_argv_free(&args);
+    clopts_argv_free(&args);
     clopts_errors_free(&errors);
 }
 
 NAOS_TEST(argv_get_reads_process_command_line)
 {
     char *dummy[] = {NULL};
-    mnd_args_argv_t args = MND_ARGS_ARGV_INIT;
+    clopts_argv_t args = CLOPTS_ARGV_INIT;
     clopts_errors_t errors = CLOPTS_ERRORS_INIT;
     int i;
 
     /* Windows では main の引数を使わず、プロセスのコマンドラインから取得する */
-    NAOS_REQUIRE_TRUE(mnd_args_argv_get(0, dummy, &args, &errors));
+    NAOS_REQUIRE_TRUE(clopts_argv_get(0, dummy, &args, &errors));
     NAOS_CHECK_INT_GE(args.argc, 1);
     NAOS_REQUIRE_NOT_NULL(args.argv);
     NAOS_CHECK_TRUE(args.owned);
@@ -135,7 +135,7 @@ NAOS_TEST(argv_get_reads_process_command_line)
     NAOS_CHECK_NULL(args.argv[args.argc]);
     NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&errors));
 
-    mnd_args_argv_free(&args);
+    clopts_argv_free(&args);
     clopts_errors_free(&errors);
 }
 

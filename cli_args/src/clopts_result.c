@@ -7,12 +7,12 @@
 
 /* ResultStore: 解析結果の保持と取得 */
 
-#define MND_ARGS_MIN_CAP 4
+#define CLOPTS_MIN_CAP 4
 
 /* 要素の大きさが elem_size の配列を need 個以上に広げる容量を求める。オーバーフローなら false */
-static bool mnd_args_next_cap(size_t cap, size_t need, size_t elem_size, size_t *out_cap)
+static bool clopts_next_cap(size_t cap, size_t need, size_t elem_size, size_t *out_cap)
 {
-    size_t new_cap = (cap != 0) ? cap : MND_ARGS_MIN_CAP;
+    size_t new_cap = (cap != 0) ? cap : CLOPTS_MIN_CAP;
 
     while (new_cap < need)
     {
@@ -35,7 +35,7 @@ static bool mnd_args_next_cap(size_t cap, size_t need, size_t elem_size, size_t 
     return true;
 }
 
-static void mnd_args_value_free(mnd_args_value_t *value)
+static void clopts_value_free(clopts_value_t *value)
 {
     size_t i;
 
@@ -53,7 +53,7 @@ static void mnd_args_value_free(mnd_args_value_t *value)
 }
 
 /* 段の値の配列を解放する */
-static void mnd_args_level_free(mnd_args_level_t *level)
+static void clopts_level_free(clopts_level_t *level)
 {
     size_t i;
 
@@ -61,7 +61,7 @@ static void mnd_args_level_free(mnd_args_level_t *level)
     {
         for (i = 0; i < level->command->option_count; i++)
         {
-            mnd_args_value_free(&level->values[i]);
+            clopts_value_free(&level->values[i]);
         }
     }
 
@@ -70,14 +70,14 @@ static void mnd_args_level_free(mnd_args_level_t *level)
     level->command = NULL;
 }
 
-static mnd_args_value_t *mnd_args_value_ref(mnd_args_result_t *result, mnd_args_ref_t ref)
+static clopts_value_t *clopts_value_ref(clopts_result_t *result, clopts_ref_t ref)
 {
     return &result->levels[ref.level].values[ref.index];
 }
 
-void mnd_args_result_init(mnd_args_result_t *result)
+void clopts_result_init(clopts_result_t *result)
 {
-    result->status = MND_ARGS_NO_COMMAND;
+    result->status = CLOPTS_NO_COMMAND;
     result->program = NULL;
     result->levels = NULL;
     result->level_count = 0;
@@ -87,37 +87,37 @@ void mnd_args_result_init(mnd_args_result_t *result)
     result->positional_cap = 0;
 }
 
-void mnd_args_result_free(mnd_args_result_t *result)
+void clopts_result_free(clopts_result_t *result)
 {
-    mnd_args_result_truncate(result, 0);
+    clopts_result_truncate(result, 0);
     free(result->levels);
     free((void *)result->positionals);
-    mnd_args_result_init(result);
+    clopts_result_init(result);
 }
 
-bool mnd_args_result_push(mnd_args_result_t *result, const mnd_args_command_t *command)
+bool clopts_result_push(clopts_result_t *result, const clopts_command_t *command)
 {
-    mnd_args_value_t *values = NULL;
+    clopts_value_t *values = NULL;
     size_t count = command->option_count;
-    mnd_args_level_t *level;
+    clopts_level_t *level;
 
     if (result->level_count >= result->level_cap)
     {
         size_t new_cap;
-        mnd_args_level_t *grown;
+        clopts_level_t *grown;
 
         if (result->level_count == SIZE_MAX)
         {
             return false;
         }
 
-        if (!mnd_args_next_cap(result->level_cap, result->level_count + 1, sizeof(mnd_args_level_t),
-                               &new_cap))
+        if (!clopts_next_cap(result->level_cap, result->level_count + 1, sizeof(clopts_level_t),
+                             &new_cap))
         {
             return false;
         }
 
-        grown = (mnd_args_level_t *)realloc(result->levels, new_cap * sizeof(mnd_args_level_t));
+        grown = (clopts_level_t *)realloc(result->levels, new_cap * sizeof(clopts_level_t));
         if (grown == NULL)
         {
             return false;
@@ -129,12 +129,12 @@ bool mnd_args_result_push(mnd_args_result_t *result, const mnd_args_command_t *c
 
     if (count > 0)
     {
-        if (count > (SIZE_MAX / sizeof(mnd_args_value_t)))
+        if (count > (SIZE_MAX / sizeof(clopts_value_t)))
         {
             return false;
         }
 
-        values = (mnd_args_value_t *)calloc(count, sizeof(mnd_args_value_t));
+        values = (clopts_value_t *)calloc(count, sizeof(clopts_value_t));
         if (values == NULL)
         {
             return false;
@@ -149,32 +149,32 @@ bool mnd_args_result_push(mnd_args_result_t *result, const mnd_args_command_t *c
     return true;
 }
 
-void mnd_args_result_truncate(mnd_args_result_t *result, size_t level_count)
+void clopts_result_truncate(clopts_result_t *result, size_t level_count)
 {
     while (result->level_count > level_count)
     {
         result->level_count--;
-        mnd_args_level_free(&result->levels[result->level_count]);
+        clopts_level_free(&result->levels[result->level_count]);
     }
 }
 
-void mnd_args_result_set_flag(mnd_args_result_t *result, mnd_args_ref_t ref)
+void clopts_result_set_flag(clopts_result_t *result, clopts_ref_t ref)
 {
-    mnd_args_value_ref(result, ref)->explicit_set = true;
+    clopts_value_ref(result, ref)->explicit_set = true;
 }
 
-void mnd_args_result_set_value(mnd_args_result_t *result, mnd_args_ref_t ref, const char *value)
+void clopts_result_set_value(clopts_result_t *result, clopts_ref_t ref, const char *value)
 {
-    mnd_args_value_t *target = mnd_args_value_ref(result, ref);
+    clopts_value_t *target = clopts_value_ref(result, ref);
 
     target->explicit_set = true;
     target->value = value;
 }
 
-mnd_args_status_t mnd_args_result_append_list(mnd_args_result_t *result, mnd_args_ref_t ref,
-                                              const char *value, bool explicit_set)
+clopts_status_t clopts_result_append_list(clopts_result_t *result, clopts_ref_t ref,
+                                          const char *value, bool explicit_set)
 {
-    mnd_args_value_t *target = mnd_args_value_ref(result, ref);
+    clopts_value_t *target = clopts_value_ref(result, ref);
     const char *p;
     const char *start;
     size_t new_items = 1;
@@ -189,7 +189,7 @@ mnd_args_status_t mnd_args_result_append_list(mnd_args_result_t *result, mnd_arg
         {
             if (p == start)
             {
-                return MND_ARGS_USAGE_ERROR;
+                return CLOPTS_USAGE_ERROR;
             }
 
             if (*p == '\0')
@@ -204,7 +204,7 @@ mnd_args_status_t mnd_args_result_append_list(mnd_args_result_t *result, mnd_arg
 
     if (new_items > (SIZE_MAX - target->item_count))
     {
-        return MND_ARGS_OUT_OF_MEMORY;
+        return CLOPTS_OUT_OF_MEMORY;
     }
 
     need = target->item_count + new_items;
@@ -213,15 +213,15 @@ mnd_args_status_t mnd_args_result_append_list(mnd_args_result_t *result, mnd_arg
         size_t new_cap;
         char **grown;
 
-        if (!mnd_args_next_cap(target->item_cap, need, sizeof(char *), &new_cap))
+        if (!clopts_next_cap(target->item_cap, need, sizeof(char *), &new_cap))
         {
-            return MND_ARGS_OUT_OF_MEMORY;
+            return CLOPTS_OUT_OF_MEMORY;
         }
 
         grown = (char **)realloc(target->items, new_cap * sizeof(char *));
         if (grown == NULL)
         {
-            return MND_ARGS_OUT_OF_MEMORY;
+            return CLOPTS_OUT_OF_MEMORY;
         }
 
         target->items = grown;
@@ -245,7 +245,7 @@ mnd_args_status_t mnd_args_result_append_list(mnd_args_result_t *result, mnd_arg
                     free(target->items[target->item_count + added]);
                 }
 
-                return MND_ARGS_OUT_OF_MEMORY;
+                return CLOPTS_OUT_OF_MEMORY;
             }
 
             memcpy(item, start, len);
@@ -268,10 +268,10 @@ mnd_args_status_t mnd_args_result_append_list(mnd_args_result_t *result, mnd_arg
         target->explicit_set = true;
     }
 
-    return MND_ARGS_OK;
+    return CLOPTS_OK;
 }
 
-bool mnd_args_result_add_positional(mnd_args_result_t *result, const char *arg)
+bool clopts_result_add_positional(clopts_result_t *result, const char *arg)
 {
     if (result->positional_count >= result->positional_cap)
     {
@@ -283,8 +283,8 @@ bool mnd_args_result_add_positional(mnd_args_result_t *result, const char *arg)
             return false;
         }
 
-        if (!mnd_args_next_cap(result->positional_cap, result->positional_count + 1,
-                               sizeof(const char *), &new_cap))
+        if (!clopts_next_cap(result->positional_cap, result->positional_count + 1,
+                             sizeof(const char *), &new_cap))
         {
             return false;
         }
@@ -305,15 +305,15 @@ bool mnd_args_result_add_positional(mnd_args_result_t *result, const char *arg)
     return true;
 }
 
-mnd_args_status_t mnd_args_result_apply_defaults(mnd_args_result_t *result)
+clopts_status_t clopts_result_apply_defaults(clopts_result_t *result)
 {
-    mnd_args_ref_t ref;
+    clopts_ref_t ref;
 
     /* 経路上のすべての段で、明示的に指定されていないオプションに既定値を適用する（5.6、12.6） */
     for (ref.level = 0; ref.level < result->level_count; ref.level++)
     {
-        const mnd_args_level_t *level = &result->levels[ref.level];
-        const mnd_args_command_t *command = level->command;
+        const clopts_level_t *level = &result->levels[ref.level];
+        const clopts_command_t *command = level->command;
 
         if (level->values == NULL)
         {
@@ -322,29 +322,29 @@ mnd_args_status_t mnd_args_result_apply_defaults(mnd_args_result_t *result)
 
         for (ref.index = 0; ref.index < command->option_count; ref.index++)
         {
-            const mnd_args_option_t *option = &command->options[ref.index];
-            mnd_args_value_t *value = &level->values[ref.index];
+            const clopts_option_t *option = &command->options[ref.index];
+            clopts_value_t *value = &level->values[ref.index];
 
             if ((value->explicit_set) || (option->default_value == NULL))
             {
                 continue;
             }
 
-            if (option->kind == MND_ARGS_VALUE)
+            if (option->kind == CLOPTS_VALUE)
             {
                 value->value = option->default_value;
             }
-            else if (option->kind == MND_ARGS_LIST)
+            else if (option->kind == CLOPTS_LIST)
             {
-                mnd_args_status_t status;
+                clopts_status_t status;
 
                 if (value->item_count > 0)
                 {
                     continue;
                 }
 
-                status = mnd_args_result_append_list(result, ref, option->default_value, false);
-                if (status != MND_ARGS_OK)
+                status = clopts_result_append_list(result, ref, option->default_value, false);
+                if (status != CLOPTS_OK)
                 {
                     return status;
                 }
@@ -352,10 +352,10 @@ mnd_args_status_t mnd_args_result_apply_defaults(mnd_args_result_t *result)
         }
     }
 
-    return MND_ARGS_OK;
+    return CLOPTS_OK;
 }
 
-const mnd_args_command_t *mnd_args_command(const mnd_args_result_t *result)
+const clopts_command_t *clopts_command(const clopts_result_t *result)
 {
     if (result->level_count == 0)
     {
@@ -365,12 +365,12 @@ const mnd_args_command_t *mnd_args_command(const mnd_args_result_t *result)
     return result->levels[result->level_count - 1].command;
 }
 
-size_t mnd_args_depth(const mnd_args_result_t *result)
+size_t clopts_depth(const clopts_result_t *result)
 {
     return result->level_count;
 }
 
-const mnd_args_command_t *mnd_args_command_at(const mnd_args_result_t *result, size_t level)
+const clopts_command_t *clopts_command_at(const clopts_result_t *result, size_t level)
 {
     if (level >= result->level_count)
     {
@@ -384,7 +384,7 @@ const mnd_args_command_t *mnd_args_command_at(const mnd_args_result_t *result, s
  * long_name の値を返す。最後の段から段 0 へ向かって、各段のコマンドが宣言したすべてのオプション
  * （引き継ぐかどうかによらない）を探す（5.7）。宣言されていなければ NULL
  */
-static const mnd_args_value_t *mnd_args_lookup(const mnd_args_result_t *result, const char *long_name)
+static const clopts_value_t *clopts_lookup(const clopts_result_t *result, const char *long_name)
 {
     size_t level;
 
@@ -396,7 +396,7 @@ static const mnd_args_value_t *mnd_args_lookup(const mnd_args_result_t *result, 
     level = result->level_count;
     while (level > 0)
     {
-        const mnd_args_level_t *entry;
+        const clopts_level_t *entry;
         size_t i;
 
         level--;
@@ -420,37 +420,37 @@ static const mnd_args_value_t *mnd_args_lookup(const mnd_args_result_t *result, 
     return NULL;
 }
 
-bool mnd_args_is_set(const mnd_args_result_t *result, const char *long_name)
+bool clopts_is_set(const clopts_result_t *result, const char *long_name)
 {
-    const mnd_args_value_t *value = mnd_args_lookup(result, long_name);
+    const clopts_value_t *value = clopts_lookup(result, long_name);
 
     return (value != NULL) && (value->explicit_set);
 }
 
-bool mnd_args_flag(const mnd_args_result_t *result, const char *long_name)
+bool clopts_flag(const clopts_result_t *result, const char *long_name)
 {
-    const mnd_args_value_t *value = mnd_args_lookup(result, long_name);
+    const clopts_value_t *value = clopts_lookup(result, long_name);
 
     return (value != NULL) && (value->explicit_set);
 }
 
-const char *mnd_args_value(const mnd_args_result_t *result, const char *long_name)
+const char *clopts_value(const clopts_result_t *result, const char *long_name)
 {
-    const mnd_args_value_t *value = mnd_args_lookup(result, long_name);
+    const clopts_value_t *value = clopts_lookup(result, long_name);
 
     return (value != NULL) ? value->value : NULL;
 }
 
-size_t mnd_args_list_count(const mnd_args_result_t *result, const char *long_name)
+size_t clopts_list_count(const clopts_result_t *result, const char *long_name)
 {
-    const mnd_args_value_t *value = mnd_args_lookup(result, long_name);
+    const clopts_value_t *value = clopts_lookup(result, long_name);
 
     return (value != NULL) ? value->item_count : 0;
 }
 
-const char *mnd_args_list_at(const mnd_args_result_t *result, const char *long_name, size_t index)
+const char *clopts_list_at(const clopts_result_t *result, const char *long_name, size_t index)
 {
-    const mnd_args_value_t *value = mnd_args_lookup(result, long_name);
+    const clopts_value_t *value = clopts_lookup(result, long_name);
 
     if ((value == NULL) || (index >= value->item_count))
     {
@@ -460,12 +460,12 @@ const char *mnd_args_list_at(const mnd_args_result_t *result, const char *long_n
     return value->items[index];
 }
 
-size_t mnd_args_positional_count(const mnd_args_result_t *result)
+size_t clopts_positional_count(const clopts_result_t *result)
 {
     return result->positional_count;
 }
 
-const char *mnd_args_positional_at(const mnd_args_result_t *result, size_t index)
+const char *clopts_positional_at(const clopts_result_t *result, size_t index)
 {
     if (index >= result->positional_count)
     {

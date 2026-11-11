@@ -75,30 +75,30 @@ static const char expected_cat_help[] =
  * test_tool_program の経路を result に作る。command が NULL ならルートコマンドだけ、
  * そうでなければルートコマンドと command の 2 段
  */
-static void make_path(mnd_args_result_t *result, const mnd_args_command_t *command)
+static void make_path(clopts_result_t *result, const clopts_command_t *command)
 {
-    mnd_args_result_init(result);
+    clopts_result_init(result);
     result->program = &test_tool_program;
-    NAOS_REQUIRE_TRUE(mnd_args_result_push(result, test_tool_program.root));
+    NAOS_REQUIRE_TRUE(clopts_result_push(result, test_tool_program.root));
     if (command != NULL)
     {
-        NAOS_REQUIRE_TRUE(mnd_args_result_push(result, command));
+        NAOS_REQUIRE_TRUE(clopts_result_push(result, command));
     }
 }
 
-static void check_help(const mnd_args_command_t *command, const char *expected)
+static void check_help(const clopts_command_t *command, const char *expected)
 {
-    mnd_args_result_t result;
+    clopts_result_t result;
     char *text = NULL;
 
     make_path(&result, command);
-    text = mnd_args_format_help(&result);
+    text = clopts_format_help(&result);
     NAOS_REQUIRE_NOT_NULL(text);
     NAOS_CHECK_STR_EQ(expected, text);
     NAOS_CHECK_MEM_EQ(expected, strlen(expected), text, strlen(text));
 
-    mnd_args_text_free(text);
-    mnd_args_result_free(&result);
+    clopts_text_free(text);
+    clopts_result_free(&result);
 }
 
 NAOS_TEST(global_help_matches_expected_text)
@@ -125,72 +125,72 @@ NAOS_TEST(version_is_program_and_version_line)
 {
     char *text = NULL;
 
-    text = mnd_args_format_version(&test_tool_program);
+    text = clopts_format_version(&test_tool_program);
     NAOS_REQUIRE_NOT_NULL(text);
     NAOS_CHECK_STR_EQ("tool 1.2.3\n", text);
     NAOS_CHECK_UINT_EQ(11, strlen(text));
 
-    mnd_args_text_free(text);
+    clopts_text_free(text);
 
     /* 空の値を渡しても安全 */
-    mnd_args_text_free(NULL);
+    clopts_text_free(NULL);
 }
 
 NAOS_TEST(usage_hint_without_command)
 {
-    mnd_args_result_t result;
+    clopts_result_t result;
     char *text = NULL;
 
     make_path(&result, NULL);
-    text = mnd_args_format_usage_hint(&result);
+    text = clopts_format_usage_hint(&result);
     NAOS_REQUIRE_NOT_NULL(text);
     NAOS_CHECK_STR_EQ("Run 'tool --help' for usage.\n", text);
 
-    mnd_args_text_free(text);
-    mnd_args_result_free(&result);
+    clopts_text_free(text);
+    clopts_result_free(&result);
 }
 
 NAOS_TEST(usage_hint_with_command)
 {
-    mnd_args_result_t result;
+    clopts_result_t result;
     char *text = NULL;
 
     make_path(&result, test_tool_build);
-    text = mnd_args_format_usage_hint(&result);
+    text = clopts_format_usage_hint(&result);
     NAOS_REQUIRE_NOT_NULL(text);
     NAOS_CHECK_STR_EQ("Run 'tool build --help' for usage.\n", text);
 
-    mnd_args_text_free(text);
-    mnd_args_result_free(&result);
+    clopts_text_free(text);
+    clopts_result_free(&result);
 }
 
 NAOS_TEST(generating_twice_gives_identical_text)
 {
-    const mnd_args_command_t *root = test_tool_program.root;
-    mnd_args_result_t result;
+    const clopts_command_t *root = test_tool_program.root;
+    clopts_result_t result;
     char *first = NULL;
     char *second = NULL;
     size_t i;
 
     for (i = 0; i <= root->command_count; i++)
     {
-        const mnd_args_command_t *command = NULL;
+        const clopts_command_t *command = NULL;
 
         if (i < root->command_count)
         {
             command = &root->commands[i];
         }
         make_path(&result, command);
-        first = mnd_args_format_help(&result);
-        second = mnd_args_format_help(&result);
-        mnd_args_result_free(&result);
+        first = clopts_format_help(&result);
+        second = clopts_format_help(&result);
+        clopts_result_free(&result);
         NAOS_REQUIRE_NOT_NULL(first);
         NAOS_REQUIRE_NOT_NULL(second);
         NAOS_CHECK_UINT_GT(strlen(first), 0);
         NAOS_CHECK_UINT_EQ(strlen(first), strlen(second));
         NAOS_CHECK_STR_EQ(first, second);
-        mnd_args_text_free(first);
-        mnd_args_text_free(second);
+        clopts_text_free(first);
+        clopts_text_free(second);
         first = NULL;
         second = NULL;
     }
@@ -202,19 +202,19 @@ NAOS_TEST(generating_twice_gives_identical_text)
  */
 NAOS_TEST(consecutive_texts_are_independent)
 {
-    mnd_args_result_t copy;
-    mnd_args_result_t cat;
+    clopts_result_t copy;
+    clopts_result_t cat;
     char *version;
     char *hint;
     char *help;
 
     make_path(&copy, test_tool_copy);
     make_path(&cat, test_tool_cat);
-    version = mnd_args_format_version(&test_tool_program);
-    hint = mnd_args_format_usage_hint(&copy);
-    help = mnd_args_format_help(&cat);
-    mnd_args_result_free(&copy);
-    mnd_args_result_free(&cat);
+    version = clopts_format_version(&test_tool_program);
+    hint = clopts_format_usage_hint(&copy);
+    help = clopts_format_help(&cat);
+    clopts_result_free(&copy);
+    clopts_result_free(&cat);
     NAOS_REQUIRE_NOT_NULL(version);
     NAOS_REQUIRE_NOT_NULL(hint);
     NAOS_REQUIRE_NOT_NULL(help);
@@ -233,31 +233,31 @@ NAOS_TEST(consecutive_texts_are_independent)
     NAOS_CHECK_STR_EQ(expected_cat_help, help);
 
     /* 一方を解放しても、他方は読める */
-    mnd_args_text_free(version);
-    mnd_args_text_free(hint);
+    clopts_text_free(version);
+    clopts_text_free(hint);
     NAOS_CHECK_STR_EQ(expected_cat_help, help);
-    mnd_args_text_free(help);
+    clopts_text_free(help);
 }
 
 NAOS_TEST(output_uses_lf_only_and_no_trailing_spaces)
 {
-    const mnd_args_command_t *root = test_tool_program.root;
-    mnd_args_result_t result;
+    const clopts_command_t *root = test_tool_program.root;
+    clopts_result_t result;
     char *text = NULL;
     size_t i;
     size_t k;
 
     for (i = 0; i <= root->command_count; i++)
     {
-        const mnd_args_command_t *command = NULL;
+        const clopts_command_t *command = NULL;
 
         if (i < root->command_count)
         {
             command = &root->commands[i];
         }
         make_path(&result, command);
-        text = mnd_args_format_help(&result);
-        mnd_args_result_free(&result);
+        text = clopts_format_help(&result);
+        clopts_result_free(&result);
         NAOS_REQUIRE_NOT_NULL(text);
         NAOS_REQUIRE_UINT_GT(strlen(text), 0);
         NAOS_CHECK_INT_EQ('\n', text[strlen(text) - 1]);
@@ -269,7 +269,7 @@ NAOS_TEST(output_uses_lf_only_and_no_trailing_spaces)
                 NAOS_CHECK_TRUE((k == 0) || (text[k - 1] != ' '));
             }
         }
-        mnd_args_text_free(text);
+        clopts_text_free(text);
         text = NULL;
     }
 }

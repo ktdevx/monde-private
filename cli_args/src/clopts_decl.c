@@ -81,7 +81,7 @@ typedef struct decl_frame decl_frame_t;
 struct decl_frame
 {
     decl_frame_t *parent;              /* ルートコマンドでは NULL */
-    const mnd_args_command_t *command;
+    const clopts_command_t *command;
     const char *name;                  /* 経路上の名前。ルートコマンドではプログラム名 */
     clopts_buf_t path;                 /* 経路の文字列。最初の誤りの報告のときに作る */
     bool path_ready;
@@ -95,7 +95,7 @@ typedef struct decl_check
 } decl_check_t;
 
 static void frame_init(decl_frame_t *frame, decl_frame_t *parent,
-                       const mnd_args_command_t *command, const char *name)
+                       const clopts_command_t *command, const char *name)
 {
     frame->parent = parent;
     frame->command = command;
@@ -187,7 +187,7 @@ static decl_frame_t *find_ancestor_short(const decl_frame_t *frame, char short_n
 /* frame のコマンドの index 番目の子コマンド名を検査する */
 static void check_command_name(decl_check_t *check, decl_frame_t *frame, size_t index)
 {
-    const mnd_args_command_t *parent = frame->command;
+    const clopts_command_t *parent = frame->command;
     const char *name = parent->commands[index].name;
     size_t j;
 
@@ -225,7 +225,7 @@ static void check_command_name(decl_check_t *check, decl_frame_t *frame, size_t 
 /* frame のコマンドの index 番目のオプションの長い名前を検査する */
 static void check_long_name(decl_check_t *check, decl_frame_t *frame, size_t index)
 {
-    const mnd_args_command_t *command = frame->command;
+    const clopts_command_t *command = frame->command;
     const char *name = command->options[index].long_name;
     decl_frame_t *ancestor;
     size_t j;
@@ -274,8 +274,8 @@ static void check_long_name(decl_check_t *check, decl_frame_t *frame, size_t ind
 /* frame のコマンドの index 番目のオプションの短い名前を検査する */
 static void check_short_name(decl_check_t *check, decl_frame_t *frame, size_t index)
 {
-    const mnd_args_command_t *command = frame->command;
-    const mnd_args_option_t *option = &command->options[index];
+    const clopts_command_t *command = frame->command;
+    const clopts_option_t *option = &command->options[index];
     char short_name = option->short_name;
     decl_frame_t *ancestor;
     size_t j;
@@ -327,13 +327,13 @@ static void check_short_name(decl_check_t *check, decl_frame_t *frame, size_t in
 /* frame のコマンドの index 番目のオプションを検査する */
 static void check_option(decl_check_t *check, decl_frame_t *frame, size_t index)
 {
-    const mnd_args_option_t *option = &frame->command->options[index];
+    const clopts_option_t *option = &frame->command->options[index];
     const char *name = option->long_name;
 
     check_long_name(check, frame, index);
     check_short_name(check, frame, index);
 
-    if (option->kind == MND_ARGS_FLAG)
+    if (option->kind == CLOPTS_FLAG)
     {
         if (option->required || (option->default_value != NULL))
         {
@@ -354,7 +354,7 @@ static void check_option(decl_check_t *check, decl_frame_t *frame, size_t index)
         check->ok = false;
     }
 
-    if ((option->kind == MND_ARGS_LIST) && (option->default_value != NULL)
+    if ((option->kind == CLOPTS_LIST) && (option->default_value != NULL)
         && has_empty_item(option->default_value))
     {
         clopts_errors_add(check->errors,
@@ -366,7 +366,7 @@ static void check_option(decl_check_t *check, decl_frame_t *frame, size_t index)
 
 static void check_positionals(decl_check_t *check, decl_frame_t *frame)
 {
-    const mnd_args_command_t *command = frame->command;
+    const clopts_command_t *command = frame->command;
     bool names_match;
 
     /* 子を持つコマンドは位置引数を持たない（1.6）。範囲の規則は末端コマンドだけに適用する */
@@ -391,7 +391,7 @@ static void check_positionals(decl_check_t *check, decl_frame_t *frame)
         check->ok = false;
     }
 
-    if (command->max_positionals == MND_ARGS_UNLIMITED)
+    if (command->max_positionals == CLOPTS_UNLIMITED)
     {
         names_match = (command->positional_count >= 1);
     }
@@ -415,7 +415,7 @@ static void check_positionals(decl_check_t *check, decl_frame_t *frame)
  */
 static void check_tree(decl_check_t *check, decl_frame_t *frame)
 {
-    const mnd_args_command_t *command = frame->command;
+    const clopts_command_t *command = frame->command;
     size_t i;
 
     for (i = 0; i < command->option_count; ++i)
@@ -427,7 +427,7 @@ static void check_tree(decl_check_t *check, decl_frame_t *frame)
 
     for (i = 0; i < command->command_count; ++i)
     {
-        const mnd_args_command_t *child = &command->commands[i];
+        const clopts_command_t *child = &command->commands[i];
         decl_frame_t *ancestor;
         decl_frame_t child_frame;
 
@@ -455,7 +455,7 @@ static void check_tree(decl_check_t *check, decl_frame_t *frame)
     }
 }
 
-bool mnd_args_decl_check(const mnd_args_program_t *program, clopts_errors_t *errors)
+bool clopts_decl_check(const clopts_program_t *program, clopts_errors_t *errors)
 {
     decl_check_t check;
     decl_frame_t root;
@@ -484,8 +484,8 @@ bool mnd_args_decl_check(const mnd_args_program_t *program, clopts_errors_t *err
     return check.ok;
 }
 
-const mnd_args_command_t *mnd_args_find_child(const mnd_args_command_t *parent,
-                                              const char *name, size_t name_len)
+const clopts_command_t *clopts_find_child(const clopts_command_t *parent,
+                                          const char *name, size_t name_len)
 {
     size_t i;
 
@@ -505,10 +505,10 @@ const mnd_args_command_t *mnd_args_find_child(const mnd_args_command_t *parent,
  * match が true を返す最初の 1 つを探す（skip は 0 で呼ぶ）。
  * 順序は、最後の段のすべてのオプション、続いて親から祖先へ向かって引き継ぐオプション（12.1、12.2）
  */
-typedef bool (*mnd_args_option_match_t)(const mnd_args_option_t *option, const void *key);
+typedef bool (*clopts_option_match_t)(const clopts_option_t *option, const void *key);
 
-static bool find_effective(const mnd_args_result_t *result, size_t skip,
-                           mnd_args_option_match_t match, const void *key, mnd_args_ref_t *ref)
+static bool find_effective(const clopts_result_t *result, size_t skip,
+                           clopts_option_match_t match, const void *key, clopts_ref_t *ref)
 {
     size_t level;
 
@@ -520,7 +520,7 @@ static bool find_effective(const mnd_args_result_t *result, size_t skip,
     level = result->level_count;
     while (level > 0)
     {
-        const mnd_args_command_t *command;
+        const clopts_command_t *command;
         bool last;
         size_t i;
 
@@ -530,7 +530,7 @@ static bool find_effective(const mnd_args_result_t *result, size_t skip,
 
         for (i = 0; i < command->option_count; ++i)
         {
-            const mnd_args_option_t *option = &command->options[i];
+            const clopts_option_t *option = &command->options[i];
 
             if (!last && !option->inherited)
             {
@@ -558,28 +558,28 @@ static bool find_effective(const mnd_args_result_t *result, size_t skip,
 }
 
 /* 長い名前の照合に使う、name_len バイトの名前 */
-typedef struct mnd_args_name_key
+typedef struct clopts_name_key
 {
     const char *name;
     size_t len;
-} mnd_args_name_key_t;
+} clopts_name_key_t;
 
-static bool match_long(const mnd_args_option_t *option, const void *key)
+static bool match_long(const clopts_option_t *option, const void *key)
 {
-    const mnd_args_name_key_t *name = (const mnd_args_name_key_t *)key;
+    const clopts_name_key_t *name = (const clopts_name_key_t *)key;
 
     return name_matches(option->long_name, name->name, name->len);
 }
 
-static bool match_short(const mnd_args_option_t *option, const void *key)
+static bool match_short(const clopts_option_t *option, const void *key)
 {
     return option->short_name == *(const char *)key;
 }
 
-bool mnd_args_find_long(const mnd_args_result_t *result, const char *name, size_t name_len,
-                        mnd_args_ref_t *ref)
+bool clopts_find_long(const clopts_result_t *result, const char *name, size_t name_len,
+                      clopts_ref_t *ref)
 {
-    mnd_args_name_key_t key;
+    clopts_name_key_t key;
 
     key.name = name;
     key.len = name_len;
@@ -587,7 +587,7 @@ bool mnd_args_find_long(const mnd_args_result_t *result, const char *name, size_
     return find_effective(result, 0, match_long, &key, ref);
 }
 
-bool mnd_args_find_short(const mnd_args_result_t *result, char short_name, mnd_args_ref_t *ref)
+bool clopts_find_short(const clopts_result_t *result, char short_name, clopts_ref_t *ref)
 {
     if (short_name == '\0')
     {
@@ -597,7 +597,7 @@ bool mnd_args_find_short(const mnd_args_result_t *result, char short_name, mnd_a
     return find_effective(result, 0, match_short, &short_name, ref);
 }
 
-size_t mnd_args_effective_count(const mnd_args_result_t *result)
+size_t clopts_effective_count(const clopts_result_t *result)
 {
     size_t count = 0;
     size_t level;
@@ -610,7 +610,7 @@ size_t mnd_args_effective_count(const mnd_args_result_t *result)
 
     for (level = 0; level < result->level_count; ++level)
     {
-        const mnd_args_command_t *command = result->levels[level].command;
+        const clopts_command_t *command = result->levels[level].command;
 
         if (level + 1 == result->level_count)
         {
@@ -630,9 +630,9 @@ size_t mnd_args_effective_count(const mnd_args_result_t *result)
     return count;
 }
 
-mnd_args_ref_t mnd_args_effective_at(const mnd_args_result_t *result, size_t i)
+clopts_ref_t clopts_effective_at(const clopts_result_t *result, size_t i)
 {
-    mnd_args_ref_t ref;
+    clopts_ref_t ref;
 
     ref.level = 0;
     ref.index = 0;
@@ -641,12 +641,12 @@ mnd_args_ref_t mnd_args_effective_at(const mnd_args_result_t *result, size_t i)
     return ref;
 }
 
-const mnd_args_option_t *mnd_args_option_at(const mnd_args_result_t *result, mnd_args_ref_t ref)
+const clopts_option_t *clopts_option_at(const clopts_result_t *result, clopts_ref_t ref)
 {
     return &result->levels[ref.level].command->options[ref.index];
 }
 
-const char *mnd_args_value_name(const mnd_args_option_t *option)
+const char *clopts_value_name(const clopts_option_t *option)
 {
     if (option->value_name == NULL)
     {
@@ -656,7 +656,7 @@ const char *mnd_args_value_name(const mnd_args_option_t *option)
     return option->value_name;
 }
 
-const char *mnd_args_positional_name(const mnd_args_command_t *command, size_t index)
+const char *clopts_positional_name(const clopts_command_t *command, size_t index)
 {
     if (command->positional_count == 0)
     {

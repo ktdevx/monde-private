@@ -21,14 +21,14 @@
 
 /* ArgvSource: 引数列の UTF-8 での取得（Windows では UTF-16 のコマンドラインを UTF-8 に変換する） */
 
-static void mnd_args_argv_reset(mnd_args_argv_t *args)
+static void clopts_argv_reset(clopts_argv_t *args)
 {
     args->argc = 0;
     args->argv = NULL;
     args->owned = false;
 }
 
-void mnd_args_argv_free(mnd_args_argv_t *args)
+void clopts_argv_free(clopts_argv_t *args)
 {
     int i;
 
@@ -42,12 +42,12 @@ void mnd_args_argv_free(mnd_args_argv_t *args)
         free(args->argv);
     }
 
-    mnd_args_argv_reset(args);
+    clopts_argv_reset(args);
 }
 
 #ifndef _WIN32
 
-bool mnd_args_argv_get(int argc, char **argv, mnd_args_argv_t *out, clopts_errors_t *errors)
+bool clopts_argv_get(int argc, char **argv, clopts_argv_t *out, clopts_errors_t *errors)
 {
     (void)errors;
 
@@ -110,15 +110,15 @@ static char *wide_to_utf8(const wchar_t *wide, wide_failure_t *failure)
     return utf8;
 }
 
-bool mnd_args_argv_from_wide(int argc, wchar_t *const *wargv, mnd_args_argv_t *out,
-                             clopts_errors_t *errors)
+bool clopts_argv_from_wide(int argc, wchar_t *const *wargv, clopts_argv_t *out,
+                           clopts_errors_t *errors)
 {
     char **argv;
     wide_failure_t failure = WIDE_INVALID;
     size_t count;
     int i;
 
-    mnd_args_argv_reset(out);
+    clopts_argv_reset(out);
     if (argc < 0)
     {
         argc = 0;
@@ -157,7 +157,7 @@ bool mnd_args_argv_from_wide(int argc, wchar_t *const *wargv, mnd_args_argv_t *o
             out->argc = i;
             out->argv = argv;
             out->owned = true;
-            mnd_args_argv_free(out);
+            clopts_argv_free(out);
 
             return false;
         }
@@ -170,7 +170,7 @@ bool mnd_args_argv_from_wide(int argc, wchar_t *const *wargv, mnd_args_argv_t *o
     return true;
 }
 
-bool mnd_args_argv_get(int argc, char **argv, mnd_args_argv_t *out, clopts_errors_t *errors)
+bool clopts_argv_get(int argc, char **argv, clopts_argv_t *out, clopts_errors_t *errors)
 {
     LPWSTR *wargv;
     int wargc = 0;
@@ -180,7 +180,7 @@ bool mnd_args_argv_get(int argc, char **argv, mnd_args_argv_t *out, clopts_error
     (void)argc;
     (void)argv;
 
-    mnd_args_argv_reset(out);
+    clopts_argv_reset(out);
     wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
     if (wargv == NULL)
     {
@@ -188,7 +188,7 @@ bool mnd_args_argv_get(int argc, char **argv, mnd_args_argv_t *out, clopts_error
         return false;
     }
 
-    ok = mnd_args_argv_from_wide(wargc, (wchar_t *const *)wargv, out, errors);
+    ok = clopts_argv_from_wide(wargc, (wchar_t *const *)wargv, out, errors);
     LocalFree(wargv);
 
     return ok;

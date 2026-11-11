@@ -21,9 +21,9 @@ typedef struct single_run
 {
     char storage[SINGLE_MAX_ARGS][SINGLE_MAX_LEN];
     char *argv[SINGLE_MAX_ARGS + 1];
-    mnd_args_result_t result;
+    clopts_result_t result;
     clopts_errors_t errors;
-    mnd_args_status_t status;
+    clopts_status_t status;
 } single_run_t;
 
 /* tokens の argc 個を引数列として test_single_program で解析する */
@@ -32,7 +32,7 @@ static void run_parse(single_run_t *run, int argc, const char *const *tokens)
     int i;
 
     memset(run, 0, sizeof *run);
-    mnd_args_result_init(&run->result);
+    clopts_result_init(&run->result);
     clopts_errors_init(&run->errors);
 
     NAOS_REQUIRE_TRUE(argc <= SINGLE_MAX_ARGS);
@@ -44,7 +44,7 @@ static void run_parse(single_run_t *run, int argc, const char *const *tokens)
     }
     run->argv[argc] = NULL;
 
-    run->status = mnd_args_parse(&test_single_program, argc, run->argv, &run->result, &run->errors);
+    run->status = clopts_parse(&test_single_program, argc, run->argv, &run->result, &run->errors);
     NAOS_CHECK_INT_EQ(run->status, run->result.status);
 
     for (i = 0; i < argc; i++)
@@ -57,16 +57,16 @@ static void run_parse(single_run_t *run, int argc, const char *const *tokens)
 
 static void run_free(single_run_t *run)
 {
-    mnd_args_result_free(&run->result);
+    clopts_result_free(&run->result);
     clopts_errors_free(&run->errors);
 }
 
 /* エラーなしで status になり、経路がルートコマンドだけの 1 段であることを確かめる（2.8） */
-static void check_status(const single_run_t *run, mnd_args_status_t status)
+static void check_status(const single_run_t *run, clopts_status_t status)
 {
     NAOS_CHECK_INT_EQ(status, run->status);
-    NAOS_CHECK_UINT_EQ(1, mnd_args_depth(&run->result));
-    NAOS_CHECK_PTR_EQ(test_single_program.root, mnd_args_command(&run->result));
+    NAOS_CHECK_UINT_EQ(1, clopts_depth(&run->result));
+    NAOS_CHECK_PTR_EQ(test_single_program.root, clopts_command(&run->result));
     NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&run->errors));
 }
 
@@ -101,9 +101,9 @@ static void check_usage_error(const single_run_t *run, const char *expected)
 {
     const char *message;
 
-    NAOS_CHECK_INT_EQ(MND_ARGS_USAGE_ERROR, run->status);
-    NAOS_CHECK_UINT_EQ(1, mnd_args_depth(&run->result));
-    NAOS_CHECK_PTR_EQ(test_single_program.root, mnd_args_command(&run->result));
+    NAOS_CHECK_INT_EQ(CLOPTS_USAGE_ERROR, run->status);
+    NAOS_CHECK_UINT_EQ(1, clopts_depth(&run->result));
+    NAOS_CHECK_PTR_EQ(test_single_program.root, clopts_command(&run->result));
     NAOS_REQUIRE_UINT_EQ(1, clopts_errors_count(&run->errors));
     message = clopts_errors_at(&run->errors, 0);
     NAOS_CHECK_STR_EQ(expected, message);
@@ -117,25 +117,25 @@ NAOS_TEST(no_arguments_is_ok_without_positionals)
     single_run_t run;
 
     run_parse(&run, 1, tokens);
-    check_status(&run, MND_ARGS_OK);
-    NAOS_CHECK_UINT_EQ(0, mnd_args_positional_count(&run.result));
-    NAOS_CHECK_FALSE(mnd_args_flag(&run.result, "verbose"));
-    NAOS_CHECK_NULL(mnd_args_value(&run.result, "output"));
-    NAOS_CHECK_UINT_EQ(0, mnd_args_list_count(&run.result, "keys"));
+    check_status(&run, CLOPTS_OK);
+    NAOS_CHECK_UINT_EQ(0, clopts_positional_count(&run.result));
+    NAOS_CHECK_FALSE(clopts_flag(&run.result, "verbose"));
+    NAOS_CHECK_NULL(clopts_value(&run.result, "output"));
+    NAOS_CHECK_UINT_EQ(0, clopts_list_count(&run.result, "keys"));
     run_free(&run);
 }
 
 NAOS_TEST(argc_zero_is_ok)
 {
     char *argv[] = {NULL};
-    mnd_args_result_t result = MND_ARGS_RESULT_INIT;
+    clopts_result_t result = CLOPTS_RESULT_INIT;
     clopts_errors_t errors = CLOPTS_ERRORS_INIT;
 
-    NAOS_CHECK_INT_EQ(MND_ARGS_OK, mnd_args_parse(&test_single_program, 0, argv, &result, &errors));
-    NAOS_CHECK_UINT_EQ(1, mnd_args_depth(&result));
-    NAOS_CHECK_UINT_EQ(0, mnd_args_positional_count(&result));
+    NAOS_CHECK_INT_EQ(CLOPTS_OK, clopts_parse(&test_single_program, 0, argv, &result, &errors));
+    NAOS_CHECK_UINT_EQ(1, clopts_depth(&result));
+    NAOS_CHECK_UINT_EQ(0, clopts_positional_count(&result));
     NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&errors));
-    mnd_args_result_free(&result);
+    clopts_result_free(&result);
     clopts_errors_free(&errors);
 }
 
@@ -147,9 +147,9 @@ NAOS_TEST(help_word_is_positional)
     single_run_t run;
 
     run_parse(&run, 2, tokens);
-    check_status(&run, MND_ARGS_OK);
-    NAOS_REQUIRE_UINT_EQ(1, mnd_args_positional_count(&run.result));
-    NAOS_CHECK_PTR_EQ(run.argv[1], mnd_args_positional_at(&run.result, 0));
+    check_status(&run, CLOPTS_OK);
+    NAOS_REQUIRE_UINT_EQ(1, clopts_positional_count(&run.result));
+    NAOS_CHECK_PTR_EQ(run.argv[1], clopts_positional_at(&run.result, 0));
     run_free(&run);
 }
 
@@ -159,11 +159,11 @@ NAOS_TEST(command_like_word_is_positional)
     single_run_t run;
 
     run_parse(&run, 4, tokens);
-    check_status(&run, MND_ARGS_OK);
-    NAOS_REQUIRE_UINT_EQ(3, mnd_args_positional_count(&run.result));
-    NAOS_CHECK_STR_EQ("build", mnd_args_positional_at(&run.result, 0));
-    NAOS_CHECK_STR_EQ("help", mnd_args_positional_at(&run.result, 1));
-    NAOS_CHECK_STR_EQ("x", mnd_args_positional_at(&run.result, 2));
+    check_status(&run, CLOPTS_OK);
+    NAOS_REQUIRE_UINT_EQ(3, clopts_positional_count(&run.result));
+    NAOS_CHECK_STR_EQ("build", clopts_positional_at(&run.result, 0));
+    NAOS_CHECK_STR_EQ("help", clopts_positional_at(&run.result, 1));
+    NAOS_CHECK_STR_EQ("x", clopts_positional_at(&run.result, 2));
     run_free(&run);
 }
 
@@ -179,19 +179,19 @@ NAOS_TEST(option_position_does_not_change_result)
 
     run_parse(&first, 4, between);
     run_parse(&second, 4, before);
-    check_status(&first, MND_ARGS_OK);
-    check_status(&second, MND_ARGS_OK);
-    NAOS_CHECK_TRUE(mnd_args_flag(&first.result, "verbose"));
-    NAOS_CHECK_TRUE(mnd_args_flag(&second.result, "verbose"));
-    NAOS_REQUIRE_UINT_EQ(2, mnd_args_positional_count(&first.result));
-    NAOS_REQUIRE_UINT_EQ(2, mnd_args_positional_count(&second.result));
+    check_status(&first, CLOPTS_OK);
+    check_status(&second, CLOPTS_OK);
+    NAOS_CHECK_TRUE(clopts_flag(&first.result, "verbose"));
+    NAOS_CHECK_TRUE(clopts_flag(&second.result, "verbose"));
+    NAOS_REQUIRE_UINT_EQ(2, clopts_positional_count(&first.result));
+    NAOS_REQUIRE_UINT_EQ(2, clopts_positional_count(&second.result));
     for (i = 0; i < 2; i++)
     {
-        NAOS_CHECK_STR_EQ(mnd_args_positional_at(&second.result, i),
-                          mnd_args_positional_at(&first.result, i));
+        NAOS_CHECK_STR_EQ(clopts_positional_at(&second.result, i),
+                          clopts_positional_at(&first.result, i));
     }
-    NAOS_CHECK_STR_EQ("a", mnd_args_positional_at(&first.result, 0));
-    NAOS_CHECK_STR_EQ("b", mnd_args_positional_at(&first.result, 1));
+    NAOS_CHECK_STR_EQ("a", clopts_positional_at(&first.result, 0));
+    NAOS_CHECK_STR_EQ("b", clopts_positional_at(&first.result, 1));
     run_free(&first);
     run_free(&second);
 }
@@ -202,14 +202,14 @@ NAOS_TEST(values_and_lists_are_recorded)
     single_run_t run;
 
     run_parse(&run, 6, tokens);
-    check_status(&run, MND_ARGS_OK);
-    NAOS_CHECK_STR_EQ("out", mnd_args_value(&run.result, "output"));
-    NAOS_REQUIRE_UINT_EQ(3, mnd_args_list_count(&run.result, "keys"));
-    NAOS_CHECK_STR_EQ("x", mnd_args_list_at(&run.result, "keys", 0));
-    NAOS_CHECK_STR_EQ("y", mnd_args_list_at(&run.result, "keys", 1));
-    NAOS_CHECK_STR_EQ("z", mnd_args_list_at(&run.result, "keys", 2));
-    NAOS_REQUIRE_UINT_EQ(1, mnd_args_positional_count(&run.result));
-    NAOS_CHECK_STR_EQ("f", mnd_args_positional_at(&run.result, 0));
+    check_status(&run, CLOPTS_OK);
+    NAOS_CHECK_STR_EQ("out", clopts_value(&run.result, "output"));
+    NAOS_REQUIRE_UINT_EQ(3, clopts_list_count(&run.result, "keys"));
+    NAOS_CHECK_STR_EQ("x", clopts_list_at(&run.result, "keys", 0));
+    NAOS_CHECK_STR_EQ("y", clopts_list_at(&run.result, "keys", 1));
+    NAOS_CHECK_STR_EQ("z", clopts_list_at(&run.result, "keys", 2));
+    NAOS_REQUIRE_UINT_EQ(1, clopts_positional_count(&run.result));
+    NAOS_CHECK_STR_EQ("f", clopts_positional_at(&run.result, 0));
     run_free(&run);
 }
 
@@ -219,12 +219,12 @@ NAOS_TEST(double_dash_makes_rest_positional)
     single_run_t run;
 
     run_parse(&run, 5, tokens);
-    check_status(&run, MND_ARGS_OK);
-    NAOS_CHECK_FALSE(mnd_args_flag(&run.result, "verbose"));
-    NAOS_REQUIRE_UINT_EQ(3, mnd_args_positional_count(&run.result));
-    NAOS_CHECK_STR_EQ("-v", mnd_args_positional_at(&run.result, 0));
-    NAOS_CHECK_STR_EQ("--help", mnd_args_positional_at(&run.result, 1));
-    NAOS_CHECK_STR_EQ("help", mnd_args_positional_at(&run.result, 2));
+    check_status(&run, CLOPTS_OK);
+    NAOS_CHECK_FALSE(clopts_flag(&run.result, "verbose"));
+    NAOS_REQUIRE_UINT_EQ(3, clopts_positional_count(&run.result));
+    NAOS_CHECK_STR_EQ("-v", clopts_positional_at(&run.result, 0));
+    NAOS_CHECK_STR_EQ("--help", clopts_positional_at(&run.result, 1));
+    NAOS_CHECK_STR_EQ("help", clopts_positional_at(&run.result, 2));
     run_free(&run);
 }
 
@@ -236,7 +236,7 @@ NAOS_TEST(long_help_is_root_help)
     single_run_t run;
 
     run_parse(&run, 3, tokens);
-    check_status(&run, MND_ARGS_HELP);
+    check_status(&run, CLOPTS_HELP);
     run_free(&run);
 }
 
@@ -246,7 +246,7 @@ NAOS_TEST(short_help_in_cluster_is_root_help)
     single_run_t run;
 
     run_parse(&run, 2, tokens);
-    check_status(&run, MND_ARGS_HELP);
+    check_status(&run, CLOPTS_HELP);
     run_free(&run);
 }
 
@@ -258,11 +258,11 @@ NAOS_TEST(help_after_error_is_root_help)
     single_run_t run;
 
     run_parse(&run, 3, long_help);
-    check_status(&run, MND_ARGS_HELP);
+    check_status(&run, CLOPTS_HELP);
     run_free(&run);
 
     run_parse(&run, 5, short_help);
-    check_status(&run, MND_ARGS_HELP);
+    check_status(&run, CLOPTS_HELP);
     run_free(&run);
 }
 
@@ -283,7 +283,7 @@ NAOS_TEST(version_is_version)
     single_run_t run;
 
     run_parse(&run, 2, tokens);
-    check_status(&run, MND_ARGS_VERSION);
+    check_status(&run, CLOPTS_VERSION);
     run_free(&run);
 }
 
@@ -293,7 +293,7 @@ NAOS_TEST(version_with_extra_argument_is_version)
     single_run_t run;
 
     run_parse(&run, 3, tokens);
-    check_status(&run, MND_ARGS_VERSION);
+    check_status(&run, CLOPTS_VERSION);
     run_free(&run);
 }
 
@@ -303,7 +303,7 @@ NAOS_TEST(version_after_positional_is_version)
     single_run_t run;
 
     run_parse(&run, 4, tokens);
-    check_status(&run, MND_ARGS_VERSION);
+    check_status(&run, CLOPTS_VERSION);
     run_free(&run);
 }
 
@@ -313,8 +313,8 @@ NAOS_TEST(version_consumed_as_value_is_not_version)
     single_run_t run;
 
     run_parse(&run, 3, tokens);
-    check_status(&run, MND_ARGS_OK);
-    NAOS_CHECK_STR_EQ("--version", mnd_args_value(&run.result, "output"));
+    check_status(&run, CLOPTS_OK);
+    NAOS_CHECK_STR_EQ("--version", clopts_value(&run.result, "output"));
     run_free(&run);
 }
 
@@ -379,12 +379,12 @@ NAOS_TEST(help_text_matches_expected_text)
     char *text = NULL;
 
     run_parse(&run, 2, tokens);
-    check_status(&run, MND_ARGS_HELP);
-    text = mnd_args_format_help(&run.result);
+    check_status(&run, CLOPTS_HELP);
+    text = clopts_format_help(&run.result);
     NAOS_REQUIRE_NOT_NULL(text);
     check_text(expected_single_help, text);
 
-    mnd_args_text_free(text);
+    clopts_text_free(text);
     run_free(&run);
 }
 
@@ -396,15 +396,15 @@ NAOS_TEST(help_text_is_identical_when_generated_twice)
     char *second = NULL;
 
     run_parse(&run, 2, tokens);
-    first = mnd_args_format_help(&run.result);
+    first = clopts_format_help(&run.result);
     NAOS_REQUIRE_NOT_NULL(first);
-    second = mnd_args_format_help(&run.result);
+    second = clopts_format_help(&run.result);
     NAOS_REQUIRE_NOT_NULL(second);
     NAOS_CHECK_UINT_GT(strlen(first), 0);
     NAOS_CHECK_MEM_EQ(first, strlen(first), second, strlen(second));
 
-    mnd_args_text_free(first);
-    mnd_args_text_free(second);
+    clopts_text_free(first);
+    clopts_text_free(second);
     run_free(&run);
 }
 
@@ -416,11 +416,11 @@ NAOS_TEST(usage_hint_has_root_path)
 
     run_parse(&run, 2, tokens);
     check_usage_error(&run, "single: unknown option '--bad'");
-    text = mnd_args_format_usage_hint(&run.result);
+    text = clopts_format_usage_hint(&run.result);
     NAOS_REQUIRE_NOT_NULL(text);
     check_text("Run 'single --help' for usage.\n", text);
 
-    mnd_args_text_free(text);
+    clopts_text_free(text);
     run_free(&run);
 }
 

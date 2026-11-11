@@ -21,9 +21,9 @@ typedef struct nested_run
 {
     char storage[NESTED_MAX_ARGS][NESTED_MAX_LEN];
     char *argv[NESTED_MAX_ARGS + 1];
-    mnd_args_result_t result;
+    clopts_result_t result;
     clopts_errors_t errors;
-    mnd_args_status_t status;
+    clopts_status_t status;
 } nested_run_t;
 
 /* tokens の argc 個を引数列として test_nest_program で解析する */
@@ -32,7 +32,7 @@ static void run_parse(nested_run_t *run, int argc, const char *const *tokens)
     int i;
 
     memset(run, 0, sizeof *run);
-    mnd_args_result_init(&run->result);
+    clopts_result_init(&run->result);
     clopts_errors_init(&run->errors);
 
     NAOS_REQUIRE_TRUE(argc <= NESTED_MAX_ARGS);
@@ -44,7 +44,7 @@ static void run_parse(nested_run_t *run, int argc, const char *const *tokens)
     }
     run->argv[argc] = NULL;
 
-    run->status = mnd_args_parse(&test_nest_program, argc, run->argv, &run->result, &run->errors);
+    run->status = clopts_parse(&test_nest_program, argc, run->argv, &run->result, &run->errors);
     NAOS_CHECK_INT_EQ(run->status, run->result.status);
 
     for (i = 0; i < argc; i++)
@@ -57,17 +57,17 @@ static void run_parse(nested_run_t *run, int argc, const char *const *tokens)
 
 static void run_free(nested_run_t *run)
 {
-    mnd_args_result_free(&run->result);
+    clopts_result_free(&run->result);
     clopts_errors_free(&run->errors);
 }
 
 /* エラーなしで status になり、経路の段の数が depth で最後が command であることを確かめる */
-static void check_status(const nested_run_t *run, mnd_args_status_t status, size_t depth,
-                         const mnd_args_command_t *command)
+static void check_status(const nested_run_t *run, clopts_status_t status, size_t depth,
+                         const clopts_command_t *command)
 {
     NAOS_CHECK_INT_EQ(status, run->status);
-    NAOS_CHECK_UINT_EQ(depth, mnd_args_depth(&run->result));
-    NAOS_CHECK_PTR_EQ(command, mnd_args_command(&run->result));
+    NAOS_CHECK_UINT_EQ(depth, clopts_depth(&run->result));
+    NAOS_CHECK_PTR_EQ(command, clopts_command(&run->result));
     NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&run->errors));
 }
 
@@ -146,28 +146,28 @@ static void check_help_text(const nested_run_t *run, const char *expected)
     char *first = NULL;
     char *second = NULL;
 
-    first = mnd_args_format_help(&run->result);
+    first = clopts_format_help(&run->result);
     NAOS_REQUIRE_NOT_NULL(first);
-    second = mnd_args_format_help(&run->result);
+    second = clopts_format_help(&run->result);
     NAOS_REQUIRE_NOT_NULL(second);
     check_text(expected, first);
     NAOS_CHECK_MEM_EQ(first, strlen(first), second, strlen(second));
 
-    mnd_args_text_free(first);
-    mnd_args_text_free(second);
+    clopts_text_free(first);
+    clopts_text_free(second);
 }
 
 /*
  * 使い方のエラーで、経路の最後が command で、期待するメッセージのエラーがちょうど 1 件だけ
  * 追加されたことを確かめる（7.2、7.4）
  */
-static void check_usage_error(const nested_run_t *run, const mnd_args_command_t *command,
+static void check_usage_error(const nested_run_t *run, const clopts_command_t *command,
                               const char *expected)
 {
     const char *message;
 
-    NAOS_CHECK_INT_EQ(MND_ARGS_USAGE_ERROR, run->status);
-    NAOS_CHECK_PTR_EQ(command, mnd_args_command(&run->result));
+    NAOS_CHECK_INT_EQ(CLOPTS_USAGE_ERROR, run->status);
+    NAOS_CHECK_PTR_EQ(command, clopts_command(&run->result));
     NAOS_REQUIRE_UINT_EQ(1, clopts_errors_count(&run->errors));
     message = clopts_errors_at(&run->errors, 0);
     NAOS_CHECK_STR_EQ(expected, message);
@@ -181,17 +181,17 @@ NAOS_TEST(remote_add_path_has_three_levels)
     nested_run_t run;
 
     run_parse(&run, 7, tokens);
-    check_status(&run, MND_ARGS_OK, 3, test_nest_remote_add);
-    NAOS_CHECK_PTR_EQ(test_nest_program.root, mnd_args_command_at(&run.result, 0));
-    NAOS_CHECK_PTR_EQ(test_nest_remote, mnd_args_command_at(&run.result, 1));
-    NAOS_CHECK_PTR_EQ(test_nest_remote_add, mnd_args_command_at(&run.result, 2));
-    NAOS_CHECK_STR_EQ("remote", mnd_args_command_at(&run.result, 1)->name);
-    NAOS_CHECK_STR_EQ("add", mnd_args_command_at(&run.result, 2)->name);
-    NAOS_REQUIRE_UINT_EQ(2, mnd_args_positional_count(&run.result));
-    NAOS_CHECK_PTR_EQ(run.argv[3], mnd_args_positional_at(&run.result, 0));
-    NAOS_CHECK_PTR_EQ(run.argv[4], mnd_args_positional_at(&run.result, 1));
-    NAOS_CHECK_PTR_EQ(run.argv[6], mnd_args_value(&run.result, "token"));
-    NAOS_CHECK_FALSE(mnd_args_flag(&run.result, "force"));
+    check_status(&run, CLOPTS_OK, 3, test_nest_remote_add);
+    NAOS_CHECK_PTR_EQ(test_nest_program.root, clopts_command_at(&run.result, 0));
+    NAOS_CHECK_PTR_EQ(test_nest_remote, clopts_command_at(&run.result, 1));
+    NAOS_CHECK_PTR_EQ(test_nest_remote_add, clopts_command_at(&run.result, 2));
+    NAOS_CHECK_STR_EQ("remote", clopts_command_at(&run.result, 1)->name);
+    NAOS_CHECK_STR_EQ("add", clopts_command_at(&run.result, 2)->name);
+    NAOS_REQUIRE_UINT_EQ(2, clopts_positional_count(&run.result));
+    NAOS_CHECK_PTR_EQ(run.argv[3], clopts_positional_at(&run.result, 0));
+    NAOS_CHECK_PTR_EQ(run.argv[4], clopts_positional_at(&run.result, 1));
+    NAOS_CHECK_PTR_EQ(run.argv[6], clopts_value(&run.result, "token"));
+    NAOS_CHECK_FALSE(clopts_flag(&run.result, "force"));
     run_free(&run);
 }
 
@@ -201,11 +201,11 @@ NAOS_TEST(remote_remove_path_has_three_levels)
     nested_run_t run;
 
     run_parse(&run, 6, tokens);
-    check_status(&run, MND_ARGS_OK, 3, test_nest_remote_remove);
-    NAOS_CHECK_PTR_EQ(test_nest_remote, mnd_args_command_at(&run.result, 1));
-    NAOS_REQUIRE_UINT_EQ(1, mnd_args_positional_count(&run.result));
-    NAOS_CHECK_STR_EQ("n", mnd_args_positional_at(&run.result, 0));
-    NAOS_CHECK_STR_EQ("x", mnd_args_value(&run.result, "token"));
+    check_status(&run, CLOPTS_OK, 3, test_nest_remote_remove);
+    NAOS_CHECK_PTR_EQ(test_nest_remote, clopts_command_at(&run.result, 1));
+    NAOS_REQUIRE_UINT_EQ(1, clopts_positional_count(&run.result));
+    NAOS_CHECK_STR_EQ("n", clopts_positional_at(&run.result, 0));
+    NAOS_CHECK_STR_EQ("x", clopts_value(&run.result, "token"));
     run_free(&run);
 }
 
@@ -216,7 +216,7 @@ NAOS_TEST(remote_without_child_is_no_command)
     nested_run_t run;
 
     run_parse(&run, 2, tokens);
-    check_status(&run, MND_ARGS_NO_COMMAND, 2, test_nest_remote);
+    check_status(&run, CLOPTS_NO_COMMAND, 2, test_nest_remote);
     run_free(&run);
 }
 
@@ -227,9 +227,9 @@ NAOS_TEST(status_is_ok)
     nested_run_t run;
 
     run_parse(&run, 2, tokens);
-    check_status(&run, MND_ARGS_OK, 2, test_nest_status);
-    NAOS_CHECK_UINT_EQ(0, mnd_args_positional_count(&run.result));
-    NAOS_CHECK_NULL(mnd_args_value(&run.result, "token"));
+    check_status(&run, CLOPTS_OK, 2, test_nest_status);
+    NAOS_CHECK_UINT_EQ(0, clopts_positional_count(&run.result));
+    NAOS_CHECK_NULL(clopts_value(&run.result, "token"));
     run_free(&run);
 }
 
@@ -242,7 +242,7 @@ NAOS_TEST(unknown_command_under_remote_has_remote_prefix)
 
     run_parse(&run, 3, tokens);
     check_usage_error(&run, test_nest_remote, "nest remote: unknown command 'bogus'");
-    NAOS_CHECK_UINT_EQ(2, mnd_args_depth(&run.result));
+    NAOS_CHECK_UINT_EQ(2, clopts_depth(&run.result));
     run_free(&run);
 }
 
@@ -253,7 +253,7 @@ NAOS_TEST(unknown_command_at_root_has_root_prefix)
 
     run_parse(&run, 2, tokens);
     check_usage_error(&run, test_nest_program.root, "nest: unknown command 'add'");
-    NAOS_CHECK_UINT_EQ(1, mnd_args_depth(&run.result));
+    NAOS_CHECK_UINT_EQ(1, clopts_depth(&run.result));
     run_free(&run);
 }
 
@@ -264,7 +264,7 @@ NAOS_TEST(missing_argument_has_remote_add_prefix)
 
     run_parse(&run, 4, tokens);
     check_usage_error(&run, test_nest_remote_add, "nest remote add: missing argument <URL>");
-    NAOS_CHECK_UINT_EQ(3, mnd_args_depth(&run.result));
+    NAOS_CHECK_UINT_EQ(3, clopts_depth(&run.result));
     run_free(&run);
 }
 
@@ -309,17 +309,17 @@ NAOS_TEST(help_word_reaches_nested_command)
     nested_run_t run;
 
     run_parse(&run, 4, from_root);
-    check_status(&run, MND_ARGS_HELP, 3, test_nest_remote_add);
-    NAOS_CHECK_PTR_EQ(test_nest_remote, mnd_args_command_at(&run.result, 1));
+    check_status(&run, CLOPTS_HELP, 3, test_nest_remote_add);
+    NAOS_CHECK_PTR_EQ(test_nest_remote, clopts_command_at(&run.result, 1));
     run_free(&run);
 
     run_parse(&run, 4, from_remote);
-    check_status(&run, MND_ARGS_HELP, 3, test_nest_remote_add);
-    NAOS_CHECK_PTR_EQ(test_nest_remote, mnd_args_command_at(&run.result, 1));
+    check_status(&run, CLOPTS_HELP, 3, test_nest_remote_add);
+    NAOS_CHECK_PTR_EQ(test_nest_remote, clopts_command_at(&run.result, 1));
     run_free(&run);
 
     run_parse(&run, 4, long_help);
-    check_status(&run, MND_ARGS_HELP, 3, test_nest_remote_add);
+    check_status(&run, CLOPTS_HELP, 3, test_nest_remote_add);
     run_free(&run);
 }
 
@@ -329,7 +329,7 @@ NAOS_TEST(help_word_reaches_command_with_children)
     nested_run_t run;
 
     run_parse(&run, 3, tokens);
-    check_status(&run, MND_ARGS_HELP, 2, test_nest_remote);
+    check_status(&run, CLOPTS_HELP, 2, test_nest_remote);
     run_free(&run);
 }
 
@@ -339,7 +339,7 @@ NAOS_TEST(help_word_under_remote_alone_is_remote_help)
     nested_run_t run;
 
     run_parse(&run, 3, tokens);
-    check_status(&run, MND_ARGS_HELP, 2, test_nest_remote);
+    check_status(&run, CLOPTS_HELP, 2, test_nest_remote);
     run_free(&run);
 }
 
@@ -352,7 +352,7 @@ NAOS_TEST(help_word_unknown_nested_name_has_root_prefix)
 
     run_parse(&run, 4, tokens);
     check_usage_error(&run, test_nest_program.root, "nest: unknown command 'bogus'");
-    NAOS_CHECK_UINT_EQ(1, mnd_args_depth(&run.result));
+    NAOS_CHECK_UINT_EQ(1, clopts_depth(&run.result));
     run_free(&run);
 }
 
@@ -363,7 +363,7 @@ NAOS_TEST(help_word_extra_argument_after_leaf_has_root_prefix)
 
     run_parse(&run, 4, tokens);
     check_usage_error(&run, test_nest_program.root, "nest: unexpected argument 'x'");
-    NAOS_CHECK_UINT_EQ(1, mnd_args_depth(&run.result));
+    NAOS_CHECK_UINT_EQ(1, clopts_depth(&run.result));
     run_free(&run);
 }
 
@@ -374,7 +374,7 @@ NAOS_TEST(help_word_error_under_remote_has_remote_prefix)
 
     run_parse(&run, 6, tokens);
     check_usage_error(&run, test_nest_remote, "nest remote: unexpected argument 'x'");
-    NAOS_CHECK_UINT_EQ(2, mnd_args_depth(&run.result));
+    NAOS_CHECK_UINT_EQ(2, clopts_depth(&run.result));
     run_free(&run);
 }
 
@@ -396,7 +396,7 @@ NAOS_TEST(error_on_remote_add_before_help_is_add_help)
     nested_run_t run;
 
     run_parse(&run, 5, tokens);
-    check_status(&run, MND_ARGS_HELP, 3, test_nest_remote_add);
+    check_status(&run, CLOPTS_HELP, 3, test_nest_remote_add);
     run_free(&run);
 }
 
@@ -408,7 +408,7 @@ NAOS_TEST(root_help_text_matches_expected_text)
     nested_run_t run;
 
     run_parse(&run, 2, tokens);
-    check_status(&run, MND_ARGS_HELP, 1, test_nest_program.root);
+    check_status(&run, CLOPTS_HELP, 1, test_nest_program.root);
     check_help_text(&run, expected_root_help);
     run_free(&run);
 }
@@ -421,12 +421,12 @@ NAOS_TEST(remote_help_text_matches_expected_text)
     nested_run_t run;
 
     run_parse(&run, 2, no_command);
-    check_status(&run, MND_ARGS_NO_COMMAND, 2, test_nest_remote);
+    check_status(&run, CLOPTS_NO_COMMAND, 2, test_nest_remote);
     check_help_text(&run, expected_remote_help);
     run_free(&run);
 
     run_parse(&run, 3, long_help);
-    check_status(&run, MND_ARGS_HELP, 2, test_nest_remote);
+    check_status(&run, CLOPTS_HELP, 2, test_nest_remote);
     check_help_text(&run, expected_remote_help);
     run_free(&run);
 }
@@ -437,7 +437,7 @@ NAOS_TEST(status_help_text_matches_expected_text)
     nested_run_t run;
 
     run_parse(&run, 3, tokens);
-    check_status(&run, MND_ARGS_HELP, 2, test_nest_status);
+    check_status(&run, CLOPTS_HELP, 2, test_nest_status);
     check_help_text(&run, expected_status_help);
     run_free(&run);
 }
@@ -450,11 +450,11 @@ NAOS_TEST(usage_hint_has_remote_path)
 
     run_parse(&run, 3, tokens);
     check_usage_error(&run, test_nest_remote, "nest remote: unknown command 'bogus'");
-    text = mnd_args_format_usage_hint(&run.result);
+    text = clopts_format_usage_hint(&run.result);
     NAOS_REQUIRE_NOT_NULL(text);
     check_text("Run 'nest remote --help' for usage.\n", text);
 
-    mnd_args_text_free(text);
+    clopts_text_free(text);
     run_free(&run);
 }
 
@@ -465,11 +465,11 @@ NAOS_TEST(path_has_all_levels)
     char *text = NULL;
 
     run_parse(&run, 4, tokens);
-    text = mnd_args_format_path(&run.result);
+    text = clopts_format_path(&run.result);
     NAOS_REQUIRE_NOT_NULL(text);
     check_text("nest remote add", text);
 
-    mnd_args_text_free(text);
+    clopts_text_free(text);
     run_free(&run);
 }
 

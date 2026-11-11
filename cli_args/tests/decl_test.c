@@ -21,16 +21,16 @@
  */
 typedef struct decl_fixture
 {
-    mnd_args_option_t run_options[3];
-    mnd_args_positional_t run_positionals[2];
-    mnd_args_positional_t list_positionals[1];
-    mnd_args_command_t commands[2];
-    mnd_args_command_t root;
-    mnd_args_program_t program;
+    clopts_option_t run_options[3];
+    clopts_positional_t run_positionals[2];
+    clopts_positional_t list_positionals[1];
+    clopts_command_t commands[2];
+    clopts_command_t root;
+    clopts_program_t program;
 } decl_fixture_t;
 
-static void set_option(mnd_args_option_t *option, const char *long_name, char short_name,
-                       mnd_args_kind_t kind, const char *value_name, const char *default_value)
+static void set_option(clopts_option_t *option, const char *long_name, char short_name,
+                       clopts_kind_t kind, const char *value_name, const char *default_value)
 {
     option->long_name = long_name;
     option->short_name = short_name;
@@ -45,9 +45,9 @@ static void fixture_init(decl_fixture_t *f)
 {
     memset(f, 0, sizeof *f);
 
-    set_option(&f->run_options[0], "name", 'n', MND_ARGS_VALUE, NULL, NULL);
-    set_option(&f->run_options[1], "force", 'f', MND_ARGS_FLAG, NULL, NULL);
-    set_option(&f->run_options[2], "tags", 't', MND_ARGS_LIST, "TAG", "x,y");
+    set_option(&f->run_options[0], "name", 'n', CLOPTS_VALUE, NULL, NULL);
+    set_option(&f->run_options[1], "force", 'f', CLOPTS_FLAG, NULL, NULL);
+    set_option(&f->run_options[2], "tags", 't', CLOPTS_LIST, "TAG", "x,y");
 
     f->run_positionals[0].name = "INPUT";
     f->run_positionals[0].help = "Input file";
@@ -74,7 +74,7 @@ static void fixture_init(decl_fixture_t *f)
     f->commands[1].positionals = f->list_positionals;
     f->commands[1].positional_count = 1;
     f->commands[1].min_positionals = 0;
-    f->commands[1].max_positionals = MND_ARGS_UNLIMITED;
+    f->commands[1].max_positionals = CLOPTS_UNLIMITED;
 
     f->root.commands = f->commands;
     f->root.command_count = 2;
@@ -96,19 +96,19 @@ static void fixture_init(decl_fixture_t *f)
  */
 typedef struct nest_fixture
 {
-    mnd_args_option_t root_options[3];
-    mnd_args_option_t remote_options[1];
-    mnd_args_option_t add_options[2];
-    mnd_args_positional_t add_positionals[2];
-    mnd_args_positional_t remove_positionals[1];
-    mnd_args_command_t remote_commands[2];
-    mnd_args_command_t commands[2];
-    mnd_args_command_t root;
-    mnd_args_program_t program;
+    clopts_option_t root_options[3];
+    clopts_option_t remote_options[1];
+    clopts_option_t add_options[2];
+    clopts_positional_t add_positionals[2];
+    clopts_positional_t remove_positionals[1];
+    clopts_command_t remote_commands[2];
+    clopts_command_t commands[2];
+    clopts_command_t root;
+    clopts_program_t program;
 } nest_fixture_t;
 
-static void set_leaf(mnd_args_command_t *command, const char *name,
-                     const mnd_args_positional_t *positionals, size_t count)
+static void set_leaf(clopts_command_t *command, const char *name,
+                     const clopts_positional_t *positionals, size_t count)
 {
     command->name = name;
     command->summary = NULL;
@@ -123,16 +123,16 @@ static void nest_init(nest_fixture_t *f)
 {
     memset(f, 0, sizeof *f);
 
-    set_option(&f->root_options[0], "verbose", 'v', MND_ARGS_FLAG, NULL, NULL);
+    set_option(&f->root_options[0], "verbose", 'v', CLOPTS_FLAG, NULL, NULL);
     f->root_options[0].inherited = true;
-    set_option(&f->root_options[1], "config", 'c', MND_ARGS_VALUE, "FILE", "nest.cfg");
+    set_option(&f->root_options[1], "config", 'c', CLOPTS_VALUE, "FILE", "nest.cfg");
     f->root_options[1].inherited = true;
-    set_option(&f->root_options[2], "dry-run", 'd', MND_ARGS_FLAG, NULL, NULL);
-    set_option(&f->remote_options[0], "token", 't', MND_ARGS_VALUE, "TOKEN", NULL);
+    set_option(&f->root_options[2], "dry-run", 'd', CLOPTS_FLAG, NULL, NULL);
+    set_option(&f->remote_options[0], "token", 't', CLOPTS_VALUE, "TOKEN", NULL);
     f->remote_options[0].inherited = true;
     /* add_options[1] は、テストが 2 つ目のオプションを加えるときに使う（既定では数えない） */
-    set_option(&f->add_options[0], "force", 'f', MND_ARGS_FLAG, NULL, NULL);
-    set_option(&f->add_options[1], "extra", 'x', MND_ARGS_VALUE, NULL, NULL);
+    set_option(&f->add_options[0], "force", 'f', CLOPTS_FLAG, NULL, NULL);
+    set_option(&f->add_options[1], "extra", 'x', CLOPTS_VALUE, NULL, NULL);
 
     f->add_positionals[0].name = "NAME";
     f->add_positionals[1].name = "URL";
@@ -169,15 +169,15 @@ static void nest_add_option(nest_fixture_t *f, const char *long_name, char short
 }
 
 /* test_tool_program のルートコマンドと command の 2 段の経路を作る */
-static void begin_path(mnd_args_result_t *result, const mnd_args_command_t *command)
+static void begin_path(clopts_result_t *result, const clopts_command_t *command)
 {
-    mnd_args_result_init(result);
+    clopts_result_init(result);
     result->program = &test_tool_program;
-    NAOS_REQUIRE_TRUE(mnd_args_result_push(result, test_tool_program.root));
-    NAOS_REQUIRE_TRUE(mnd_args_result_push(result, command));
+    NAOS_REQUIRE_TRUE(clopts_result_push(result, test_tool_program.root));
+    NAOS_REQUIRE_TRUE(clopts_result_push(result, command));
 }
 
-static size_t found_index(bool found, mnd_args_ref_t ref)
+static size_t found_index(bool found, clopts_ref_t ref)
 {
     if (!found)
     {
@@ -193,44 +193,44 @@ static size_t found_index(bool found, mnd_args_ref_t ref)
  * 2 段の経路で有効なオプションを名前で探す。
  * 見つかれば command の options の添字、なければ DECL_TEST_NOT_FOUND を返す
  */
-static size_t find_long_index(const mnd_args_command_t *command, const char *name, size_t name_len)
+static size_t find_long_index(const clopts_command_t *command, const char *name, size_t name_len)
 {
-    mnd_args_result_t result;
-    mnd_args_ref_t ref = { 0, 0 };
+    clopts_result_t result;
+    clopts_ref_t ref = { 0, 0 };
     size_t index;
     bool found;
 
     begin_path(&result, command);
     /* 引数の評価順は規定されないので、ref を設定する呼び出しを先に済ませる */
-    found = mnd_args_find_long(&result, name, name_len, &ref);
+    found = clopts_find_long(&result, name, name_len, &ref);
     index = found_index(found, ref);
-    mnd_args_result_free(&result);
+    clopts_result_free(&result);
     return index;
 }
 
-static size_t find_short_index(const mnd_args_command_t *command, char short_name)
+static size_t find_short_index(const clopts_command_t *command, char short_name)
 {
-    mnd_args_result_t result;
-    mnd_args_ref_t ref = { 0, 0 };
+    clopts_result_t result;
+    clopts_ref_t ref = { 0, 0 };
     size_t index;
     bool found;
 
     begin_path(&result, command);
     /* 引数の評価順は規定されないので、ref を設定する呼び出しを先に済ませる */
-    found = mnd_args_find_short(&result, short_name, &ref);
+    found = clopts_find_short(&result, short_name, &ref);
     index = found_index(found, ref);
-    mnd_args_result_free(&result);
+    clopts_result_free(&result);
     return index;
 }
 
 /* 宣言の検査が失敗し、期待するメッセージのエラーがちょうど 1 件だけ追加されることを確かめる */
-static void check_single_error(const mnd_args_program_t *program, const char *expected)
+static void check_single_error(const clopts_program_t *program, const char *expected)
 {
     clopts_errors_t errors = CLOPTS_ERRORS_INIT;
     const char *message;
     bool ok;
 
-    ok = mnd_args_decl_check(program, &errors);
+    ok = clopts_decl_check(program, &errors);
     NAOS_CHECK_FALSE(ok);
     NAOS_CHECK_UINT_EQ(1, clopts_errors_count(&errors));
     if (clopts_errors_count(&errors) >= 1)
@@ -243,11 +243,11 @@ static void check_single_error(const mnd_args_program_t *program, const char *ex
 }
 
 /* 宣言の検査が成功し、エラーが追加されないことを確かめる */
-static void check_valid(const mnd_args_program_t *program)
+static void check_valid(const clopts_program_t *program)
 {
     clopts_errors_t errors = CLOPTS_ERRORS_INIT;
 
-    NAOS_CHECK_TRUE(mnd_args_decl_check(program, &errors));
+    NAOS_CHECK_TRUE(clopts_decl_check(program, &errors));
     NAOS_CHECK_UINT_EQ(0, clopts_errors_count(&errors));
     clopts_errors_free(&errors);
 }
@@ -726,7 +726,7 @@ NAOS_TEST(two_errors_produce_two_diagnostics)
     f.commands[1].name = "run";
     f.run_options[1].required = true;
 
-    NAOS_CHECK_FALSE(mnd_args_decl_check(&f.program, &errors));
+    NAOS_CHECK_FALSE(clopts_decl_check(&f.program, &errors));
     NAOS_REQUIRE_UINT_EQ(2, clopts_errors_count(&errors));
     NAOS_CHECK_STR_EQ("invalid argument declaration: flag '--force' cannot be required or have a default in command 'prog run'",
                       clopts_errors_at(&errors, 0));
@@ -745,7 +745,7 @@ NAOS_TEST(errors_in_several_commands_are_all_reported)
     f.run_options[0].short_name = 'h';
     f.commands[1].positional_count = 0;
 
-    NAOS_CHECK_FALSE(mnd_args_decl_check(&f.program, &errors));
+    NAOS_CHECK_FALSE(clopts_decl_check(&f.program, &errors));
     NAOS_CHECK_UINT_EQ(3, clopts_errors_count(&errors));
     NAOS_CHECK_FALSE(clopts_errors_dropped(&errors));
     clopts_errors_free(&errors);
@@ -762,7 +762,7 @@ NAOS_TEST(check_appends_to_existing_diagnostics)
     clopts_errors_add(&errors, "%s", "earlier");
     NAOS_REQUIRE_UINT_EQ(1, clopts_errors_count(&errors));
 
-    NAOS_CHECK_FALSE(mnd_args_decl_check(&f.program, &errors));
+    NAOS_CHECK_FALSE(clopts_decl_check(&f.program, &errors));
     NAOS_REQUIRE_UINT_EQ(2, clopts_errors_count(&errors));
     NAOS_CHECK_STR_EQ("earlier", clopts_errors_at(&errors, 0));
     NAOS_CHECK_STR_EQ("invalid argument declaration: duplicate option '-n' in command 'prog run'",
@@ -822,9 +822,9 @@ NAOS_TEST(same_option_in_sibling_commands_is_valid)
 
 NAOS_TEST(deep_declaration_is_checked_without_depth_limit)
 {
-    mnd_args_command_t chain[40];
-    mnd_args_option_t bad;
-    mnd_args_program_t program;
+    clopts_command_t chain[40];
+    clopts_option_t bad;
+    clopts_program_t program;
     size_t i;
 
     memset(chain, 0, sizeof chain);
@@ -838,7 +838,7 @@ NAOS_TEST(deep_declaration_is_checked_without_depth_limit)
         }
     }
 
-    set_option(&bad, "help", '\0', MND_ARGS_FLAG, NULL, NULL);
+    set_option(&bad, "help", '\0', CLOPTS_FLAG, NULL, NULL);
     bad.inherited = false;
     chain[39].options = &bad;
     chain[39].option_count = 1;
@@ -850,7 +850,7 @@ NAOS_TEST(deep_declaration_is_checked_without_depth_limit)
         clopts_errors_t errors = CLOPTS_ERRORS_INIT;
         const char *message;
 
-        NAOS_CHECK_FALSE(mnd_args_decl_check(&program, &errors));
+        NAOS_CHECK_FALSE(clopts_decl_check(&program, &errors));
         NAOS_REQUIRE_UINT_EQ(1, clopts_errors_count(&errors));
         message = clopts_errors_at(&errors, 0);
         /* 経路は "deep" と 39 個の " c" */
@@ -890,7 +890,7 @@ NAOS_TEST(command_with_children_and_max_positionals_is_error)
     nest_fixture_t f;
 
     nest_init(&f);
-    f.commands[0].max_positionals = MND_ARGS_UNLIMITED;
+    f.commands[0].max_positionals = CLOPTS_UNLIMITED;
     check_single_error(&f.program,
                        "invalid argument declaration: command 'nest remote' cannot have both subcommands and positional arguments");
 }
@@ -903,7 +903,7 @@ NAOS_TEST(root_with_children_and_positionals_is_error)
     f.root.positionals = f.list_positionals;
     f.root.positional_count = 1;
     f.root.min_positionals = 0;
-    f.root.max_positionals = MND_ARGS_UNLIMITED;
+    f.root.max_positionals = CLOPTS_UNLIMITED;
     check_single_error(&f.program,
                        "invalid argument declaration: command 'prog' cannot have both subcommands and positional arguments");
 }
@@ -917,7 +917,7 @@ NAOS_TEST(root_without_children_may_have_positionals)
     f.root.command_count = 0;
     f.root.positionals = f.list_positionals;
     f.root.positional_count = 1;
-    f.root.max_positionals = MND_ARGS_UNLIMITED;
+    f.root.max_positionals = CLOPTS_UNLIMITED;
     check_valid(&f.program);
 }
 
@@ -1013,7 +1013,7 @@ NAOS_TEST(long_and_short_of_ancestor_option_are_two_errors)
     nest_init(&f);
     nest_add_option(&f, "config", 'c');
 
-    NAOS_CHECK_FALSE(mnd_args_decl_check(&f.program, &errors));
+    NAOS_CHECK_FALSE(clopts_decl_check(&f.program, &errors));
     NAOS_REQUIRE_UINT_EQ(2, clopts_errors_count(&errors));
     NAOS_CHECK_STR_EQ("invalid argument declaration: option '--config' in command 'nest remote add' duplicates an option of command 'nest'",
                       clopts_errors_at(&errors, 0));
@@ -1085,7 +1085,7 @@ NAOS_TEST(two_errors_in_nested_declaration_produce_two_diagnostics)
     f.remote_commands[1].name = "help";
     f.commands[1].min_positionals = 1;
 
-    NAOS_CHECK_FALSE(mnd_args_decl_check(&f.program, &errors));
+    NAOS_CHECK_FALSE(clopts_decl_check(&f.program, &errors));
     NAOS_REQUIRE_UINT_EQ(2, clopts_errors_count(&errors));
     NAOS_CHECK_STR_EQ("invalid argument declaration: command name 'help' is reserved in command 'nest remote'",
                       clopts_errors_at(&errors, 0));
@@ -1134,22 +1134,22 @@ NAOS_TEST(root_containing_itself_is_error)
 
 NAOS_TEST(find_command_matches_exact_bytes)
 {
-    NAOS_CHECK_PTR_EQ(test_tool_build, mnd_args_find_child(test_tool_program.root, "build", 5));
-    NAOS_CHECK_PTR_EQ(test_tool_copy, mnd_args_find_child(test_tool_program.root, "copy", 4));
-    NAOS_CHECK_PTR_EQ(test_tool_cat, mnd_args_find_child(test_tool_program.root, "cat", 3));
+    NAOS_CHECK_PTR_EQ(test_tool_build, clopts_find_child(test_tool_program.root, "build", 5));
+    NAOS_CHECK_PTR_EQ(test_tool_copy, clopts_find_child(test_tool_program.root, "copy", 4));
+    NAOS_CHECK_PTR_EQ(test_tool_cat, clopts_find_child(test_tool_program.root, "cat", 3));
     /* name_len で区切った先頭部分だけを照合する */
-    NAOS_CHECK_PTR_EQ(test_tool_cat, mnd_args_find_child(test_tool_program.root, "catalog", 3));
+    NAOS_CHECK_PTR_EQ(test_tool_cat, clopts_find_child(test_tool_program.root, "catalog", 3));
 }
 
 NAOS_TEST(find_command_is_case_sensitive_and_exact)
 {
-    NAOS_CHECK_NULL(mnd_args_find_child(test_tool_program.root, "Build", 5));
-    NAOS_CHECK_NULL(mnd_args_find_child(test_tool_program.root, "BUILD", 5));
-    NAOS_CHECK_NULL(mnd_args_find_child(test_tool_program.root, "bui", 3));
-    NAOS_CHECK_NULL(mnd_args_find_child(test_tool_program.root, "builds", 6));
-    NAOS_CHECK_NULL(mnd_args_find_child(test_tool_program.root, "bulid", 5));
-    NAOS_CHECK_NULL(mnd_args_find_child(test_tool_program.root, "help", 4));
-    NAOS_CHECK_NULL(mnd_args_find_child(test_tool_program.root, "", 0));
+    NAOS_CHECK_NULL(clopts_find_child(test_tool_program.root, "Build", 5));
+    NAOS_CHECK_NULL(clopts_find_child(test_tool_program.root, "BUILD", 5));
+    NAOS_CHECK_NULL(clopts_find_child(test_tool_program.root, "bui", 3));
+    NAOS_CHECK_NULL(clopts_find_child(test_tool_program.root, "builds", 6));
+    NAOS_CHECK_NULL(clopts_find_child(test_tool_program.root, "bulid", 5));
+    NAOS_CHECK_NULL(clopts_find_child(test_tool_program.root, "help", 4));
+    NAOS_CHECK_NULL(clopts_find_child(test_tool_program.root, "", 0));
 }
 
 NAOS_TEST(find_command_in_program_without_commands)
@@ -1159,7 +1159,7 @@ NAOS_TEST(find_command_in_program_without_commands)
     fixture_init(&f);
     f.root.commands = NULL;
     f.root.command_count = 0;
-    NAOS_CHECK_NULL(mnd_args_find_child(f.program.root, "run", 3));
+    NAOS_CHECK_NULL(clopts_find_child(f.program.root, "run", 3));
 }
 
 NAOS_TEST(find_long_matches_exact_bytes)
@@ -1209,8 +1209,8 @@ NAOS_TEST(find_short_is_case_sensitive)
 
 NAOS_TEST(value_name_uses_declared_name)
 {
-    NAOS_CHECK_STR_EQ("FILE", mnd_args_value_name(&test_tool_build->options[0]));
-    NAOS_CHECK_STR_EQ("KEY", mnd_args_value_name(&test_tool_build->options[1]));
+    NAOS_CHECK_STR_EQ("FILE", clopts_value_name(&test_tool_build->options[0]));
+    NAOS_CHECK_STR_EQ("KEY", clopts_value_name(&test_tool_build->options[1]));
 }
 
 NAOS_TEST(value_name_defaults_to_value)
@@ -1218,31 +1218,31 @@ NAOS_TEST(value_name_defaults_to_value)
     decl_fixture_t f;
 
     fixture_init(&f);
-    NAOS_CHECK_STR_EQ("VALUE", mnd_args_value_name(&f.run_options[0]));
+    NAOS_CHECK_STR_EQ("VALUE", clopts_value_name(&f.run_options[0]));
 }
 
 NAOS_TEST(positional_name_by_index)
 {
-    NAOS_CHECK_STR_EQ("SOURCE", mnd_args_positional_name(test_tool_build, 0));
-    NAOS_CHECK_STR_EQ("SRC", mnd_args_positional_name(test_tool_copy, 0));
-    NAOS_CHECK_STR_EQ("DEST", mnd_args_positional_name(test_tool_copy, 1));
+    NAOS_CHECK_STR_EQ("SOURCE", clopts_positional_name(test_tool_build, 0));
+    NAOS_CHECK_STR_EQ("SRC", clopts_positional_name(test_tool_copy, 0));
+    NAOS_CHECK_STR_EQ("DEST", clopts_positional_name(test_tool_copy, 1));
 }
 
 NAOS_TEST(positional_name_repeats_last_name)
 {
     decl_fixture_t f;
 
-    NAOS_CHECK_STR_EQ("FILE", mnd_args_positional_name(test_tool_cat, 0));
-    NAOS_CHECK_STR_EQ("FILE", mnd_args_positional_name(test_tool_cat, 1));
-    NAOS_CHECK_STR_EQ("FILE", mnd_args_positional_name(test_tool_cat, 100));
-    NAOS_CHECK_STR_EQ("DEST", mnd_args_positional_name(test_tool_copy, 2));
+    NAOS_CHECK_STR_EQ("FILE", clopts_positional_name(test_tool_cat, 0));
+    NAOS_CHECK_STR_EQ("FILE", clopts_positional_name(test_tool_cat, 1));
+    NAOS_CHECK_STR_EQ("FILE", clopts_positional_name(test_tool_cat, 100));
+    NAOS_CHECK_STR_EQ("DEST", clopts_positional_name(test_tool_copy, 2));
 
     fixture_init(&f);
     f.commands[1].positionals = f.run_positionals;
     f.commands[1].positional_count = 2;
-    NAOS_CHECK_STR_EQ("INPUT", mnd_args_positional_name(&f.commands[1], 0));
-    NAOS_CHECK_STR_EQ("OUTPUT", mnd_args_positional_name(&f.commands[1], 1));
-    NAOS_CHECK_STR_EQ("OUTPUT", mnd_args_positional_name(&f.commands[1], 5));
+    NAOS_CHECK_STR_EQ("INPUT", clopts_positional_name(&f.commands[1], 0));
+    NAOS_CHECK_STR_EQ("OUTPUT", clopts_positional_name(&f.commands[1], 1));
+    NAOS_CHECK_STR_EQ("OUTPUT", clopts_positional_name(&f.commands[1], 5));
 }
 
 NAOS_SUITE(decl,
