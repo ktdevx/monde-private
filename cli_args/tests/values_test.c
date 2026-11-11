@@ -192,8 +192,8 @@ NAOS_TEST(flag_is_recorded)
 
     begin_build(&result);
     NAOS_CHECK_FALSE(clopts_flag(&result, "verbose"));
-    clopts_result_set_flag(&result, VALUES_VERBOSE);
-    clopts_result_set_flag(&result, VALUES_VERBOSE);
+    clopts_result_set_flag(&result, VALUES_VERBOSE, true);
+    clopts_result_set_flag(&result, VALUES_VERBOSE, true);
     NAOS_CHECK_TRUE(clopts_flag(&result, "verbose"));
     NAOS_CHECK_TRUE(clopts_is_set(&result, "verbose"));
     NAOS_CHECK_FALSE(clopts_flag(&result, "quiet"));
@@ -256,7 +256,7 @@ NAOS_TEST(undeclared_names_return_empty)
     clopts_result_t result;
 
     begin_build(&result);
-    clopts_result_set_flag(&result, VALUES_VERBOSE);
+    clopts_result_set_flag(&result, VALUES_VERBOSE, true);
     NAOS_REQUIRE_TRUE(clopts_result_apply_defaults(&result) == CLOPTS_OK);
     NAOS_CHECK_FALSE(clopts_is_set(&result, "missing"));
     NAOS_CHECK_FALSE(clopts_flag(&result, "missing"));

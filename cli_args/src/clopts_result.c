@@ -159,17 +159,12 @@ void clopts_result_truncate(clopts_result_t *result, size_t level_count)
     }
 }
 
-void clopts_result_record_flag(clopts_result_t *result, clopts_ref_t ref, bool enabled)
+void clopts_result_set_flag(clopts_result_t *result, clopts_ref_t ref, bool enabled)
 {
     clopts_value_t *target = clopts_value_ref(result, ref);
 
     target->explicit_set = true;
     target->enabled = enabled;
-}
-
-void clopts_result_set_flag(clopts_result_t *result, clopts_ref_t ref)
-{
-    clopts_result_record_flag(result, ref, true);
 }
 
 void clopts_result_set_value(clopts_result_t *result, clopts_ref_t ref, const char *value)

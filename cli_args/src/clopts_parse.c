@@ -269,7 +269,7 @@ static clopts_status_t scan_long(clopts_scan_t *scan, const char *token)
                 return scan_error(scan, CLOPTS_ERR_TAKES_NO_VALUE, token, arg_len, NULL);
             }
 
-            clopts_result_record_flag(scan->result, ref, false);
+            clopts_result_set_flag(scan->result, ref, false);
 
             return CLOPTS_OK;
         }
@@ -284,7 +284,7 @@ static clopts_status_t scan_long(clopts_scan_t *scan, const char *token)
             return scan_error(scan, CLOPTS_ERR_TAKES_NO_VALUE, token, arg_len, NULL);
         }
 
-        clopts_result_record_flag(scan->result, ref, true);
+        clopts_result_set_flag(scan->result, ref, true);
 
         return CLOPTS_OK;
     }
@@ -341,7 +341,7 @@ static clopts_status_t scan_short(clopts_scan_t *scan, const char *token)
 
         if (clopts_option_at(scan->result, ref)->kind == CLOPTS_FLAG)
         {
-            clopts_result_record_flag(scan->result, ref, true);
+            clopts_result_set_flag(scan->result, ref, true);
             continue;
         }
 

@@ -69,6 +69,6 @@
 
 ## Implementation Notes
 - CI（MSVC）: `f(g(&x), x)` の形は引数の評価順が規定されず、MSVC では `x` が先に評価される。`&x` で値を設定する呼び出しは、別の文で先に済ませる。（前の計画から引き継いだ注意）
-- 1.1: フラグの記録は `clopts_result_record_flag(result, ref, enabled)` に置いた。`cli_args/tests/values_test.c` が 2 引数の `clopts_result_set_flag` を呼ぶため、設計書の「`set_flag` に引数を足す」ではなく、`set_flag` を有効を渡すラッパとして残した。否定の形の記録（2.3）は `clopts_result_record_flag(..., false)` を使う。
+- 1.1: 設計書の「`clopts_result_set_flag` の呼び出し元は `clopts_parse.c` だけ」は誤りで、`cli_args/tests/values_test.c` も直接呼ぶ。設計書どおり `set_flag` に `bool enabled` を足し、利用者の判断で `values_test.c` の 3 か所に `true` を足した（テストの意味は変えない。14.13 の「既存のテストを変えない」の例外として承認済み）。
 - 1.2: `neg` の説明は設計書に `sync` の分しかないため、ほかは仮の文面を付け、`pager` は説明なしにした（2.2 のヘルプの期待値はこの宣言に従う）。`neg` の宣言の検査のテストは negate_test.c に置いた。
 - 2.1: 宣言の検査に `clopts_find_negated` は要らなかったため、2.1 では加えず、2.3 で `clopts_decl.c` に加えた。
