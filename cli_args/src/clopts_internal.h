@@ -44,6 +44,13 @@ bool clopts_find_long(const clopts_result_t *result, const char *name, size_t na
                       clopts_ref_t *ref);
 bool clopts_find_short(const clopts_result_t *result, char short_name, clopts_ref_t *ref);
 
+/*
+ * name が "no-" で始まり、残り（1 バイト以上）が有効なオプションの長い名前と一致し、
+ * そのオプションが negatable のフラグなら、*ref に位置を入れて true（14.2、14.8、14.9）
+ */
+bool clopts_find_negated(const clopts_result_t *result, const char *name, size_t name_len,
+                         clopts_ref_t *ref);
+
 /* 有効なオプションの列挙。順序は「最後の段のオプション、親の引き継ぐオプション、…、ルートの引き継ぐオプション」 */
 size_t clopts_effective_count(const clopts_result_t *result);
 clopts_ref_t clopts_effective_at(const clopts_result_t *result, size_t i); /* i < count */

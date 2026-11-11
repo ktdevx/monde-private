@@ -261,6 +261,19 @@ static clopts_status_t scan_long(clopts_scan_t *scan, const char *token)
 
     if (!clopts_find_long(scan->result, name, name_len, &ref))
     {
+        /* 完全一致がなければ、否定の形として探す（14.2、14.3）。値は付けられない（14.7） */
+        if (clopts_find_negated(scan->result, name, name_len, &ref))
+        {
+            if (equals != NULL)
+            {
+                return scan_error(scan, CLOPTS_ERR_TAKES_NO_VALUE, token, arg_len, NULL);
+            }
+
+            clopts_result_record_flag(scan->result, ref, false);
+
+            return CLOPTS_OK;
+        }
+
         return scan_error(scan, CLOPTS_ERR_UNKNOWN_OPTION, token, arg_len, NULL);
     }
 

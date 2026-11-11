@@ -717,6 +717,31 @@ bool clopts_find_long(const clopts_result_t *result, const char *name, size_t na
     return find_effective(result, 0, match_long, &key, ref);
 }
 
+bool clopts_find_negated(const clopts_result_t *result, const char *name, size_t name_len,
+                         clopts_ref_t *ref)
+{
+    clopts_ref_t found;
+
+    if ((name_len <= 3) || (memcmp(name, "no-", 3) != 0))
+    {
+        return false;
+    }
+
+    /* 引き継ぎの範囲は肯定の形と同じ（14.9） */
+    if (!clopts_find_long(result, name + 3, name_len - 3, &found))
+    {
+        return false;
+    }
+
+    if (!is_negatable_flag(clopts_option_at(result, found)))
+    {
+        return false;
+    }
+
+    *ref = found;
+    return true;
+}
+
 bool clopts_find_short(const clopts_result_t *result, char short_name, clopts_ref_t *ref)
 {
     if (short_name == '\0')
