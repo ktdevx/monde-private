@@ -1251,6 +1251,7 @@ size_t clopts_flag_count(const clopts_result_t *result, const char *long_name);
 - 否定できないフラグは肯定の形でしか指定できないので、`count` は肯定の形の総数になる（15.2）。否定できるフラグは、否定の形で 0 に戻るので、最後の否定の形より後ろの肯定の形の数になる（15.3）。
 - 引数の個数は `int` の範囲なので、`count` が `size_t` の範囲を超えることはない。
 - 値付きオプションとリスト値では `count` を書かない。確保した時点の 0 のままである（15.7）。
+- 既定の適用は、改訂前と同じく、解析が成功したとき（`CLOPTS_OK`）だけ行う。ヘルプやバージョンの要求、子コマンドが指定されなかった場合、使い方のエラーの結果では、既定で有効のフラグも `count` は 0、`enabled` は偽のままである（`clopts_flag` の 14.15 と同じ扱いで、`enabled == (count > 0)` はどの状態でも保たれる）。
 
 例（プログラム `neg`、`color` は否定できるフラグ、`pager` は否定できる既定で有効のフラグ）:
 
@@ -1394,7 +1395,7 @@ static bool option_name_at(const clopts_option_t *option, size_t n, clopts_name_
 - **別名の形と予約**（17.13）: 別名ごとに、長い名前と同じ条件（空、先頭が `-`、`=` を含む）と、予約（`help`、`version`）を検査する。`aliases` が空文字列の場合と、先頭・末尾・連続のカンマは、空の別名として誤りになる。
 - **報告の数**: 1 つのオプションについて、重複は最初の 1 件、衝突は最初の 1 件を報告する（改訂前の `return` の位置のまま）。形と予約の誤りは別名ごとに報告する。長い名前が形の誤りのとき、そのオプションの重複と衝突は検査しない（改訂前のまま）。別名の形と予約の検査は、その場合も行う。
 - **必須かつ隠し**（16.6）: オプションごとの検査に、`hidden` と `required` がともに真なら誤り、を足す。フラグに `required` を付けた宣言は、既存の誤り（`cannot be required or have a default`）と合わせて 2 件になる。
-- 名前を示すメッセージは、`%.*s` で長さを指定して出す（別名が NUL で終わらないため）。長さは既存の `name_precision` と同じ考え方で `int` に収める。
+- 名前を示すメッセージは、`%.*s` で長さを指定して出す（別名が NUL で終わらないため）。長さを `int` に収める関数は、`clopts_parse.c` の `name_precision` と同じ内容のものを `clopts_decl.c` の中に置く（数行の関数で、共有のために内部ヘッダを変えることはしない）。
 
 #### ResultStore
 
@@ -1433,7 +1434,7 @@ size_t clopts_flag_count(const clopts_result_t *result, const char *long_name);
 - 引き継ぐフラグ: `nest -v remote -v --token t add -v n u` で `verbose` が 3 になること。`neg -c run -c --no-color -c` が 1 になること（15.5）。
 - 別名との合算: `ext -v --chatty run --token t --verbose` で `verbose` が 3 になること（15.2、17.3）。
 - 0 を返す場合: 値付きオプション（指定あり、複数回の指定を含む）、リスト値、宣言のない名前、別名（`chatty`）、`NULL` の名前、解析前の結果（15.7、17.8）。
-- 状態が成功以外のとき: ヘルプの要求と使い方のエラーの結果に対して呼んでも、落ちずに値を返すこと。
+- 状態が成功以外のとき: `neg --help` と `neg run --bogus` の結果で、既定で有効の `pager` が `clopts_flag_count` は 0、`clopts_flag` は偽になること（既定は成功のときだけ適用する）。`neg -c --help` のように、ヘルプの要求より前に指定したフラグは数えられていること。
 
 **hidden**（`cli_args/tests/hidden_test.c`、プログラム `ext`）:
 
