@@ -198,9 +198,12 @@ static size_t find_long_index(const mnd_args_command_t *command, const char *nam
     mnd_args_result_t result;
     mnd_args_ref_t ref = { 0, 0 };
     size_t index;
+    bool found;
 
     begin_path(&result, command);
-    index = found_index(mnd_args_find_long(&result, name, name_len, &ref), ref);
+    /* 引数の評価順は規定されないので、ref を設定する呼び出しを先に済ませる */
+    found = mnd_args_find_long(&result, name, name_len, &ref);
+    index = found_index(found, ref);
     mnd_args_result_free(&result);
     return index;
 }
@@ -210,9 +213,12 @@ static size_t find_short_index(const mnd_args_command_t *command, char short_nam
     mnd_args_result_t result;
     mnd_args_ref_t ref = { 0, 0 };
     size_t index;
+    bool found;
 
     begin_path(&result, command);
-    index = found_index(mnd_args_find_short(&result, short_name, &ref), ref);
+    /* 引数の評価順は規定されないので、ref を設定する呼び出しを先に済ませる */
+    found = mnd_args_find_short(&result, short_name, &ref);
+    index = found_index(found, ref);
     mnd_args_result_free(&result);
     return index;
 }
