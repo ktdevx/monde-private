@@ -137,7 +137,7 @@ cli_args/                          # CLOpts（独立プロジェクト）。こ�
 ├── cmake/
 │   ├── CLOptsCompilerOptions.cmake  # clopts_apply_compile_options(target)
 │   ├── CLOptsNaos.cmake             # Naos の取得（すでにあれば何もしない）
-│   └── CLOptsConfig.cmake.in        # パッケージ構成ファイルの雛形
+│   └── CLOptsConfig.cmake.in        # パッケージ構成ファイルの雛形（CLOptsTargets.cmake の読み込みと check_required_components）
 ├── include/clopts/                # 公開ヘッダ（インストールの対象）
 │   ├── clopts.h                   # 宣言の型、解析、結果の参照（旧 args.h）
 │   ├── errors.h                   # clopts_errors_t（新規）
@@ -473,8 +473,9 @@ bool clopts_argv_from_wide(int argc, wchar_t *const *wargv, clopts_argv_t *out, 
 | ターゲット | `monde_cli_args` / `monde::cli_args` | `clopts` / `CLOpts::clopts` |
 | テスト実行ファイル | `cli_args_tests` | `clopts_tests` |
 | CTest の名前とラベル | `cli_args_tests.<suite>.<test>`、ラベル `cli_args` | `clopts_tests.<suite>.<test>`、ラベル `clopts` |
+| 内部のマクロ | （foundation の `MND_PRINTF_LIKE`） | `CLOPTS_PRINTF_LIKE`（`clopts_internal.h`、公開しない） |
 
-規則は機械的で、例外は「診断の引数」と「整形の関数」の 2 つだけである。
+規則は機械的で、例外は「診断の引数」と「整形の関数」の 2 つだけである。表の名前・ヘッダ・ターゲットは、実装（`cli_args/include/clopts/`、`cli_args/src/`、`cli_args/CMakeLists.txt`、`cli_args/tests/CMakeLists.txt`）と一致することをタスク 5.3 で確かめた。
 
 ### CLOpts / ビルド
 
@@ -512,7 +513,7 @@ bool clopts_argv_from_wide(int argc, wchar_t *const *wargv, clopts_argv_t *out, 
 | `CLOptsConfig.cmake`、`CLOptsConfigVersion.cmake`、`CLOptsTargets*.cmake` | `${CMAKE_INSTALL_LIBDIR}/cmake/CLOpts` |
 | `LICENSE` | `${CMAKE_INSTALL_DATADIR}/licenses/CLOpts` |
 
-- `CLOptsConfig.cmake` は `configure_package_config_file` で作り、`CLOptsTargets.cmake` を読むだけにする。絶対パスを埋め込まない（6.5）。
+- `CLOptsConfig.cmake` は `configure_package_config_file` で作り、`CLOptsTargets.cmake` を読み込んで `check_required_components(CLOpts)` を呼ぶ（`CMakePackageConfigHelpers` の標準の形。実装時に加えた）。絶対パスを埋め込まない（6.5）。
 - `CLOptsConfigVersion.cmake` は `write_basic_package_version_file(... COMPATIBILITY SameMinorVersion)` で作る（1.0 より前のため、マイナーが違えば互換なしとする）。
 - テスト、`src/` のヘッダ、Naos はインストールしない（6.6）。
 
@@ -554,8 +555,9 @@ bool clopts_argv_from_wide(int argc, wchar_t *const *wargv, clopts_argv_t *out, 
 
 **Contracts**: Batch [x]
 
-- **Trigger**: CTest のテスト `clopts_package.find_package`（ラベル `clopts`）。`cmake -P` で起動する。
+- **Trigger**: CTest のテスト `clopts_package.find_package`（ラベル `clopts`）。`cmake -P` で起動する。インストールの規則がある（`CLOPTS_INSTALL` が ON の）ときだけ登録するので、単独構成では登録され、Monde の構成では登録されない。
 - **Input**: `BUILD_DIR`（CLOpts のビルドディレクトリ）、`CONFIG`（構成名）、`SOURCE_DIR`（`tests/package`）、`WORK_DIR`（作業用）、`GENERATOR`、`C_COMPILER`、`VERSION`。
+  - 実装では、利用側のビルドを外側と同じ道具で行い、インストール先のファイルを正確に検査するために、次の入力も受け取る: `MULTI_CONFIG`（複数構成のジェネレータか）、`GENERATOR_PLATFORM`、`GENERATOR_TOOLSET`、`MAKE_PROGRAM`、`TOOLCHAIN_FILE`、`CXX_COMPILER`、`INCLUDEDIR` / `LIBDIR` / `DATADIR`（`GNUInstallDirs` の値）、`LIBRARY_FILE`（静的ライブラリのファイル名）。
 - **手順**:
   1. `WORK_DIR` を空にする。
   2. `cmake --install BUILD_DIR --config CONFIG --prefix WORK_DIR/prefix` を実行する。
@@ -563,7 +565,7 @@ bool clopts_argv_from_wide(int argc, wchar_t *const *wargv, clopts_argv_t *out, 
   4. `WORK_DIR/prefix` を `WORK_DIR/moved` に改名する（6.5）。
   5. `tests/package` を `CMAKE_PREFIX_PATH=WORK_DIR/moved` で構成し、ビルドして、`consumer` を実行する。終了コード 0 を確かめる（6.2、6.3、6.7）。C++ のコンパイラがあれば `consumer_cxx` もビルドする（4.6）。
   6. 同じプロジェクトを `-DCLOPTS_REQUIRED_VERSION=99.0` で構成し、失敗することを確かめる（6.4）。
-- **Idempotency**: 毎回 `WORK_DIR` を作り直す。CLOpts のビルドディレクトリは変更しない。
+- **Idempotency**: 毎回 `WORK_DIR` を作り直す。CLOpts のビルドディレクトリは変更しない。ただし、`cmake --install` が自身の動作としてビルドディレクトリに `install_manifest.txt` を書くことだけは避けられない（毎回上書きされ、ビルドの結果には影響しない）。
 - `tests/package/CMakeLists.txt` は `find_package(CLOpts ${CLOPTS_REQUIRED_VERSION} CONFIG REQUIRED)` を呼び、`CLOpts::clopts` だけをリンクする。include のパスや `shell32` を自分では指定しない。
 
 #### IsolationCheck（`cli_args/tests/isolation_check.cmake`）
@@ -579,6 +581,7 @@ bool clopts_argv_from_wide(int argc, wchar_t *const *wargv, clopts_argv_t *out, 
   - `foundation/`
   - `../` を含む `#include`、および CMake と README の中の `../`
 - コメントの中の語も検出する。CLOpts の中では、これらの語を使わない。
+- `CMakeCache.txt` を含むディレクトリ（`cli_args/` の中に置いたビルドディレクトリ）は、生成物（取得した Naos のソースなど）による誤検出を避けるため走査しない（実装時に加えた除外）。
 
 ### Monde / ビルド
 

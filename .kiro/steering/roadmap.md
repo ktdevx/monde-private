@@ -78,7 +78,7 @@ Monde は、Markdown 文書を gettext の `.pot` / `.po` を介して翻訳す�
 
 ### Overview
 
-コマンドライン引数パーサ（cli-args）を、将来別リポジトリで管理する独立ライブラリ「CLOpts」（CMake では `CLOpts::clopts`）として扱えるようにする。ルートの `cli_args/` に必要なファイルをすべて集め、そのディレクトリだけで構成・ビルド・テストができる状態にする。Monde 本体は `add_subdirectory(cli_args)` で取り込む。
+コマンドライン引数パーサ（cli-args）を、将来別リポジトリで管理する独立ライブラリ「CLOpts」（CMake では `CLOpts::clopts`）として扱えるようにする。ルートの `cli_args/` に必要なファイルをすべて集め、そのディレクトリだけで構成・ビルド・テストができる状態にする。Monde 本体は `add_subdirectory(cli_args)` で取り込む（定義は `cmake/MondeCLOpts.cmake` の 1 か所）。
 
 ### Approach Decision
 
@@ -114,4 +114,4 @@ Monde は、Markdown 文書を gettext の `.pot` / `.po` を介して翻訳す�
 
 ### Specs (dependency order)
 
-- [ ] clopts-standalone -- cli-args をルートの `cli_args/` に移し、foundation に依存しない独立ライブラリ CLOpts（`CLOpts::clopts`、`clopts_*` API、install / find_package 対応）として単独でビルド・テストできるようにする。Monde 本体は `add_subdirectory` で取り込む。Dependencies: cli-args, monde-cli, docs-and-release
+- [x] clopts-standalone -- cli-args をルートの `cli_args/` に移し、foundation に依存しない独立ライブラリ CLOpts（`CLOpts::clopts`、`clopts_*` API、install / find_package 対応）として単独でビルド・テストできるようにする。Monde 本体は `cmake/MondeCLOpts.cmake` の `add_subdirectory` で取り込む。Dependencies: cli-args, monde-cli, docs-and-release
