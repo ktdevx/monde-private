@@ -5,9 +5,11 @@
 #include "test_util.h"
 
 #include "cli/cli.h"
+#include "cli/cli_clopts.h"
 #include "cli/cli_commands.h"
 #include "cli/cli_io.h"
 #include "clopts/clopts.h"
+#include "clopts/errors.h"
 #include "foundation/buf.h"
 #include "foundation/diag.h"
 #include "foundation/eol.h"
@@ -469,6 +471,7 @@ typedef struct io_argv
 static void io_parse(const char *const *tokens, io_argv_t *copy, mnd_args_result_t *result)
 {
     mnd_args_program_t program = mnd_cli_program(TEST_CLI_VERSION);
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
     mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
     mnd_args_status_t status;
 
@@ -483,7 +486,9 @@ static void io_parse(const char *const *tokens, io_argv_t *copy, mnd_args_result
     }
     copy->argv[copy->argc] = NULL;
 
-    status = mnd_args_parse(&program, copy->argc, copy->argv, result, &diags);
+    status = mnd_args_parse(&program, copy->argc, copy->argv, result, &errors);
+    mnd_cli_clopts_errors_to_diags(&errors, &diags);
+    clopts_errors_free(&errors);
     NAOS_CHECK_UINT_EQ(0, mnd_diag_list_count(&diags));
     mnd_diag_list_free(&diags);
     NAOS_REQUIRE_INT_EQ(MND_ARGS_OK, status);

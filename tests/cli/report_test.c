@@ -7,6 +7,7 @@
 #include "cli/cli_commands.h"
 #include "cli/cli_report.h"
 #include "clopts/clopts.h"
+#include "clopts/errors.h"
 #include "foundation/buf.h"
 #include "foundation/diag.h"
 #include "po_merge/merge.h"
@@ -70,7 +71,7 @@ static void report_usage_result(const char *command, mnd_args_result_t *result)
     static mnd_args_program_t program;
     char *argv[4];
     int argc = 0;
-    mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
 
     program = mnd_cli_program(TEST_CLI_VERSION);
     argv[argc++] = arg0;
@@ -83,9 +84,9 @@ static void report_usage_result(const char *command, mnd_args_result_t *result)
     argv[argc++] = bogus;
     argv[argc] = NULL;
 
-    NAOS_REQUIRE_INT_EQ((int)MND_ARGS_USAGE_ERROR, (int)mnd_args_parse(&program, argc, argv, result, &diags));
+    NAOS_REQUIRE_INT_EQ((int)MND_ARGS_USAGE_ERROR, (int)mnd_args_parse(&program, argc, argv, result, &errors));
     NAOS_REQUIRE_UINT_EQ((command != NULL) ? 2 : 1, mnd_args_depth(result));
-    mnd_diag_list_free(&diags);
+    clopts_errors_free(&errors);
 }
 
 /* 診断の 3 形式（パスと行、パスのみ、どちらもなし）と警告が、渡された順に 1 件 1 行で出る（9.1〜9.4） */

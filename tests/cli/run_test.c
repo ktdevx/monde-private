@@ -3,9 +3,11 @@
 #include <naos/naos.h>
 
 #include "cli/cli.h"
+#include "cli/cli_clopts.h"
 #include "cli/cli_commands.h"
 #include "cli/cli_internal.h"
 #include "clopts/clopts.h"
+#include "clopts/errors.h"
 #include "clopts/help.h"
 #include "foundation/buf.h"
 #include "foundation/diag.h"
@@ -173,10 +175,13 @@ typedef struct argv_copy
     int argc;
 } argv_copy_t;
 
-/* NULL で終わる tokens を copy に複製して解析する */
+/* NULL で終わる tokens を copy に複製して解析し、解析のエラーを橋渡しで diags に移す */
 static mnd_args_status_t parse_tokens(const mnd_args_program_t *program, const char *const *tokens,
                                       argv_copy_t *copy, mnd_args_result_t *result, mnd_diag_list_t *diags)
 {
+    clopts_errors_t errors = CLOPTS_ERRORS_INIT;
+    mnd_args_status_t status;
+
     copy->argc = 0;
     while (tokens[copy->argc] != NULL)
     {
@@ -188,7 +193,11 @@ static mnd_args_status_t parse_tokens(const mnd_args_program_t *program, const c
     }
     copy->argv[copy->argc] = NULL;
 
-    return mnd_args_parse(program, copy->argc, copy->argv, result, diags);
+    status = mnd_args_parse(program, copy->argc, copy->argv, result, &errors);
+    mnd_cli_clopts_errors_to_diags(&errors, diags);
+    clopts_errors_free(&errors);
+
+    return status;
 }
 
 /*
@@ -231,14 +240,15 @@ NAOS_TEST(run_commands_program_version_replaced_per_call)
 {
     mnd_args_program_t a = mnd_cli_program("1.0.0");
     mnd_args_program_t b = mnd_cli_program("2.0.0");
-    mnd_buf_t out = MND_BUF_INIT;
+    char *out;
 
     NAOS_CHECK_STR_EQ("1.0.0", a.version);
     NAOS_CHECK_STR_EQ("2.0.0", b.version);
     NAOS_CHECK_TRUE(a.root == b.root);
-    NAOS_REQUIRE_TRUE(mnd_args_format_version(&b, &out));
-    NAOS_CHECK_STR_EQ("monde 2.0.0\n", mnd_buf_cstr(&out));
-    mnd_buf_free(&out);
+    out = mnd_args_format_version(&b);
+    NAOS_REQUIRE_NOT_NULL(out);
+    NAOS_CHECK_STR_EQ("monde 2.0.0\n", out);
+    mnd_args_text_free(out);
 }
 
 /* 各サブコマンドの位置引数とオプションが設計の表のとおりで、出力と言語は必須でない（2.1、2.2、5.2、5.3） */
@@ -333,12 +343,16 @@ static void format_help_of(const char *command_name, mnd_buf_t *out)
     mnd_args_result_t result = MND_ARGS_RESULT_INIT;
     mnd_diag_list_t diags = MND_DIAG_LIST_INIT;
     mnd_args_status_t status;
+    char *text;
 
     command_argv[1] = command_name;
     status = parse_tokens(&program, (command_name != NULL) ? command_argv : global_argv, &copy, &result, &diags);
     NAOS_REQUIRE_INT_EQ((int)MND_ARGS_HELP, (int)status);
     NAOS_REQUIRE_UINT_EQ((command_name != NULL) ? 2 : 1, mnd_args_depth(&result));
-    NAOS_REQUIRE_TRUE(mnd_args_format_help(&result, out));
+    text = mnd_args_format_help(&result);
+    NAOS_REQUIRE_NOT_NULL(text);
+    NAOS_REQUIRE_TRUE(mnd_buf_append_str(out, text));
+    mnd_args_text_free(text);
     mnd_args_result_free(&result);
     mnd_diag_list_free(&diags);
 }

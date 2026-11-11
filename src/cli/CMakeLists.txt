@@ -6,6 +6,7 @@ monde_add_module(cli
     cli_report.c
     cli_time.c
     cli_language.c
+    cli_clopts.c
     cmd_extract.c
     cmd_init.c
     cmd_update.c

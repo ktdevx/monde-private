@@ -10,6 +10,7 @@ NAOS_DECLARE_SUITE(init);
 NAOS_DECLARE_SUITE(update);
 NAOS_DECLARE_SUITE(translate);
 NAOS_DECLARE_SUITE(roundtrip);
+NAOS_DECLARE_SUITE(clopts_bridge);
 
 NAOS_MAIN(
     NAOS_ADD_SUITE(run),
@@ -21,5 +22,6 @@ NAOS_MAIN(
     NAOS_ADD_SUITE(init),
     NAOS_ADD_SUITE(update),
     NAOS_ADD_SUITE(translate),
-    NAOS_ADD_SUITE(roundtrip)
+    NAOS_ADD_SUITE(roundtrip),
+    NAOS_ADD_SUITE(clopts_bridge)
 )
