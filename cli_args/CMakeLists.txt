@@ -1,5 +1,19 @@
 # CLOpts: コマンドライン引数の解析ライブラリ。静的ライブラリ clopts と別名 CLOpts::clopts を作る。
-# C の標準ライブラリと OS のライブラリだけにリンクする。コンパイラオプションは当面 Monde のものを使う
+# 単独で構成する（最上位のプロジェクト）ことも、利用側のプロジェクトが add_subdirectory などで
+# 取り込むこともできる。C の標準ライブラリと OS のライブラリだけにリンクする。
+cmake_minimum_required(VERSION 3.21)
+
+# CLOpts のバージョン番号を書く場所はここだけ
+project(CLOpts VERSION 0.1.0 LANGUAGES C)
+
+# 既定は「最上位なら有効、取り込まれたなら無効」。利用側が先に変数を設定していれば、その値が優先される
+option(CLOPTS_BUILD_TESTS "Build the CLOpts tests and register them with CTest" ${PROJECT_IS_TOP_LEVEL})
+option(CLOPTS_INSTALL "Define the CLOpts install and export rules" ${PROJECT_IS_TOP_LEVEL})
+option(CLOPTS_WARNINGS_AS_ERRORS "Treat compiler warnings as errors when building CLOpts" ${PROJECT_IS_TOP_LEVEL})
+
+# 自分のモジュールはパスを指定して読み込む（CMAKE_MODULE_PATH などの全体に効く変数は変更しない）
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/CLOptsCompilerOptions.cmake")
+
 add_library(clopts STATIC
   src/clopts_errors.c
   src/clopts_buf.c
@@ -11,16 +25,20 @@ add_library(clopts STATIC
 )
 add_library(CLOpts::clopts ALIAS clopts)
 target_include_directories(clopts
-  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 # Windows では CommandLineToArgvW のために shell32 をリンクする
 if(WIN32)
   target_link_libraries(clopts PUBLIC shell32)
 endif()
-monde_apply_compile_options(clopts)
+clopts_apply_compile_options(clopts)
 
-# テストは Monde のテストが有効なときだけ登録する
-if(BUILD_TESTING)
+if(CLOPTS_BUILD_TESTS)
+  # 取り込み構成では、利用側が CTest を有効にしている前提でテストを登録する
+  if(PROJECT_IS_TOP_LEVEL)
+    enable_testing()
+  endif()
+  include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/CLOptsNaos.cmake")
   add_subdirectory(tests)
 endif()

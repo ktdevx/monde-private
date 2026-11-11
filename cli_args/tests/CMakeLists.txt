@@ -21,5 +21,5 @@ naos_add_executable(clopts_tests
   PREFIX "clopts_tests."
   LABELS clopts
 )
-target_include_directories(clopts_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
-monde_apply_compile_options(clopts_tests)
+target_include_directories(clopts_tests PRIVATE "${CLOpts_SOURCE_DIR}/src")
+clopts_apply_compile_options(clopts_tests)
