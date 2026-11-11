@@ -237,3 +237,59 @@ const clopts_program_t test_neg_program = {
 };
 
 const clopts_command_t *const test_neg_run = &test_neg_commands[0];
+
+static const clopts_option_t test_ext_root_options[] = {
+    { .long_name = "verbose", .short_name = 'v', .kind = CLOPTS_FLAG, .help = "Print more details",
+      .inherited = true, .aliases = "chatty" },
+    { .long_name = "color", .kind = CLOPTS_FLAG, .help = "Colorize the output", .inherited = true,
+      .negatable = true, .aliases = "colour" },
+    { .long_name = "trace", .kind = CLOPTS_FLAG, .help = "Trace the parser", .inherited = true,
+      .hidden = true },
+    { .long_name = "profile", .kind = CLOPTS_VALUE, .value_name = "NAME", .help = "Use the profile NAME",
+      .hidden = true }
+};
+
+static const clopts_option_t test_ext_run_options[] = {
+    { .long_name = "output", .short_name = 'o', .kind = CLOPTS_VALUE, .value_name = "FILE",
+      .help = "Write the result to FILE", .aliases = "out,outfile" },
+    { .long_name = "token", .kind = CLOPTS_VALUE, .value_name = "TOKEN", .help = "Access token",
+      .required = true, .aliases = "key" },
+    { .long_name = "tags", .kind = CLOPTS_LIST, .value_name = "TAG", .help = "Tags to attach",
+      .aliases = "labels" },
+    { .long_name = "jobs", .short_name = 'j', .kind = CLOPTS_VALUE, .value_name = "NUMBER-OF-WORKERS",
+      .help = "Number of parallel jobs", .default_value = "1", .hidden = true },
+    { .long_name = "force", .short_name = 'f', .kind = CLOPTS_FLAG, .help = "Overwrite existing files" }
+};
+
+static const clopts_positional_t test_ext_run_positionals[] = {
+    { "FILE", "Files to process" }
+};
+
+static const clopts_command_t test_ext_commands[] = {
+    {
+        .name = "run",
+        .summary = "Process files",
+        .options = test_ext_run_options,
+        .option_count = TEST_TOOL_COUNT_OF(test_ext_run_options),
+        .positionals = test_ext_run_positionals,
+        .positional_count = TEST_TOOL_COUNT_OF(test_ext_run_positionals),
+        .min_positionals = 0,
+        .max_positionals = CLOPTS_UNLIMITED
+    }
+};
+
+static const clopts_command_t test_ext_root = {
+    .description = "A sample tool with hidden options and aliases.",
+    .options = test_ext_root_options,
+    .option_count = TEST_TOOL_COUNT_OF(test_ext_root_options),
+    .commands = test_ext_commands,
+    .command_count = TEST_TOOL_COUNT_OF(test_ext_commands)
+};
+
+const clopts_program_t test_ext_program = {
+    .name = "ext",
+    .version = "5.0",
+    .root = &test_ext_root
+};
+
+const clopts_command_t *const test_ext_run = &test_ext_commands[0];

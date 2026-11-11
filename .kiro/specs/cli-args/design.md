@@ -1423,7 +1423,7 @@ size_t clopts_flag_count(const clopts_result_t *result, const char *long_name);
 テスト用の宣言に、架空のプログラム **`ext`**（バージョン `5.0`）を加える（11.1）。出現回数は、既存のプログラム `tool`、`nest`、`neg` でも検証する。
 
 - ルート（子を持つ）: `--verbose/-v`（フラグ、引き継ぐ、別名 `chatty`）、`--color`（フラグ、否定できる、引き継ぐ、別名 `colour`）、`--trace`（フラグ、隠し、引き継ぐ）、`--profile <NAME>`（値、隠し、引き継がない）。
-- `run`（末端）: `--output/-o <FILE>`（値、別名 `out,outfile`）、`--token <TOKEN>`（値、必須、別名 `key`）、`--tags <TAG>`（リスト、別名 `labels`）、`--jobs/-j <N>`（値、隠し、既定値 `1`、説明あり。左列がこのコマンドで最も長い）、`--force/-f`（フラグ）。位置引数 `FILE`（0 個以上、上限なし）。
+- `run`（末端）: `--output/-o <FILE>`（値、別名 `out,outfile`）、`--token <TOKEN>`（値、必須、別名 `key`）、`--tags <TAG>`（リスト、別名 `labels`）、`--jobs/-j <NUMBER-OF-WORKERS>`（値、隠し、既定値 `1`、説明あり。左列は 30 桁で、次に長い `    --tags <TAG>[,<TAG>...]` の 27 桁を上回り、引き継いだオプションを含めてこのコマンドで最も長い）、`--force/-f`（フラグ）。位置引数 `FILE`（0 個以上、上限なし）。
 
 有効なオプションがすべて隠しオプションになるコマンドは、`ext` では作れない（ルートの引き継ぐオプションが子孫でも見えるため）。この場合だけ、`hidden_test.c` の中に小さな宣言 **`solo`**（バージョン `1.0`）を置く。ルート（子を持つ）のオプションは `--dump`（フラグ、隠し）だけで、子は `state`（末端、オプションなし）である。
 

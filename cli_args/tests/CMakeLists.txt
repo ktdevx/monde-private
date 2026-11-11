@@ -18,6 +18,9 @@ naos_add_executable(clopts_tests
     argv_test.c
     errors_api_test.c
     negate_test.c
+    count_test.c
+    hidden_test.c
+    alias_test.c
   LIBRARIES CLOpts::clopts
   PREFIX "clopts_tests."
   LABELS clopts
