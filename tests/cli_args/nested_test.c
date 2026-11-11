@@ -215,6 +215,107 @@ NAOS_TEST(version_under_remote_is_unknown_option)
     run_free(&run);
 }
 
+/* help の語は任意の深さの子コマンド名をたどる（8.1、8.4、8.5） */
+
+NAOS_TEST(help_word_reaches_nested_command)
+{
+    static const char *const from_root[] = {"nest", "help", "remote", "add"};
+    static const char *const from_remote[] = {"nest", "remote", "help", "add"};
+    static const char *const long_help[] = {"nest", "remote", "add", "--help"};
+    nested_run_t run;
+
+    run_parse(&run, 4, from_root);
+    check_status(&run, MND_ARGS_HELP, 3, test_nest_remote_add);
+    NAOS_CHECK_PTR_EQ(test_nest_remote, mnd_args_command_at(&run.result, 1));
+    run_free(&run);
+
+    run_parse(&run, 4, from_remote);
+    check_status(&run, MND_ARGS_HELP, 3, test_nest_remote_add);
+    NAOS_CHECK_PTR_EQ(test_nest_remote, mnd_args_command_at(&run.result, 1));
+    run_free(&run);
+
+    run_parse(&run, 4, long_help);
+    check_status(&run, MND_ARGS_HELP, 3, test_nest_remote_add);
+    run_free(&run);
+}
+
+NAOS_TEST(help_word_reaches_command_with_children)
+{
+    static const char *const tokens[] = {"nest", "help", "remote"};
+    nested_run_t run;
+
+    run_parse(&run, 3, tokens);
+    check_status(&run, MND_ARGS_HELP, 2, test_nest_remote);
+    run_free(&run);
+}
+
+NAOS_TEST(help_word_under_remote_alone_is_remote_help)
+{
+    static const char *const tokens[] = {"nest", "remote", "help"};
+    nested_run_t run;
+
+    run_parse(&run, 3, tokens);
+    check_status(&run, MND_ARGS_HELP, 2, test_nest_remote);
+    run_free(&run);
+}
+
+/* help の後の名前の誤りは、段を help を書いたコマンドまで戻して報告する（8.6） */
+
+NAOS_TEST(help_word_unknown_nested_name_has_root_prefix)
+{
+    static const char *const tokens[] = {"nest", "help", "remote", "bogus"};
+    nested_run_t run;
+
+    run_parse(&run, 4, tokens);
+    check_usage_error(&run, test_nest_program.root, "nest: unknown command 'bogus'");
+    NAOS_CHECK_UINT_EQ(1, mnd_args_depth(&run.result));
+    run_free(&run);
+}
+
+NAOS_TEST(help_word_extra_argument_after_leaf_has_root_prefix)
+{
+    static const char *const tokens[] = {"nest", "help", "status", "x"};
+    nested_run_t run;
+
+    run_parse(&run, 4, tokens);
+    check_usage_error(&run, test_nest_program.root, "nest: unexpected argument 'x'");
+    NAOS_CHECK_UINT_EQ(1, mnd_args_depth(&run.result));
+    run_free(&run);
+}
+
+NAOS_TEST(help_word_error_under_remote_has_remote_prefix)
+{
+    static const char *const tokens[] = {"nest", "remote", "help", "add", "x", "--help"};
+    nested_run_t run;
+
+    run_parse(&run, 6, tokens);
+    check_usage_error(&run, test_nest_remote, "nest remote: unexpected argument 'x'");
+    NAOS_CHECK_UINT_EQ(2, mnd_args_depth(&run.result));
+    run_free(&run);
+}
+
+/* ヘルプの優先は末端コマンドが選択中の誤りに限る（8.3、8.10） */
+
+NAOS_TEST(unknown_command_under_remote_before_help_is_reported)
+{
+    static const char *const tokens[] = {"nest", "remote", "bogus", "--help"};
+    nested_run_t run;
+
+    run_parse(&run, 4, tokens);
+    check_usage_error(&run, test_nest_remote, "nest remote: unknown command 'bogus'");
+    run_free(&run);
+}
+
+NAOS_TEST(error_on_remote_add_before_help_is_add_help)
+{
+    static const char *const tokens[] = {"nest", "remote", "add", "--bad", "--help"};
+    nested_run_t run;
+
+    run_parse(&run, 5, tokens);
+    check_status(&run, MND_ARGS_HELP, 3, test_nest_remote_add);
+    run_free(&run);
+}
+
 NAOS_SUITE(nested,
     NAOS_ADD_TEST(remote_add_path_has_three_levels),
     NAOS_ADD_TEST(remote_remove_path_has_three_levels),
@@ -225,5 +326,13 @@ NAOS_SUITE(nested,
     NAOS_ADD_TEST(missing_argument_has_remote_add_prefix),
     NAOS_ADD_TEST(unexpected_argument_has_remote_add_prefix),
     NAOS_ADD_TEST(unknown_option_on_status_has_status_prefix),
-    NAOS_ADD_TEST(version_under_remote_is_unknown_option)
+    NAOS_ADD_TEST(version_under_remote_is_unknown_option),
+    NAOS_ADD_TEST(help_word_reaches_nested_command),
+    NAOS_ADD_TEST(help_word_reaches_command_with_children),
+    NAOS_ADD_TEST(help_word_under_remote_alone_is_remote_help),
+    NAOS_ADD_TEST(help_word_unknown_nested_name_has_root_prefix),
+    NAOS_ADD_TEST(help_word_extra_argument_after_leaf_has_root_prefix),
+    NAOS_ADD_TEST(help_word_error_under_remote_has_remote_prefix),
+    NAOS_ADD_TEST(unknown_command_under_remote_before_help_is_reported),
+    NAOS_ADD_TEST(error_on_remote_add_before_help_is_add_help)
 )

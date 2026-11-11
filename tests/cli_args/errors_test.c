@@ -309,6 +309,58 @@ NAOS_TEST(error_at_end_has_nothing_to_recover)
     run_free(&run);
 }
 
+/*
+ * 子を持つコマンドが選択中の誤りは、後ろに --help・-h があっても報告する（8.10）。
+ * 経路がルートコマンドだけで、診断がちょうど 1 件であることを確かめる
+ */
+static void check_root_usage_error(const errors_run_t *run, const char *expected)
+{
+    const mnd_diag_t *d;
+
+    NAOS_CHECK_INT_EQ(MND_ARGS_USAGE_ERROR, run->status);
+    NAOS_CHECK_UINT_EQ(1, mnd_args_depth(&run->result));
+    NAOS_CHECK_PTR_EQ(test_tool_program.root, mnd_args_command(&run->result));
+    NAOS_REQUIRE_UINT_EQ(1, mnd_diag_list_count(&run->diags));
+    d = mnd_diag_list_at(&run->diags, 0);
+    NAOS_CHECK_INT_EQ(MND_SEVERITY_ERROR, d->severity);
+    NAOS_CHECK_STR_EQ(expected, d->message);
+}
+
+NAOS_TEST(unknown_command_before_help_is_reported)
+{
+    static const char *const tokens[] = {"tool", "bogus", "--help"};
+    errors_run_t run;
+
+    run_parse(&run, 3, tokens);
+    check_root_usage_error(&run, "tool: unknown command 'bogus'");
+    run_free(&run);
+}
+
+NAOS_TEST(unknown_option_before_command_and_help_is_reported)
+{
+    static const char *const tokens[] = {"tool", "--bogus", "-h"};
+    errors_run_t run;
+
+    run_parse(&run, 3, tokens);
+    check_root_usage_error(&run, "tool: unknown option '--bogus'");
+    run_free(&run);
+}
+
+NAOS_TEST(help_word_error_before_help_is_reported)
+{
+    static const char *const unknown[] = {"tool", "help", "nope", "--help"};
+    static const char *const extra[] = {"tool", "help", "copy", "x", "-h"};
+    errors_run_t run;
+
+    run_parse(&run, 4, unknown);
+    check_root_usage_error(&run, "tool: unknown command 'nope'");
+    run_free(&run);
+
+    run_parse(&run, 5, extra);
+    check_root_usage_error(&run, "tool: unexpected argument 'x'");
+    run_free(&run);
+}
+
 /* 値として消費した -h はヘルプにならない（3.2、4.1、8.2） */
 NAOS_TEST(dash_h_consumed_as_value_is_not_help)
 {
@@ -447,6 +499,9 @@ NAOS_SUITE(errors,
     NAOS_ADD_TEST(recovery_starts_after_consumed_value),
     NAOS_ADD_TEST(help_consumed_before_error_does_not_win),
     NAOS_ADD_TEST(error_at_end_has_nothing_to_recover),
+    NAOS_ADD_TEST(unknown_command_before_help_is_reported),
+    NAOS_ADD_TEST(unknown_option_before_command_and_help_is_reported),
+    NAOS_ADD_TEST(help_word_error_before_help_is_reported),
     NAOS_ADD_TEST(dash_h_consumed_as_value_is_not_help),
     NAOS_ADD_TEST(each_status_is_distinct),
     NAOS_ADD_TEST(usage_error_then_hint_for_selected_command)

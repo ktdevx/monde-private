@@ -19,8 +19,7 @@ typedef enum mnd_args_error_kind
     MND_ARGS_ERR_MISSING_ARGUMENT,   /* missing argument <NAME> */
     MND_ARGS_ERR_UNEXPECTED,         /* unexpected argument '<token>' */
     MND_ARGS_ERR_MISSING_REQUIRED,   /* missing required option '--<name>' */
-    MND_ARGS_ERR_UNKNOWN_COMMAND,    /* unknown command '<token>' */
-    MND_ARGS_ERR_HELP_TOO_MANY       /* too many arguments for 'help' */
+    MND_ARGS_ERR_UNKNOWN_COMMAND     /* unknown command '<token>' */
 } mnd_args_error_kind_t;
 
 /*
@@ -178,10 +177,6 @@ static mnd_args_status_t report_pending(mnd_args_scan_t *scan)
     case MND_ARGS_ERR_UNKNOWN_COMMAND:
         mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0, "%s: unknown command '%.*s'",
                      prefix, len, pending->arg);
-        break;
-    case MND_ARGS_ERR_HELP_TOO_MANY:
-        mnd_diag_add(scan->diags, MND_SEVERITY_ERROR, NULL, 0,
-                     "%s: too many arguments for 'help'", prefix);
         break;
     }
 
@@ -374,35 +369,46 @@ static mnd_args_status_t scan_positional(mnd_args_scan_t *scan, const char *toke
 
 /*
  * 子を持つコマンドの走査中に見た "help" の語を処理する（8.4〜8.6）。
- * 改訂前と同じく、後続のトークンは子コマンド名 1 つまでとする
+ * 後続のトークンを、選択中のコマンドの子コマンド名として順にたどり、たどり着いたコマンドの
+ * ヘルプの要求とする。トークンはすべて名前として扱い、オプションとして解釈しない。
+ * 名前が一致しないか、末端コマンドに達した後にトークンが残っていれば、段を "help" を見た
+ * 時点まで戻してから誤りを保留する（接頭辞は "help" を書いたコマンドの経路になる）
  */
-static mnd_args_status_t scan_help_word(mnd_args_scan_t *scan, const char *token)
+static mnd_args_status_t scan_help_word(mnd_args_scan_t *scan)
 {
-    const mnd_args_command_t *command;
-    const char *name;
+    size_t level_count = scan->result->level_count;
 
-    if (scan->next >= scan->argc)
+    while (scan->next < scan->argc)
     {
-        return finish(scan->result, MND_ARGS_HELP);
-    }
+        const char *name = scan->argv[scan->next];
+        const mnd_args_command_t *command;
+        mnd_args_error_kind_t kind;
 
-    if (scan->argc - scan->next > 1)
-    {
-        return scan_error(scan, MND_ARGS_ERR_HELP_TOO_MANY, token, strlen(token), NULL);
-    }
+        scan->next++;
 
-    name = scan->argv[scan->next];
-    scan->next++;
+        if (has_children(scan))
+        {
+            command = mnd_args_find_child(mnd_args_command(scan->result), name, strlen(name));
+            if (command != NULL)
+            {
+                if (!mnd_args_result_push(scan->result, command))
+                {
+                    return out_of_memory(scan->result, scan->diags);
+                }
 
-    command = mnd_args_find_child(mnd_args_command(scan->result), name, strlen(name));
-    if (command == NULL)
-    {
-        return scan_error(scan, MND_ARGS_ERR_UNKNOWN_COMMAND, name, strlen(name), NULL);
-    }
+                continue;
+            }
 
-    if (!mnd_args_result_push(scan->result, command))
-    {
-        return out_of_memory(scan->result, scan->diags);
+            kind = MND_ARGS_ERR_UNKNOWN_COMMAND;
+        }
+        else
+        {
+            kind = MND_ARGS_ERR_UNEXPECTED;
+        }
+
+        mnd_args_result_truncate(scan->result, level_count);
+
+        return scan_error(scan, kind, name, strlen(name), NULL);
     }
 
     return finish(scan->result, MND_ARGS_HELP);
@@ -423,7 +429,7 @@ static mnd_args_status_t scan_operand(mnd_args_scan_t *scan, const char *token)
 
     if (strcmp(token, "help") == 0)
     {
-        return scan_help_word(scan, token);
+        return scan_help_word(scan);
     }
 
     command = mnd_args_find_child(mnd_args_command(scan->result), token, strlen(token));
@@ -585,7 +591,8 @@ static mnd_args_status_t post_check(mnd_args_scan_t *scan)
 /*
  * トークンを走査し、状態を決める（「走査の後の検査と優先順位」の節）。
  * 使い方の誤りの診断は、ヘルプの要求がないと決まってから 1 件だけ追加する。
- * 回復走査は、改訂前と同じく子コマンドの選択後に末端コマンドで検出した誤りだけで行う（8.3、8.10）
+ * 回復走査は、誤りを検出した時点で選択中のコマンドが末端コマンド（末端コマンドのルートを含む）の
+ * 場合だけ行う。子を持つコマンドが選択中の誤りは、後ろに --help があっても報告する（8.3、8.10）
  */
 static mnd_args_status_t scan_command(mnd_args_scan_t *scan)
 {
@@ -594,7 +601,7 @@ static mnd_args_status_t scan_command(mnd_args_scan_t *scan)
     status = scan_tokens(scan);
     if (status == MND_ARGS_USAGE_ERROR)
     {
-        if (!root_is_selected(scan) && !has_children(scan) && recover_help(scan))
+        if (!has_children(scan) && recover_help(scan))
         {
             return finish(scan->result, MND_ARGS_HELP);
         }

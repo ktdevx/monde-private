@@ -411,11 +411,14 @@ NAOS_TEST(help_word_with_two_arguments)
 
     run_init(&run);
     run_parse(&run, 4, tokens);
-    check_usage_error(&run, "tool: too many arguments for 'help'");
+    check_usage_error(&run, "tool: unknown command 'a'");
     check_path(&run.result, NULL);
     run_free(&run);
 }
 
+/*
+ * 末端コマンドに達した後の引数は余分な引数とし、段を help を書いたコマンドまで戻す（8.6）
+ */
 NAOS_TEST(help_word_with_two_known_commands)
 {
     static const char *const tokens[] = {"tool", "help", "copy", "build"};
@@ -423,7 +426,33 @@ NAOS_TEST(help_word_with_two_known_commands)
 
     run_init(&run);
     run_parse(&run, 4, tokens);
-    check_usage_error(&run, "tool: too many arguments for 'help'");
+    check_usage_error(&run, "tool: unexpected argument 'build'");
+    check_path(&run.result, NULL);
+    run_free(&run);
+}
+
+NAOS_TEST(help_word_with_command_and_extra_argument)
+{
+    static const char *const tokens[] = {"tool", "help", "copy", "x"};
+    dispatch_run_t run;
+
+    run_init(&run);
+    run_parse(&run, 4, tokens);
+    check_usage_error(&run, "tool: unexpected argument 'x'");
+    check_path(&run.result, NULL);
+    run_free(&run);
+}
+
+/* help の後のトークンはすべて名前として扱い、オプションとして解釈しない（8.6） */
+NAOS_TEST(help_word_treats_option_like_token_as_name)
+{
+    static const char *const tokens[] = {"tool", "help", "--verbose"};
+    dispatch_run_t run;
+
+    run_init(&run);
+    run_parse(&run, 3, tokens);
+    check_usage_error(&run, "tool: unknown command '--verbose'");
+    check_path(&run.result, NULL);
     run_free(&run);
 }
 
@@ -604,6 +633,8 @@ NAOS_SUITE(dispatch,
     NAOS_ADD_TEST(help_word_with_unknown_command),
     NAOS_ADD_TEST(help_word_with_two_arguments),
     NAOS_ADD_TEST(help_word_with_two_known_commands),
+    NAOS_ADD_TEST(help_word_with_command_and_extra_argument),
+    NAOS_ADD_TEST(help_word_treats_option_like_token_as_name),
     NAOS_ADD_TEST(version_ignores_later_tokens),
     NAOS_ADD_TEST(version_with_extra_argument_is_version),
     NAOS_ADD_TEST(help_before_command_is_root_help),

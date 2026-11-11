@@ -226,6 +226,33 @@ NAOS_TEST(short_help_in_cluster_is_root_help)
     run_free(&run);
 }
 
+/* 末端コマンドのルートでも回復走査が働き、ルートコマンドのヘルプになる（8.3） */
+NAOS_TEST(help_after_error_is_root_help)
+{
+    static const char *const long_help[] = {"single", "--bad", "--help"};
+    static const char *const short_help[] = {"single", "a", "-x", "b", "-h"};
+    single_run_t run;
+
+    run_parse(&run, 3, long_help);
+    check_status(&run, MND_ARGS_HELP);
+    run_free(&run);
+
+    run_parse(&run, 5, short_help);
+    check_status(&run, MND_ARGS_HELP);
+    run_free(&run);
+}
+
+/* 回復走査は "--" を越えない（8.3） */
+NAOS_TEST(help_after_terminator_does_not_recover)
+{
+    static const char *const tokens[] = {"single", "--bad", "--", "--help"};
+    single_run_t run;
+
+    run_parse(&run, 4, tokens);
+    check_usage_error(&run, "single: unknown option '--bad'");
+    run_free(&run);
+}
+
 NAOS_TEST(version_is_version)
 {
     static const char *const tokens[] = {"single", "--version"};
@@ -329,6 +356,8 @@ NAOS_SUITE(single,
     NAOS_ADD_TEST(double_dash_makes_rest_positional),
     NAOS_ADD_TEST(long_help_is_root_help),
     NAOS_ADD_TEST(short_help_in_cluster_is_root_help),
+    NAOS_ADD_TEST(help_after_error_is_root_help),
+    NAOS_ADD_TEST(help_after_terminator_does_not_recover),
     NAOS_ADD_TEST(version_is_version),
     NAOS_ADD_TEST(version_with_extra_argument_is_version),
     NAOS_ADD_TEST(version_after_positional_is_version),
