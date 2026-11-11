@@ -12,7 +12,7 @@
   - フラグの取得が「有効かどうか」を返し、明示的な指定の取得は今までどおり「指定されたかどうか」を返すようにする
   - 完了時: `ctest -L clopts` で、既存のスイートがテストのソースと期待値を変えずにすべて合格する
   - _Requirements: 1.5, 14.1, 14.5, 14.6, 14.13, 14.14_
-- [ ] 1.2 テスト用の架空のプログラム `neg` と、スイート negate を加える
+- [x] 1.2 テスト用の架空のプログラム `neg` と、スイート negate を加える
   - 設計書の Testing Strategy のとおりに `neg` を宣言する（ルートに `color`、`pager`、`no-cache`、`wrap`、`name`、子コマンド `run` に `force`、`sync`、`quiet` と位置引数 `FILE`）。Monde 固有の名前を使わない
   - スイート negate をテストの実行ファイルに登録し、最初のテストとして、否定できるフラグの肯定の形と未指定の 2 つの状態（`neg --color run`、`neg run` での `color`）を確かめる
   - 完了時: `ctest -L clopts` にスイート negate のテストが現れて合格し、`neg` の宣言が宣言の検査を通る
@@ -70,3 +70,4 @@
 ## Implementation Notes
 - CI（MSVC）: `f(g(&x), x)` の形は引数の評価順が規定されず、MSVC では `x` が先に評価される。`&x` で値を設定する呼び出しは、別の文で先に済ませる。（前の計画から引き継いだ注意）
 - 1.1: フラグの記録は `clopts_result_record_flag(result, ref, enabled)` に置いた。`cli_args/tests/values_test.c` が 2 引数の `clopts_result_set_flag` を呼ぶため、設計書の「`set_flag` に引数を足す」ではなく、`set_flag` を有効を渡すラッパとして残した。否定の形の記録（2.3）は `clopts_result_record_flag(..., false)` を使う。
+- 1.2: `neg` の説明は設計書に `sync` の分しかないため、ほかは仮の文面を付け、`pager` は説明なしにした（2.2 のヘルプの期待値はこの宣言に従う）。`neg` の宣言の検査のテストは negate_test.c に置いた。

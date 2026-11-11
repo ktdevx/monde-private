@@ -45,4 +45,17 @@ extern const clopts_command_t *const test_nest_remote_add;
 extern const clopts_command_t *const test_nest_remote_remove;
 extern const clopts_command_t *const test_nest_status;
 
+/*
+ * テスト専用の架空のプログラム "neg"（バージョン 4.0）の宣言。否定できるフラグ（--no-<name>）を持つ。
+ *   ルート（子を持つ）: --color/-c（フラグ、否定できる、引き継ぐ）、
+ *                       --pager（フラグ、否定できる、引き継ぐ、既定で有効、説明なし）、
+ *                       --no-cache（フラグ、否定できない）、--wrap（フラグ、否定できない）、--name <NAME>（値）
+ *     run（末端）: --force/-f（フラグ、否定できる）、--sync（フラグ、否定できる、既定で有効）、
+ *                  --quiet/-q（フラグ、否定できない）。位置引数 FILE（0 個以上、上限なし）
+ */
+extern const clopts_program_t test_neg_program;
+
+/* test_neg_program のルートコマンドの子コマンド */
+extern const clopts_command_t *const test_neg_run;
+
 #endif
